@@ -1,0 +1,5 @@
+# IDE config
+.idea
+
+# Rust compiled results
+target/
