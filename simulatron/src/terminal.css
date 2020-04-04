@@ -1,0 +1,14 @@
+body {
+  background: black;
+}
+
+table {
+  border-collapse: collapse;
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 18px;
+  color: white;
+}
+
+.fix_cursor {
+    cursor: default;
+}
