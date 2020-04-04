@@ -1,0 +1,54 @@
+use std::rc::Rc;
+use std::cell::RefCell;
+use std::sync::mpsc::Sender;
+
+use crate::cpu::INTERRUPT_ILLEGAL_OPERATION;
+use crate::display::DisplayController;
+use crate::keyboard::KeyboardController;
+
+pub struct MMU {
+    interrupt_channel: Sender<u32>,
+    display: Rc<DisplayController>,
+    keyboard: Rc<RefCell<KeyboardController>>,
+}
+
+impl MMU {
+    pub fn new(interrupt_channel: Sender<u32>,
+               display: Rc<DisplayController>,
+               keyboard: Rc<RefCell<KeyboardController>>) -> Self {
+        MMU {
+            interrupt_channel,
+            display,
+            keyboard,
+        }
+    }
+
+    pub fn store_direct(&self, address: u32, value: u8) {
+        if address < 32 {  // Interrupt handlers
+            unimplemented!();
+        } else if address < 577 {  // ROM and keyboard buffer
+            self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION)
+                .expect("Failed to send interrupt on illegal memory store.");
+        } else if address < 6577 {  // Memory-mapped display
+            self.display.store(address, value);
+        } else {
+            unimplemented!();
+        }
+    }
+
+    pub fn load_direct(&self, address: u32) -> u8 {
+        if address < 32 {  // Interrupt handlers
+            unimplemented!();
+        } else if address < 576 {  // ROM
+            unimplemented!();
+        } else if address == 576 {  // Keyboard buffer
+            self.keyboard.borrow().load()
+        } else if address < 6577 {  // Memory-mapped display
+            self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION)
+                .expect("Failed to send interrupt on illegal memory load.");
+            return 0;
+        } else {
+            unimplemented!();
+        }
+    }
+}
