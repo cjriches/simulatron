@@ -15,17 +15,14 @@ impl DisplayController {
     }
 
     pub fn store(&self, address: u32, value: u8) {
-        if address < 577 {
-            panic!("Display saw too low address of {}.", address);
-        } else if address <= 2576 {
-            let cell_num = address - 577;
-            let row = cell_num / 25;
-            let col = cell_num % 80;
+        if address < 2000 {
+            let row = address / 25;
+            let col = address % 80;
             let character = char_mapping::u8_to_char(value);
             self.ui_channel.send(UICommand::SetChar(row, col, character))
                 .expect("Failed to send command to UI.");
-        } else if address <= 4576 {
-            let cell_num = address - 2577;
+        } else if address < 4000 {
+            let cell_num = address - 2000;
             let row = cell_num / 25;
             let col = cell_num % 80;
             let r = value & 0b00110000;
@@ -33,8 +30,8 @@ impl DisplayController {
             let b = value & 0b00000011;
             self.ui_channel.send(UICommand::SetFg(row, col, r, g, b))
                 .expect("Failed to send command to UI.");
-        } else if address <= 6576 {
-            let cell_num = address - 4577;
+        } else if address < 6000 {
+            let cell_num = address - 4000;
             let row = cell_num / 25;
             let col = cell_num % 80;
             let r = value & 0b00110000;
