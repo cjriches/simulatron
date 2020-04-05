@@ -38,8 +38,10 @@ impl Simulatron {
 
         // Create components.
         let cpu = cpu::CPU::new(interrupt_rx);
-        let disk_a = Rc::new(RefCell::new(disk::DiskController::new(interrupt_tx_disk_a)));
-        let disk_b = Rc::new(RefCell::new(disk::DiskController::new(interrupt_tx_disk_b)));
+        let disk_a = Rc::new(RefCell::new(disk::DiskController::new(
+            String::from("DiskA"), interrupt_tx_disk_a)));
+        let disk_b = Rc::new(RefCell::new(disk::DiskController::new(
+            String::from("DiskB"), interrupt_tx_disk_b)));
         let display = Rc::new(display::DisplayController::new(display_tx));
         let keyboard = Rc::new(RefCell::new(keyboard::KeyboardController::new(
             keyboard_tx, keyboard_rx, interrupt_tx_keyboard)));
