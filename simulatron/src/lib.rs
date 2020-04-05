@@ -3,6 +3,7 @@ mod cpu;
 mod display;
 mod keyboard;
 mod mmu;
+mod ram;
 mod rom;
 mod ui;
 
@@ -13,6 +14,7 @@ use std::sync::mpsc;
 pub struct Simulatron {
     display: Rc<display::DisplayController>,
     keyboard: Rc<RefCell<keyboard::KeyboardController>>,
+    ram: Rc<ram::RAM>,
     rom: Rc<rom::ROM>,
     mmu: mmu::MMU,
     ui: ui::UI,
@@ -33,14 +35,16 @@ impl Simulatron {
             display::DisplayController::new(display_tx));
         let keyboard = Rc::new(RefCell::new(keyboard::KeyboardController::new(
             keyboard_tx, keyboard_rx, interrupt_tx_keyboard)));
+        let ram = Rc::new(ram::RAM::new());
         let rom = Rc::new(rom::ROM::new());
         let mmu = mmu::MMU::new(interrupt_tx_mmu, Rc::clone(&display), Rc::clone(&keyboard),
-                                Rc::clone(&rom));
+                                Rc::clone(&ram), Rc::clone(&rom));
         let ui = ui::UI::new(display_tx_ui, display_rx, keyboard_tx_ui);
 
         Simulatron {
             display,
             keyboard,
+            ram,
             rom,
             mmu,
             ui,

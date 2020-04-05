@@ -5,12 +5,14 @@ use std::sync::mpsc::Sender;
 use crate::cpu::INTERRUPT_ILLEGAL_OPERATION;
 use crate::display::DisplayController;
 use crate::keyboard::KeyboardController;
+use crate::ram::RAM;
 use crate::rom::ROM;
 
 pub struct MMU {
     interrupt_channel: Sender<u32>,
     display: Rc<DisplayController>,
     keyboard: Rc<RefCell<KeyboardController>>,
+    ram: Rc<RAM>,
     rom: Rc<ROM>,
 }
 
@@ -18,11 +20,13 @@ impl MMU {
     pub fn new(interrupt_channel: Sender<u32>,
                display: Rc<DisplayController>,
                keyboard: Rc<RefCell<KeyboardController>>,
+               ram: Rc<RAM>,
                rom: Rc<ROM>) -> Self {
         MMU {
             interrupt_channel,
             display,
             keyboard,
+            ram,
             rom,
         }
     }
