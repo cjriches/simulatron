@@ -8,8 +8,8 @@ mod ram;
 mod rom;
 mod ui;
 
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::mpsc;
 
 pub struct Simulatron {

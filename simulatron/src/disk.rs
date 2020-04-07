@@ -1,4 +1,4 @@
-use crossbeam_channel::{self, select};
+use crossbeam_channel::{self, select};  // This shows as an error in the IDE, but is fine.
 use notify::{self, Watcher};
 use std::convert::TryFrom;
 use std::fs;
@@ -48,7 +48,7 @@ struct SharedData {
 }
 
 pub struct DiskController {
-    dir_name: Arc<String>,
+    dir_path: Arc<String>,
     interrupt_tx: mpsc::Sender<u32>,
     worker_tx: Option<mpsc::Sender<DiskCommand>>,
     worker_thread: Option<thread::JoinHandle<()>>,
@@ -58,9 +58,9 @@ pub struct DiskController {
 }
 
 impl DiskController {
-    pub fn new(dir_name: String, interrupt_tx: mpsc::Sender<u32>) -> Self {
+    pub fn new(dir_path: String, interrupt_tx: mpsc::Sender<u32>) -> Self {
         DiskController {
-            dir_name: Arc::new(dir_name),
+            dir_path: Arc::new(dir_path),
             interrupt_tx,
             worker_tx: None,
             worker_thread: None,
@@ -84,7 +84,7 @@ impl DiskController {
         let (worker_tx, worker_rx) = mpsc::channel();
         self.worker_tx = Some(worker_tx);
         let worker_interrupt_tx = self.interrupt_tx.clone();
-        let worker_dir_name = Arc::clone(&self.dir_name);
+        let worker_dir_name = Arc::clone(&self.dir_path);
         let worker_shared_data = Arc::clone(&self.shared_data);
         let worker_thread = thread::spawn(move || loop {
             let cmd = worker_rx.recv().unwrap();
@@ -98,24 +98,27 @@ impl DiskController {
 
         // Thread 2: watcher (watches filesystem for disk inserts/ejects).
         let watcher_interrupt_tx = self.interrupt_tx.clone();
-        let watcher_dir_name = Arc::clone(&self.dir_name);
+        let watcher_dir_name = Arc::clone(&self.dir_path);
         let watcher_shared_data = Arc::clone(&self.shared_data);
         let (watcher_join_tx, watcher_join_rx) = crossbeam_channel::unbounded();
         self.watcher_join_tx = Some(watcher_join_tx);
         let (file_event_tx, file_event_rx_raw) = mpsc::channel();
-        let mut watcher = notify::raw_watcher(file_event_tx).unwrap();
-        watcher.watch(watcher_dir_name.as_ref(), notify::RecursiveMode::NonRecursive).unwrap();
         // We need to use crossbeam's channel select feature, so we must turn the mpsc receiver
         // required by notify into a fancy crossbeam one.
         let file_event_rx = crossbeam_receiver_adapter(file_event_rx_raw);
-        let watcher_thread = thread::spawn(move || loop {
-            // Wait for either a join message or a file event, whichever comes first.
-            select! {
+        let watcher_thread = thread::spawn(move || {
+            let mut watcher = notify::raw_watcher(file_event_tx).unwrap();
+            watcher.watch(watcher_dir_name.as_ref(), notify::RecursiveMode::NonRecursive).unwrap();
+
+            loop {
+                // Wait for either a join message or a file event, whichever comes first.
+                select! {
                 recv(watcher_join_rx) -> _ => {return;}
                 recv(file_event_rx) -> msg => {
                     DiskController::watcher_iteration(
                         &watcher_interrupt_tx, &watcher_dir_name,
                         &watcher_shared_data, &msg.unwrap());
+                    }
                 }
             }
         });
@@ -137,7 +140,7 @@ impl DiskController {
         watcher_thread.join().unwrap();
     }
 
-    fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, dir_name: &str,
+    fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, dir_path: &str,
                         shared_data: &Arc<Mutex<SharedData>>, cmd: &DiskCommand) {
         // Acquire the shared data.
         let mut sd = shared_data.lock().unwrap();
@@ -166,9 +169,9 @@ impl DiskController {
         match *cmd {
             DiskCommand::Read(sustained) => {
                 // Find the file.
-                let result = DiskController::get_file_name(dir_name).and_then(|file_name| {
+                let result = DiskController::get_file_name(dir_path).and_then(|file_path| {
                     // Open the file.
-                    fs::File::open(file_name).ok()
+                    fs::File::open(file_path).ok()
                 }).and_then(|mut file| {
                     // Seek to the correct position. Note we are using 'and' to return the
                     // file rather than the new seek offset.
@@ -189,9 +192,9 @@ impl DiskController {
             }
             DiskCommand::Write(sustained) => {
                 // Find the file.
-                let result = DiskController::get_file_name(dir_name).and_then(|file_name| {
+                let result = DiskController::get_file_name(dir_path).and_then(|file_path| {
                     // Open the file for editing.
-                    fs::OpenOptions::new().write(true).open(file_name).ok()
+                    fs::OpenOptions::new().write(true).open(file_path).ok()
                 }).and_then(|mut file| {
                     // Seek to the correct position. Note we are using 'and' to return the
                     // file rather than the new seek offset.
@@ -199,6 +202,7 @@ impl DiskController {
                 }).and_then(|mut file| {
                     // Write from the buffer.
                     file.write_all(&*sd.buffer).ok()
+                    // Might need a sync_data here? Hopefully not.
                 });
                 match result {
                     Some(_) => {
@@ -214,13 +218,13 @@ impl DiskController {
         }
     }
 
-    fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, watcher_dir_name: &str,
+    fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, dir_path: &str,
                          watcher_shared_data: &Arc<Mutex<SharedData>>,
                          event: &notify::RawEvent) {
         // We only care about Create and Remove events.
         if let Ok(notify::op::CREATE) | Ok(notify::op::REMOVE) = event.op {
             // Check the filesystem to see the new state.
-            match DiskController::get_file_name(watcher_dir_name) {
+            match DiskController::get_file_name(dir_path) {
                 None => {
                     // Set status to disconnected.
                     let mut sd = watcher_shared_data.lock().unwrap();
@@ -230,9 +234,9 @@ impl DiskController {
                     watcher_interrupt_tx.send(INTERRUPT_DISK)
                         .expect("Failed to send disk interrupt.");
                 }
-                Some(file_name) => {
+                Some(file_path) => {
                     // Query the file.
-                    let size = fs::metadata(file_name).ok().and_then(|metadata| {
+                    let size = fs::metadata(file_path).ok().and_then(|metadata| {
                         // Ensure it really is a file.
                         if metadata.is_file() {Some(metadata)} else {None}
                     }).and_then(|metadata| {
@@ -263,15 +267,15 @@ impl DiskController {
         }
     }
 
-    fn get_file_name(dir_name: &str) -> Option<path::PathBuf>  {
-        let mut dir_contents = fs::read_dir(dir_name).unwrap()
+    fn get_file_name(dir_path: &str) -> Option<path::PathBuf> {
+        let mut dir_contents = fs::read_dir(dir_path).unwrap()
             .map(|res| res.unwrap().path())
             .collect::<Vec<_>>();
 
         match dir_contents.len() {
             0 => None,
             1 => Some(dir_contents.remove(0)),
-            _ => panic!("There were multiple files in '{}'.", dir_name)
+            _ => panic!("There were multiple files in '{}'.", dir_path)
         }
     }
 
@@ -365,7 +369,7 @@ impl DiskController {
 }
 
 fn crossbeam_receiver_adapter<T: Send + 'static>(
-    mpsc_receiver: mpsc::Receiver<T>) -> crossbeam_channel::Receiver<T> {
+        mpsc_receiver: mpsc::Receiver<T>) -> crossbeam_channel::Receiver<T> {
     // Create a new crossbeam channel.
     let (cb_tx, cb_rx) = crossbeam_channel::unbounded();
     // Launch a thread to forward messages from mpsc_receiver to cb_tx.
@@ -379,4 +383,135 @@ fn crossbeam_receiver_adapter<T: Send + 'static>(
     });
     // Return our linked crossbeam receiver.
     cb_rx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+    use std::io;
+    use std::time::Duration;
+    use tempfile;
+
+    #[test]
+    fn test_crossbeam_adapter() {
+        let (mpsc_tx, mpsc_rx) = mpsc::channel();
+        let (cb_tx, cb_rx) = crossbeam_channel::unbounded();
+        let adapted_rx = crossbeam_receiver_adapter(mpsc_rx);
+
+        mpsc_tx.send("Hello").unwrap();
+        let msg = select! {
+            recv(cb_rx) -> m => m.unwrap(),
+            recv(adapted_rx) -> m => m.unwrap(),
+            default(Duration::from_secs(1)) => panic!("No message available."),
+        };
+        assert_eq!(msg, "Hello");
+
+        mpsc_tx.send("Sup").unwrap();
+        let msg = select! {
+            recv(cb_rx) -> m => m.unwrap(),
+            recv(adapted_rx) -> m => m.unwrap(),
+            default(Duration::from_secs(1)) => panic!("No message available."),
+        };
+        assert_eq!(msg, "Sup");
+
+        cb_tx.send("Goodbye").unwrap();
+        let msg = select! {
+            recv(cb_rx) -> m => m.unwrap(),
+            recv(adapted_rx) -> m => m.unwrap(),
+            default(Duration::from_secs(1)) => panic!("No message available."),
+        };
+        assert_eq!(msg, "Goodbye");
+    }
+
+    struct DiskControllerFixture {
+        disk: DiskController,
+        temp_dir: tempfile::TempDir,
+        disk_dir: path::PathBuf,
+        interrupt_rx: mpsc::Receiver<u32>,
+    }
+
+    impl DiskControllerFixture {
+        fn new() -> io::Result<Self> {
+            let temp_dir = tempfile::tempdir()?;
+            let disk_dir = temp_dir.path().join("disk");
+            fs::create_dir(disk_dir.clone())?;
+            let (tx, rx) = mpsc::channel();
+            let disk = DiskController::new(String::from(disk_dir.to_str().unwrap()), tx);
+            Ok(DiskControllerFixture {
+                disk,
+                temp_dir,
+                disk_dir,
+                interrupt_rx: rx,
+            })
+        }
+    }
+
+    #[test]
+    fn test_initial_state() -> Result<(), Box<dyn Error>> {
+        let mut fixture = DiskControllerFixture::new()?;
+        fixture.disk.start();
+
+        // Assert disconnected state.
+        {
+            let sd = fixture.disk.shared_data.lock().unwrap();
+            assert_eq!(sd.status, STATUS_DISCONNECTED);
+            assert_eq!(sd.blocks_available, 0);
+        }
+
+        // Assert that commands don't work.
+        for cmd in [COMMAND_READ, COMMAND_WRITE,
+                    COMMAND_SUSTAINED_READ, COMMAND_SUSTAINED_WRITE].iter() {
+            fixture.disk.store_control(ADDRESS_CMD, *cmd);
+            let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1))?;
+            assert_eq!(int, INTERRUPT_DISK);
+            {
+                let sd = fixture.disk.shared_data.lock().unwrap();
+                assert_eq!(sd.status, STATUS_DISCONNECTED);
+                assert_eq!(sd.blocks_available, 0);
+            }
+        }
+
+        fixture.disk.stop();
+        Ok(())
+    }
+
+    #[test]
+    fn test_detects_file() {
+        let mut fixture = DiskControllerFixture::new().unwrap();
+        fixture.disk.start();
+
+        // Create disk.
+        const NUM_BLOCKS: u32 = 1;
+        const FILE_NAME: &str = "x.simdisk";
+        let outer_location = fixture.temp_dir.path().join(FILE_NAME);
+        let inner_location = fixture.disk_dir.join(FILE_NAME);
+        {
+            let file = fs::File::create(outer_location.clone()).unwrap();
+            file.set_len(NUM_BLOCKS as u64 * 4096).unwrap();
+            file.sync_data().unwrap();  // Haven't yet worked out why this is necessary, but it is.
+        }
+
+        // Insert disk.
+        fs::rename(outer_location.clone(), inner_location.clone()).unwrap();
+        let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(int, INTERRUPT_DISK);
+        {
+            let sd = fixture.disk.shared_data.lock().unwrap();
+            assert_eq!(sd.status, STATUS_SUCCESS);
+            assert_eq!(sd.blocks_available, NUM_BLOCKS);
+        }
+
+        // Eject disk.
+        fs::rename(inner_location, outer_location).unwrap();
+        let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(int, INTERRUPT_DISK);
+        {
+            let sd = fixture.disk.shared_data.lock().unwrap();
+            assert_eq!(sd.status, STATUS_DISCONNECTED);
+            assert_eq!(sd.blocks_available, 0);
+        }
+
+        fixture.disk.stop();
+    }
 }

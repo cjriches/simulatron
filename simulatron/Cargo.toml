@@ -10,3 +10,6 @@ edition = "2018"
 crossbeam-channel = "0.4.2"
 notify = "4.0.15"
 web-view = "0.6.2"
+
+[dev-dependencies]
+tempfile = "3.1.0"
