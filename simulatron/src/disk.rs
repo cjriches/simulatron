@@ -1,7 +1,5 @@
-use crossbeam_channel::{self, select};  // This shows as an error in the IDE, but is fine.
 use notify::{self, Watcher};
 use std::convert::TryFrom;
-use std::fmt::Debug;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -53,8 +51,7 @@ pub struct DiskController {
     interrupt_tx: mpsc::Sender<u32>,
     worker_tx: Option<mpsc::Sender<DiskCommand>>,
     worker_thread: Option<thread::JoinHandle<()>>,
-    watcher_join_tx: Option<crossbeam_channel::Sender<()>>,
-    watcher_thread: Option<thread::JoinHandle<()>>,
+    watcher: Option<notify::RecommendedWatcher>,
     shared_data: Arc<Mutex<SharedData>>,
 }
 
@@ -65,8 +62,7 @@ impl DiskController {
             interrupt_tx,
             worker_tx: None,
             worker_thread: None,
-            watcher_join_tx: None,
-            watcher_thread: None,
+            watcher: None,
             shared_data: Arc::new(Mutex::new(SharedData {
                 status: 0,
                 blocks_available: 0,
@@ -97,33 +93,18 @@ impl DiskController {
         });
         self.worker_thread = Some(worker_thread);
 
-        // Thread 2: watcher (watches filesystem for disk inserts/ejects).
+        // Thread 2: watcher (watches filesystem for disk inserts/ejects) (implicit).
         let watcher_interrupt_tx = self.interrupt_tx.clone();
         let watcher_dir_name = Arc::clone(&self.dir_path);
         let watcher_shared_data = Arc::clone(&self.shared_data);
-        let (watcher_join_tx, watcher_join_rx) = crossbeam_channel::unbounded();
-        self.watcher_join_tx = Some(watcher_join_tx);
-        let (file_event_tx, file_event_rx_raw) = mpsc::channel();
-        // We need to use crossbeam's channel select feature, so we must turn the mpsc receiver
-        // required by notify into a fancy crossbeam one.
-        let file_event_rx = crossbeam_receiver_adapter(file_event_rx_raw);
-        let watcher_thread = thread::spawn(move || {
-            let mut watcher = notify::raw_watcher(file_event_tx).unwrap();
-            watcher.watch(watcher_dir_name.as_ref(), notify::RecursiveMode::NonRecursive).unwrap();
-
-            loop {
-                // Wait for either a join message or a file event, whichever comes first.
-                select! {
-                recv(watcher_join_rx) -> _ => {return;}
-                recv(file_event_rx) -> msg => {
-                    DiskController::watcher_iteration(
-                        &watcher_interrupt_tx, &watcher_dir_name,
-                        &watcher_shared_data, &msg.unwrap());
-                    }
-                }
-            }
-        });
-        self.watcher_thread = Some(watcher_thread);
+        let mut watcher = notify::immediate_watcher(move |event: notify::Result<notify::Event>| {
+            DiskController::watcher_iteration(
+                &watcher_interrupt_tx, &watcher_dir_name,
+                &watcher_shared_data, &event.unwrap());
+        }).unwrap();
+        watcher.configure(notify::Config::PreciseEvents(true)).unwrap();
+        watcher.watch(self.dir_path.as_ref(), notify::RecursiveMode::NonRecursive).unwrap();
+        self.watcher = Some(watcher);
     }
 
     pub fn stop(&mut self) {
@@ -135,10 +116,8 @@ impl DiskController {
         worker_thread.join().unwrap();
 
         // Join the watcher thread.
-        let watcher_thread = self.watcher_thread.take().unwrap();
-        let watcher_join_tx = self.watcher_join_tx.take().unwrap();
-        watcher_join_tx.send(()).unwrap();
-        watcher_thread.join().unwrap();
+        let watcher = self.watcher.take().unwrap();
+        drop(watcher);
     }
 
     fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, dir_path: &Path,
@@ -221,9 +200,13 @@ impl DiskController {
 
     fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, dir_path: &Path,
                          watcher_shared_data: &Arc<Mutex<SharedData>>,
-                         event: &notify::RawEvent) {
-        // We only care about Create and Remove events.
-        if let Ok(notify::op::CREATE) | Ok(notify::op::REMOVE) = event.op {
+                         event: &notify::Event) {
+        // We only care about files being created or removed. Therefore we
+        // need Create, Remove, and Modify(Name(From)) events.
+        if let notify::EventKind::Create(_) | notify::EventKind::Remove(_)
+                | notify::EventKind::Modify(
+                    notify::event::ModifyKind::Name(
+                        notify::event::RenameMode::From)) = event.kind {
             // Check the filesystem to see the new state.
             match DiskController::get_file_name(dir_path) {
                 None => {
@@ -369,23 +352,6 @@ impl DiskController {
     }
 }
 
-fn crossbeam_receiver_adapter<T: Send + 'static>(
-        mpsc_receiver: mpsc::Receiver<T>) -> crossbeam_channel::Receiver<T> {
-    // Create a new crossbeam channel.
-    let (cb_tx, cb_rx) = crossbeam_channel::unbounded();
-    // Launch a thread to forward messages from mpsc_receiver to cb_tx.
-    // If either end is disconnected, the thread will exit neatly.
-    thread::spawn(move || {
-        while let Ok(msg) = mpsc_receiver.recv() {
-            if let Err(_) = cb_tx.send(msg) {
-                return;
-            }
-        }
-    });
-    // Return our linked crossbeam receiver.
-    cb_rx
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,37 +361,6 @@ mod tests {
     use std::time::Duration;
     use tempfile;
     use rand::Rng;
-
-    #[test]
-    fn test_crossbeam_adapter() {
-        let (mpsc_tx, mpsc_rx) = mpsc::channel();
-        let (cb_tx, cb_rx) = crossbeam_channel::unbounded();
-        let adapted_rx = crossbeam_receiver_adapter(mpsc_rx);
-
-        mpsc_tx.send("Hello").unwrap();
-        let msg = select! {
-            recv(cb_rx) -> m => m.unwrap(),
-            recv(adapted_rx) -> m => m.unwrap(),
-            default(Duration::from_secs(1)) => panic!("No message available."),
-        };
-        assert_eq!(msg, "Hello");
-
-        mpsc_tx.send("Sup").unwrap();
-        let msg = select! {
-            recv(cb_rx) -> m => m.unwrap(),
-            recv(adapted_rx) -> m => m.unwrap(),
-            default(Duration::from_secs(1)) => panic!("No message available."),
-        };
-        assert_eq!(msg, "Sup");
-
-        cb_tx.send("Goodbye").unwrap();
-        let msg = select! {
-            recv(cb_rx) -> m => m.unwrap(),
-            recv(adapted_rx) -> m => m.unwrap(),
-            default(Duration::from_secs(1)) => panic!("No message available."),
-        };
-        assert_eq!(msg, "Goodbye");
-    }
 
     // A test fixture with an auto-started-stopped disk controller and a temp dir.
     struct DiskControllerFixture {
@@ -485,7 +420,7 @@ mod tests {
 
     #[test]
     fn test_detects_file() {
-        let mut fixture = DiskControllerFixture::new().unwrap();
+        let fixture = DiskControllerFixture::new().unwrap();
 
         // Create disk.
         const NUM_BLOCKS: u32 = 1;

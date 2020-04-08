@@ -7,8 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossbeam-channel = "0.4.2"
-notify = "4.0.15"
+notify = "5.0.0-pre.2"
 web-view = "0.6.2"
 
 [dev-dependencies]
