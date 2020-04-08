@@ -182,7 +182,6 @@ impl DiskController {
                 }).and_then(|mut file| {
                     // Write from the buffer.
                     file.write_all(&*sd.buffer).ok()
-                    // Might need a sync_data here? Hopefully not.
                 });
                 match result {
                     Some(_) => {
@@ -430,7 +429,6 @@ mod tests {
         {
             let file = fs::File::create(&outer_location).unwrap();
             file.set_len(NUM_BLOCKS as u64 * 4096).unwrap();
-            file.sync_data().unwrap();  // Haven't yet worked out why this is necessary, but it is.
         }
 
         // Insert disk.
@@ -465,7 +463,6 @@ mod tests {
         {
             let file = fs::File::create(&outer_location).unwrap();
             file.set_len(4095).unwrap();
-            file.sync_data().unwrap();
         }
         // Insert and assert not connected.
         fs::rename(&outer_location, &inner_location).unwrap();
@@ -514,7 +511,6 @@ mod tests {
         let inner_location = fixture.disk_dir.join(ZERO_NAME);
         {
             let file = fs::File::create(&outer_location).unwrap();
-            file.sync_data().unwrap();
         }
         // Insert and assert connected with size 0.
         fs::rename(&outer_location, &inner_location).unwrap();
@@ -574,7 +570,6 @@ mod tests {
             {
                 let file = fs::File::create(&outer_location).unwrap();
                 file.set_len(num_blocks as u64 * 4096).unwrap();
-                file.sync_data().unwrap();
             }
             // Insert disk.
             fs::rename(&outer_location, &inner_location).unwrap();
