@@ -1,9 +1,10 @@
 use crossbeam_channel::{self, select};  // This shows as an error in the IDE, but is fine.
 use notify::{self, Watcher};
 use std::convert::TryFrom;
+use std::fmt::Debug;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
@@ -48,7 +49,7 @@ struct SharedData {
 }
 
 pub struct DiskController {
-    dir_path: Arc<String>,
+    dir_path: Arc<PathBuf>,
     interrupt_tx: mpsc::Sender<u32>,
     worker_tx: Option<mpsc::Sender<DiskCommand>>,
     worker_thread: Option<thread::JoinHandle<()>>,
@@ -58,9 +59,9 @@ pub struct DiskController {
 }
 
 impl DiskController {
-    pub fn new(dir_path: String, interrupt_tx: mpsc::Sender<u32>) -> Self {
+    pub fn new(dir_path: impl Into<PathBuf>, interrupt_tx: mpsc::Sender<u32>) -> Self {
         DiskController {
-            dir_path: Arc::new(dir_path),
+            dir_path: Arc::new(dir_path.into()),
             interrupt_tx,
             worker_tx: None,
             worker_thread: None,
@@ -140,7 +141,7 @@ impl DiskController {
         watcher_thread.join().unwrap();
     }
 
-    fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, dir_path: &str,
+    fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, dir_path: &Path,
                         shared_data: &Arc<Mutex<SharedData>>, cmd: &DiskCommand) {
         // Acquire the shared data.
         let mut sd = shared_data.lock().unwrap();
@@ -218,7 +219,7 @@ impl DiskController {
         }
     }
 
-    fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, dir_path: &str,
+    fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, dir_path: &Path,
                          watcher_shared_data: &Arc<Mutex<SharedData>>,
                          event: &notify::RawEvent) {
         // We only care about Create and Remove events.
@@ -267,7 +268,7 @@ impl DiskController {
         }
     }
 
-    fn get_file_name(dir_path: &str) -> Option<path::PathBuf> {
+    fn get_file_name(dir_path: &Path) -> Option<PathBuf> {
         let mut dir_contents = fs::read_dir(dir_path).unwrap()
             .map(|res| res.unwrap().path())
             .collect::<Vec<_>>();
@@ -275,7 +276,7 @@ impl DiskController {
         match dir_contents.len() {
             0 => None,
             1 => Some(dir_contents.remove(0)),
-            _ => panic!("There were multiple files in '{}'.", dir_path)
+            _ => panic!("There were multiple files in '{:?}'.", dir_path)
         }
     }
 
@@ -427,7 +428,7 @@ mod tests {
     struct DiskControllerFixture {
         disk: DiskController,
         temp_dir: tempfile::TempDir,
-        disk_dir: path::PathBuf,
+        disk_dir: PathBuf,
         interrupt_rx: mpsc::Receiver<u32>,
     }
 
@@ -435,9 +436,9 @@ mod tests {
         fn new() -> io::Result<Self> {
             let temp_dir = tempfile::tempdir()?;
             let disk_dir = temp_dir.path().join("disk");
-            fs::create_dir(disk_dir.clone())?;
+            fs::create_dir(&disk_dir)?;
             let (tx, rx) = mpsc::channel();
-            let disk = DiskController::new(String::from(disk_dir.to_str().unwrap()), tx);
+            let disk = DiskController::new(&disk_dir, tx);
             Ok(DiskControllerFixture {
                 disk,
                 temp_dir,
