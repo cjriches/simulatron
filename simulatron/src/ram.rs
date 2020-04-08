@@ -17,6 +17,7 @@ impl RAM {
         // up to the highest index that has been written to, regardless of what's in the middle.
         // It is, however, simple.
         if index >= self.bytes.len() {
+            // TODO Should we over-allocate here to anticipate sequential writes?
             self.bytes.resize(index + 1, 0);
         }
         self.bytes[index] = value;
