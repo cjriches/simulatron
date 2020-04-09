@@ -1,3 +1,4 @@
+use serde_json;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use web_view::{self, Content};
@@ -74,13 +75,20 @@ impl UI {
             .size(1060, 600)
             .resizable(false)
             .user_data(keyboard_tx)
-            .invoke_handler(|web_view, key| {
-                // Extract the first character of the string (really should only be a one-char string).
-                let character = key.chars().next()
-                    .expect("Received no character from frontend.");
-                // Get keyboard_tx out of the user_data and send the character down the channel.
-                web_view.user_data().send(KeyMessage::Key(character))
-                    .expect("Failed to send character to keyboard controller.");
+            .invoke_handler(|web_view, json| {
+                // Parse the JSON message.
+                let (key, ctrl, alt) = serde_json::from_str(json).ok()
+                        .and_then(|value: serde_json::Value| {
+                    let obj = value.as_object()?;
+                    let key = obj.get("key")?.as_str()?;
+                    let ctrl = obj.get("ctrl")?.as_bool()?;
+                    let alt = obj.get("alt")?.as_bool()?;
+                    Some((String::from(key), ctrl, alt))
+                }).ok_or(web_view::Error::Custom(Box::new("Failed to parse JSON")))?;
+                // Inform the keyboard controller.
+                let key_message = KeyMessage::Key(&key, ctrl, alt)
+                    .ok_or(web_view::Error::Custom(Box::new("Unrecognised key.")))?;
+                web_view.user_data().send(key_message).unwrap();
                 Ok(())
             })
             .build()
@@ -105,6 +113,9 @@ impl UI {
             // Match it to the action, executing the corresponding Javascript function.
             match *command.internal() {
                 InternalUICommand::SetChar {row, col, character} => {
+                    // Turn spaces into nbsps so the cells are properly filled.
+                    let character = if character == ' '
+                        {String::from("&nbsp;")} else {character.to_string()};
                     wv_handle.dispatch(move |web_view|
                         web_view.eval(&format!("set_char({},{},'{}')", row, col, character)))
                         .expect("Failed to set character in UI.");

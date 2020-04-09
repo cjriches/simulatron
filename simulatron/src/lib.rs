@@ -1,4 +1,3 @@
-mod char_mapping;
 mod cpu;
 mod display;
 mod disk;

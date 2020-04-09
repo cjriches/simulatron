@@ -39,62 +39,67 @@ impl MMU {
     }
 
     pub fn store_direct(&mut self, address: u32, value: u8) {
-        let reject = || self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION)
-            .expect("Failed to send interrupt on illegal memory store.");
+        macro_rules! reject {
+            () => {{self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()}};
+        }
 
         if address < 32 {            // Interrupt handlers
             unimplemented!();
-        } else if address < 577 {    // Reserved, ROM, and keyboard buffer
-            reject();
-        } else if address < 6577 {   // Memory-mapped display
-            self.display.store(address - 577, value);
-        } else if address < 8177 {   // Reserved, Disk A read-only
-            reject();
+        } else if address < 576 {    // Reserved, ROM
+            reject!();
+        } else if address < 6576 {   // Memory-mapped display
+            self.display.store(address - 576, value);
+        } else if address < 8177 {   // Keyboard, Reserved, Disk A read-only
+            reject!();
         } else if address < 8182 {   // Disk A control
-            unimplemented!();
+            self.disk_a.borrow_mut().store_control(address - 8177, value);
         } else if address < 8187 {   // Disk B read-only
-            reject();
+            reject!();
         } else if address < 8192 {   // Disk B control
-            unimplemented!();
+            self.disk_b.borrow_mut().store_control(address - 8187, value);
         } else if address < 12288 {  // Disk A data
-            unimplemented!();
+            self.disk_a.borrow_mut().store_data(address - 8192, value);
         } else if address < 16384 {  // Disk B data
-            unimplemented!();
+            self.disk_b.borrow_mut().store_data(address - 12288, value);
         } else {                     // RAM
             self.ram.borrow_mut().store(address - 16384, value);
         }
     }
 
     pub fn load_direct(&self, address: u32) -> u8 {
-        let reject = || self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION)
-            .expect("Failed to send interrupt on illegal memory load.");
+        macro_rules! reject {
+            () => {{self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()}};
+        }
 
         if address < 32 {            // Interrupt handlers
             unimplemented!();
         } else if address < 64 {     // Reserved
-            reject();
+            reject!();
             0
         } else if address < 576 {    // ROM
             self.rom.load(address - 64)
-        } else if address == 576 {   // Keyboard buffer
-            self.keyboard.borrow().load()
-        } else if address < 8172 {   // Memory-mapped display, Reserved
-            reject();
+        } else if address < 6576 {   // Memory-mapped display
+            reject!();
+            0
+        } else if address < 6578 {   // Keyboard buffers
+            self.keyboard.borrow().load(address - 6576)
+        } else if address < 8172 {   // Reserved
+            reject!();
             0
         } else if address < 8177 {   // Disk A read-only
-            unimplemented!();
+            self.disk_a.borrow().load_status(address - 8172)
         } else if address < 8182 {   // Disk A control
-            reject();
+            reject!();
             0
         } else if address < 8187 {   // Disk B read-only
-            unimplemented!();
+            self.disk_b.borrow().load_status(address - 8182)
         } else if address < 8192 {   // Disk B control
-            reject();
+            reject!();
             0
         } else if address < 12288 {  // Disk A data
-            unimplemented!();
+            self.disk_a.borrow().load_data(address - 8192)
         } else if address < 16384 {  // Disk B data
-            unimplemented!();
+            self.disk_b.borrow().load_data(address - 12288)
         } else {                     // RAM
             self.ram.borrow().load(address - 16384)
         }

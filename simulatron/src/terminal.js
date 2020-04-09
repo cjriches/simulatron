@@ -8,7 +8,19 @@ function disable_interaction() {
 }
 
 function add_keyboard_listener() {
-    document.addEventListener("keypress", event => external.invoke(event.key));
+    document.addEventListener("keydown", event => {
+        // Ignore irrelevant events.
+        if (["Control", "Shift", "Alt", "Meta", "CapsLock", "Unidentified"].includes(event.key)) {
+            return;
+        }
+        // Send the event to the Simulatron.
+        let msg = {key: event.key, ctrl: event.ctrlKey, alt: event.altKey};
+        external.invoke(JSON.stringify(msg));
+        // Prevent Ctrl-A from selecting everything.
+        if (event.ctrlKey && (event.key == "a" || event.key == "A")) {
+            event.preventDefault();
+        }
+    });
 }
 
 function set_char(row, col, char) {
