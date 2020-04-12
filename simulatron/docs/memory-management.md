@@ -32,7 +32,7 @@ Physical addresses are mapped as follows. All ranges are inclusive.
 |      12288-16383 | Disk B data (4096 bytes)                     | Both       |
 | 16384-4294967295 | RAM (4,294,950,912 bytes = just under 4 GiB) | Both       |
 
-Note that the first two frames are taken up by various mappings, frames 3 and 4 are Disk A and B data respectively, and all remaining frames are RAM.
+Note that frames 0 and 1 are taken up by various mappings, frames 2 and 3 are Disk A and B data respectively, and all remaining frames are RAM.
 
 If an access of the wrong type is made (e.g. a write to a read-only section), then an illegal operation interrupt will be sent to the CPU.
 
