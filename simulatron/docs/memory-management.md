@@ -45,11 +45,11 @@ The Page Directory may be located anywhere in memory and is pointed to by the PD
 ```
 _________________________________________________________________________________________________
 |31|30|29|28|27|26|25|24|23|22|21|20|19|18|17|16|15|14|13|12|11|10|9 |8 |7 |6 |5 |4 |3 |2 |1 |0 |
-|                   Address of Page Table                   |             UNUSED             |V |
+|                   Address of Page Table                   |USER-DEF|        RESERVED       |V |
 _________________________________________________________________________________________________
 ```
 
-V stands for Valid. If 0, the linked page table does not exist, and the address is meaningless. Attempting to access an address inside an invalid page table will generate a page fault. The other bits are reserved for future use.
+V stands for Valid. If 0, the linked page table does not exist, and the address is meaningless. Attempting to access an address inside an invalid page table will generate a page fault. Bits 1-8 are reserved for future use and should be set to zero. Bits 9-11 are available for the programmer to use as they wish.
 
 The given address is the upper 20 bits. As a page table must be located precisely within a single frame, the lower 12 bits are considered to all be zero.
 
@@ -59,7 +59,7 @@ A page table also consists of 1024 32-byte entries. It must be frame-aligned. Ea
 ```
 _________________________________________________________________________________________________
 |31|30|29|28|27|26|25|24|23|22|21|20|19|18|17|16|15|14|13|12|11|10|9 |8 |7 |6 |5 |4 |3 |2 |1 |0 |
-|                      Address of Frame                     |     UNUSED      |C |E |W |R |P |V |
+|                      Address of Frame                     |USER-DEF|RESERVED|C |E |W |R |P |V |
 _________________________________________________________________________________________________
 ```
 
@@ -75,7 +75,7 @@ E stands for Execute. If 0, attempted instruction fetches will generate a page f
 
 C stands for Copy-On-Write. If both W and C are 1, then an attempted write will trigger a page fault.
 
-The other bits are reserved for future use.
+Bits 6-8 are reserved for future use and should be set to zero. Bits 9-11 are available for the programmer to use as they wish.
 
 Again, the address is the upper 20 bits with lower 12 bits as zero, as the address points to the start of a frame.
 
