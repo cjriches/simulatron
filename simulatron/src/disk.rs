@@ -355,7 +355,6 @@ impl DiskController {
 mod tests {
     use super::*;
     use rand;
-    use std::error::Error;
     use std::io;
     use std::time::Duration;
     use tempfile;
@@ -509,9 +508,7 @@ mod tests {
         const ZERO_NAME: &str = "zero.the-extension-doesnt-matter";
         let outer_location = fixture.temp_dir.path().join(ZERO_NAME);
         let inner_location = fixture.disk_dir.join(ZERO_NAME);
-        {
-            let file = fs::File::create(&outer_location).unwrap();
-        }
+        fs::File::create(&outer_location).unwrap();
         // Insert and assert connected with size 0.
         fs::rename(&outer_location, &inner_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();

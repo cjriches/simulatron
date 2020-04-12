@@ -66,9 +66,13 @@ impl Simulatron {
 
     pub fn run(&mut self) {
         self.keyboard.borrow_mut().start();
+        self.disk_a.borrow_mut().start();
+        self.disk_b.borrow_mut().start();
 
         self.ui.run();
 
+        self.disk_b.borrow_mut().stop();
+        self.disk_a.borrow_mut().stop();
         self.keyboard.borrow_mut().stop();
     }
 }
