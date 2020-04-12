@@ -116,8 +116,8 @@ impl DiskController {
         worker_thread.join().unwrap();
 
         // Join the watcher thread.
-        let watcher = self.watcher.take().unwrap();
-        drop(watcher);
+        let mut watcher = self.watcher.take().unwrap();
+        watcher.unwatch(self.dir_path.as_ref()).unwrap();
     }
 
     fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, dir_path: &Path,
