@@ -1,37 +1,106 @@
 # Instruction Set
 ### Version 1.0
 
+## Registers Available
+| Register Reference | Full Name                       | Description                                     |
+| ------------------ | ------------------------------- | ----------------------------------------------- |
+| r0                 | Integer Register 0              | 32-bit integer general purpose register.        |
+| r1                 | Integer Register 1              | 32-bit integer general purpose register.        |
+| r2                 | Integer Register 2              | 32-bit integer general purpose register.        |
+| r3                 | Integer Register 3              | 32-bit integer general purpose register.        |
+| r4                 | Integer Register 4              | 32-bit integer general purpose register.        |
+| r5                 | Integer Register 5              | 32-bit integer general purpose register.        |
+| r6                 | Integer Register 6              | 32-bit integer general purpose register.        |
+| r7                 | Integer Register 7              | 32-bit integer general purpose register.        |
+| f0                 | Float Register 0                | 32-bit floating-point general purpose register. |
+| f1                 | Float Register 1                | 32-bit floating-point general purpose register. |
+| f2                 | Float Register 2                | 32-bit floating-point general purpose register. |
+| f3                 | Float Register 3                | 32-bit floating-point general purpose register. |
+| f4                 | Float Register 4                | 32-bit floating-point general purpose register. |
+| f5                 | Float Register 5                | 32-bit floating-point general purpose register. |
+| f6                 | Float Register 6                | 32-bit floating-point general purpose register. |
+| f7                 | Float Register 7                | 32-bit floating-point general purpose register. |
+| SPR                | Stack Pointer Register          | Points to the current top of the stack.         |
+| PDPR               | Page Directory Pointer Register | Points to the current page directory.           |
+| IMR                | Interrupt Mask Register         | Enables/disables specific interrupts.           |
+
+Note that PDPR and IMR are privileged registers; they can only be accessed in kernel mode.
+
+To move values between integer and floating-point registers, the COPY instruction should be used. This automatically performs the required conversions.
+
+The r* registers can all be accessed in multiple ways. Appending an 'h' accesses only the lower half (16 bits); appending a 'b' accesses only the lowest byte. Operations on this subset will consider the register to be of that size, e.g. `COPY 255 r0` then `ADD 1 r0b` will overflow to zero.
+```
+********************************
+*       *       *       *      *
+********************************
+|               |       |      |
+|               |       |______|
+|               |          r0b |
+|               |______________|
+|                      r0h     |
+|______________________________|
+               r0
+```
+
+## Flags
+There are several flags set by arithmetic or bitwise operations; these may be inspected by subsequent operations.
+
+| Flag | Meaning                                                                              |
+|:----:| ------------------------------------------------------------------------------------ |
+|   Z  | The last operation resulted in zero.                                                 |
+|   N  | The last operation resulted in a negative number.                                    |
+|   C  | The last operation either carried or borrowed a bit beyond the size of the register. |
+|   O  | The last operation resulted in a value too large for the register.                   |
+
 ## Assembly Instructions
 
 ##### Key
-| Description | Meaning                                                   |
-| ----------- | --------------------------------------------------------- |
-| Address     | Literal address, label, or register containing an address |
-| Value       | Literal value or register containing a value              |
-| Register    | A register reference                                      |
+| Description | Meaning                                                       |
+| ----------- | ------------------------------------------------------------- |
+| Address     | A literal address or a register reference.                    |
+| Value       | A literal value or a register reference (integer or float).   |
+| Integer     | A literal integer or a register reference (not float).        |
+| Register    | A register reference (integer or float).                      |
 
 ##### Privileged instructions
-| Description              | Instruction  | Operand 1              |
-| ------------------------ | ------------ | ---------------------- |
-| Halt                     | HALT         |                        |
-| Pause                    | PAUSE        |                        |
-| Set timer                | TIMER        | Num milliseconds value |
-| Enter user mode          | USERMODE     |                        |
+| Description              | Instruction  | Operand 1                |
+| ------------------------ | ------------ | ------------------------ |
+| Halt                     | HALT         |                          |
+| Pause                    | PAUSE        |                          |
+| Set timer                | TIMER        | Num milliseconds integer |
+| Enter user mode          | USERMODE     |                          |
+
+`HALT`: Immediately halt the processor. No further instructions will be executed under any circumstances, and the machine is safe to power off.
+
+`PAUSE`: Temporarily halt the processor. Any received interrupt will resume execution at the following instruction after the interrupt is handled. If all interrupts are disabled, this instruction is semantically equivalent to HALT.
+
+ `TIMER`: Set the interrupt timer. It will send a timer interrupt after at least the given number of milliseconds, repeating indefinitely with the same period. A value of zero will disable the timer.
+ 
+ `USERMODE`: Drop from kernel mode to user mode.
 
 ##### Data Movement
-| Description       | Instruction | Operand 1            | Operand 2            | Operand 3    |
-| ----------------- | ----------- | -------------------- | -------------------- | ------------ |
-| Load              | LOAD        | Source address       | Destination register |              |
-| Store             | STORE       | Source value         | Destination address  |              |
-| Move              | MOVE        | Source value         | Destination register |              |
-| Atomic Swap       | SWAP        | Source register      | Source address       |              |
-| Push              | PUSH        | Source value         |                      |              |
-| Pop               | POP         | Destination register |                      |              |
-| Block Memory Copy | BLOCKCOPY   | Source address       | Destination address  | Length value |
+| Description       | Instruction | Operand 1            | Operand 2            | Operand 3      |
+| ----------------- | ----------- | -------------------- | -------------------- | -------------- |
+| Load              | LOAD        | Source address       | Destination register |                |
+| Store             | STORE       | Source value         | Destination address  |                |
+| Copy              | COPY        | Source value         | Destination register |                |
+| Atomic Swap       | SWAP        | Source register      | Source address       |                |
+| Push              | PUSH        | Source value         |                      |                |
+| Pop               | POP         | Destination register |                      |                |
+| Block Memory Copy | BLOCKCOPY   | Source address       | Destination address  | Length integer |
+
+`COPY`: Either load a register with a constant value, or copy one register into another. This can copy between integer and floating-point registers, and automatically converts the values into the destination representation. Note that only a full 32-bit integer register can be copied into a floating-point register, and converting a float to an integer will truncate towards zero.
+
+`PUSH`: Decrement the stack pointer by the appropriate amount and then write the given value to the stack.
+
+`POP`: Read the top value from the stack, then increment the stack pointer by the appropriate amount.
+
+`BLOCKCOPY`: Copy a contiguous block of memory of the given length from the source to the destination address.
 
 ##### Arithmetic
 | Description          | Instruction | Operand 1                        | Operand 2                         |
 | -------------------- | ----------- | -------------------------------- | --------------------------------- |
+| Negate               | NEGATE      | Operand and destination register |                                   |
 | Add                  | ADD         | Operand value                    | Operand and destination register  |
 | Add with carry       | ADDCARRY    | Operand value                    | Operand and destination register  |
 | Subtract             | SUB         | Subtrahend value                 | Minuend and destination register  |
@@ -40,24 +109,41 @@
 | Signed division      | SDIV        | Divisor value                    | Dividend and destination register |
 | Unsigned division    | UDIV        | Divisor value                    | Dividend and destination register |
 | Remainder            | REM         | Divisor value                    | Dividend and destination register |
-| Negate               | NEGATE      | Operand and destination register |                                   |
-| Increment            | INC         | Operand and destination register |                                   |
-| Decrement            | DEC         | Operand and destination register |                                   |
+
+`ADDCARRY`: Adds the first operand plus the `C` flag to the destination register. Not applicable to floats.
+
+`SUBBORROW`: Subtracts the first operand plus the `C` flag from the destination register. Not applicable to floats.
+
+`SDIV`: Will give incorrect results for unsigned integers. For integer division, truncates towards zero.
+
+`UDIV`: Will give incorrect results for signed integers. Truncates towards negative infinity. Not applicable to floats.
+
+The operand types must match, i.e. `ADD r0 f0` is illegal, but `COPY r0 f1` followed by `ADD f1 f0` is fine.
 
 ##### Bitwise operations
 | Description             | Instruction | Operand 1                        | Operand 2                        |
 | ----------------------- | ----------- | -------------------------------- | -------------------------------- |
 | Not                     | NOT         | Operand and destination register |                                  |
-| And                     | AND         | Operand value                    | Operand and destination register |
-| Or                      | OR          | Operand value                    | Operand and destination register |
-| Xor                     | XOR         | Operand value                    | Operand and destination register |
-| Left Shift              | LSHIFT      | Num places value                 | Operand and destination register |
-| Logical Right Shift     | RSHIFTL     | Num places value                 | Operand and destination register |
-| Arithmetic Right Shift  | RSHIFTA     | Num places value                 | Operand and destination register |
-| Left Rotate             | LROT        | Num places value                 | Operand and destination register |
-| Right Rotate            | RROT        | Num places value                 | Operand and destination register |
-| Left Rotate with carry  | LROTCARRY   | Num places value                 | Operand and destination register |
-| Right Rotate with carry | RROTCARRY   | Num places value                 | Operand and destination register |
+| And                     | AND         | Operand integer                  | Operand and destination register |
+| Or                      | OR          | Operand integer                  | Operand and destination register |
+| Xor                     | XOR         | Operand integer                  | Operand and destination register |
+| Left Shift              | LSHIFT      | Num places integer               | Operand and destination register |
+| Logical Right Shift     | RSHIFTL     | Num places integer               | Operand and destination register |
+| Arithmetic Right Shift  | RSHIFTA     | Num places integer               | Operand and destination register |
+| Left Rotate             | LROT        | Num places integer               | Operand and destination register |
+| Right Rotate            | RROT        | Num places integer               | Operand and destination register |
+| Left Rotate with carry  | LROTCARRY   | Num places integer               | Operand and destination register |
+| Right Rotate with carry | RROTCARRY   | Num places integer               | Operand and destination register |
+
+None of these operations are applicable to floats.
+
+`RSHIFTL`: Logical or Unsigned shift; left-most bits will be filled with zeroes.
+
+`RSHIFTA`: Arithmetic or Signed shift; left-most bits will be filled with the sign bit.
+
+`LROTCARRY`: Includes the `C` flag in the rotation, as if it was to the left of the left-most bit.
+
+`RROTCARRY`: Includes the `C` flag in the rotation, as if it was to the right of the right-most bit.
 
 ##### Flow Control
 | Description              | Instruction  | Operand 1        | Operand 2      |
@@ -78,17 +164,26 @@
 | Jump if lower or equal   | JLOWEREQ     | Target address   |                |
 | Jump if overflow         | JOVERFLOW    | Target address   |                |
 | Jump if not overflow     | JNOTOVERFLOW | Target address   |                |
-| Call (3)                 | CALL         | Target address   |                |
-| Return (3)               | RETURN       |                  |                |
+| Call                     | CALL         | Target address   |                |
+| Return                   | RETURN       |                  |                |
 | Syscall                  | SYSCALL      |                  |                |
 
 ```
-(1): JZERO is a synonym for JEQUAL; the same opcode is used.
-(2): JNOTZERO is a synonym for JNOTEQUAL; the same opcode is used.
-(3): CALL and RETURN have no opcode; they are implemented in terms of PUSH/POP and JUMP.
-
-Note that above/below are the unsigned versions of greater/less.
+(1): JZERO is an alias for JEQUAL.
+(2): JNOTZERO is an alias for JNOTEQUAL.
 ```
+
+`COMPARE`: Subtracts the first operand from the second and discards the result, setting flags as appropriate.
+
+`GREATER`/`LESSER`: Signed comparison.
+
+`ABOVE`/`BELOW`: Unsigned comparison.
+
+`CALL`: Pushes the address of the next instruction onto the stack and jumps to the given address.
+
+`RETURN`: Pops the return address of the top of the stack and jumps to it.
+
+`SYSCALL`: Raises a syscall interrupt. 
 
 ## Opcodes
 If an unmapped opcode is encountered, no operation will take place and an illegal operation interrupt will be raised.
@@ -99,10 +194,10 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 |   0x01 | PAUSE        |                 |     |   0x81 | LOAD        | register ref                                      |
 |   0x02 | USERMODE     |                 |     |   0x82 | STORE       | literal address / literal address                 |
 |   0x03 | SYSCALL      |                 |     |   0x83 | STORE       | literal address / register ref                    |
-|   0x04 |              |                 |     |   0x84 | STORE       | register ref / literal address                    |
+|   0x04 | RETURN       |                 |     |   0x84 | STORE       | register ref / literal address                    |
 |   0x05 |              |                 |     |   0x85 | STORE       | register ref / register ref                       |
-|   0x06 |              |                 |     |   0x86 | MOVE        | literal value                                     |
-|   0x07 |              |                 |     |   0x87 | MOVE        | register ref                                      |
+|   0x06 |              |                 |     |   0x86 | COPY        | literal value                                     |
+|   0x07 |              |                 |     |   0x87 | COPY        | register ref                                      |
 |   0x08 |              |                 |     |   0x88 | SWAP        | literal address                                   |
 |   0x09 |              |                 |     |   0x89 | SWAP        | register ref                                      |
 |   0x0A |              |                 |     |   0x8A | ADD         | literal value                                     |
@@ -121,25 +216,25 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 |   0x17 |              |                 |     |   0x97 | UDIV        | register ref                                      |
 |   0x18 |              |                 |     |   0x98 | REM         | literal value                                     |
 |   0x19 |              |                 |     |   0x99 | REM         | register ref                                      |
-|   0x1A |              |                 |     |   0x9A | AND         | literal value                                     |
+|   0x1A |              |                 |     |   0x9A | AND         | literal integer                                   |
 |   0x1B |              |                 |     |   0x9B | AND         | register ref                                      |
-|   0x1C |              |                 |     |   0x9C | OR          | literal value                                     |
+|   0x1C |              |                 |     |   0x9C | OR          | literal integer                                   |
 |   0x1D |              |                 |     |   0x9D | OR          | register ref                                      |
-|   0x1E |              |                 |     |   0x9E | XOR         | literal value                                     |
+|   0x1E |              |                 |     |   0x9E | XOR         | literal integer                                   |
 |   0x1F |              |                 |     |   0x9F | XOR         | register ref                                      |
-|   0x20 | TIMER        | literal value   |     |   0xA0 | LSHIFT      | literal value                                     |
+|   0x20 | TIMER        | literal integer |     |   0xA0 | LSHIFT      | literal integer                                   |
 |   0x21 | TIMER        | register ref    |     |   0xA1 | LSHIFT      | register ref                                      |
-|   0x22 | PUSH         | literal value   |     |   0xA2 | RSHIFTL     | literal value                                     |
+|   0x22 | PUSH         | literal value   |     |   0xA2 | RSHIFTL     | literal integer                                   |
 |   0x23 | PUSH         | register ref    |     |   0xA3 | RSHIFTL     | register ref                                      |
-|   0x24 | POP          |                 |     |   0xA4 | RSHIFTA     | literal value                                     |
+|   0x24 | POP          |                 |     |   0xA4 | RSHIFTA     | literal integer                                   |
 |   0x25 | NEGATE       |                 |     |   0xA5 | RSHIFTA     | register ref                                      |
-|   0x26 | INC          |                 |     |   0xA6 | LROT        | literal value                                     |
-|   0x27 | DEC          |                 |     |   0xA7 | LROT        | register ref                                      |
-|   0x28 | NOT          |                 |     |   0xA8 | RROT        | literal value                                     |
+|   0x26 | CALL         |                 |     |   0xA6 | LROT        | literal integer                                   |
+|   0x27 |              |                 |     |   0xA7 | LROT        | register ref                                      |
+|   0x28 | NOT          |                 |     |   0xA8 | RROT        | literal integer                                   |
 |   0x29 | JUMP         | literal address |     |   0xA9 | RROT        | register ref                                      |
-|   0x2A | JUMP         | register ref    |     |   0xAA | LROTCARRY   | literal value                                     |
+|   0x2A | JUMP         | register ref    |     |   0xAA | LROTCARRY   | literal integer                                   |
 |   0x2B | JEQUAL       | literal address |     |   0xAB | LROTCARRY   | register ref                                      |
-|   0x2C | JEQUAL       | register ref    |     |   0xAC | RROTCARRY   | literal value                                     |
+|   0x2C | JEQUAL       | register ref    |     |   0xAC | RROTCARRY   | literal integer                                   |
 |   0x2D | JNOTEQUAL    | literal address |     |   0xAD | RROTCARRY   | register ref                                      |
 |   0x2E | JNOTEQUAL    | register ref    |     |   0xAE | COMPARE     | literal value / literal value                     |
 |   0x2F | JGREATER     | literal address |     |   0xAF | COMPARE     | literal value / register ref                      |
@@ -193,11 +288,11 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 |   0x5F |              |                 |     |   0xDF |             |                                                   |
 |   0x60 |              |                 |     |   0xE0 | BLOCKCOPY   | literal address / literal address / literal value |
 |   0x61 |              |                 |     |   0xE1 | BLOCKCOPY   | literal address / literal address / register ref  |
-|   0x62 |              |                 |     |   0xE2 | BLOCKCOPY   | literal address / register ref / literal value    |
+|   0x62 |              |                 |     |   0xE2 | BLOCKCOPY   | literal address / register ref / literal integer  |
 |   0x63 |              |                 |     |   0xE3 | BLOCKCOPY   | literal address / register ref / register ref     |
-|   0x64 |              |                 |     |   0xE4 | BLOCKCOPY   | register ref / literal address / literal value    |
+|   0x64 |              |                 |     |   0xE4 | BLOCKCOPY   | register ref / literal address / literal integer  |
 |   0x65 |              |                 |     |   0xE5 | BLOCKCOPY   | register ref / literal address / register ref     |
-|   0x66 |              |                 |     |   0xE6 | BLOCKCOPY   | register ref / register ref / literal value       |
+|   0x66 |              |                 |     |   0xE6 | BLOCKCOPY   | register ref / register ref / literal integer     |
 |   0x67 |              |                 |     |   0xE7 | BLOCKCOPY   | register ref / register ref / register ref        |
 |   0x68 |              |                 |     |   0xE8 |             |                                                   |
 |   0x69 |              |                 |     |   0xE9 |             |                                                   |
