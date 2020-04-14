@@ -279,9 +279,9 @@ mod tests {
             let disk_a_dir = tempfile::tempdir().unwrap();
             let disk_b_dir = tempfile::tempdir().unwrap();
             let disk_a = Rc::new(RefCell::new(DiskController::new(
-                disk_a_dir.path(), interrupt_tx.clone())));
+                disk_a_dir.path(), interrupt_tx.clone(), 0)));
             let disk_b = Rc::new(RefCell::new(DiskController::new(
-                disk_b_dir.path(), interrupt_tx.clone())));
+                disk_b_dir.path(), interrupt_tx.clone(), 0)));
             let (display_tx, _) = mpsc::channel();
             let display = Rc::new(DisplayController::new(display_tx));
             let (keyboard_tx, keyboard_rx) = mpsc::channel();

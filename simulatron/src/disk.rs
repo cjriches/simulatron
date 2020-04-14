@@ -6,8 +6,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
-use crate::cpu::INTERRUPT_DISK;
-
 // Register addresses
 pub const ADDRESS_STATUS: u32 = 0;
 pub const ADDRESS_NBA_1: u32 = 1;
@@ -49,6 +47,7 @@ struct SharedData {
 pub struct DiskController {
     dir_path: Arc<PathBuf>,
     interrupt_tx: mpsc::Sender<u32>,
+    interrupt_num: u32,
     worker_tx: Option<mpsc::Sender<DiskCommand>>,
     worker_thread: Option<thread::JoinHandle<()>>,
     watcher: Option<notify::RecommendedWatcher>,
@@ -56,10 +55,12 @@ pub struct DiskController {
 }
 
 impl DiskController {
-    pub fn new(dir_path: impl Into<PathBuf>, interrupt_tx: mpsc::Sender<u32>) -> Self {
+    pub fn new(dir_path: impl Into<PathBuf>,
+               interrupt_tx: mpsc::Sender<u32>, interrupt_num: u32) -> Self {
         DiskController {
             dir_path: Arc::new(dir_path.into()),
             interrupt_tx,
+            interrupt_num,
             worker_tx: None,
             worker_thread: None,
             watcher: None,
@@ -77,6 +78,9 @@ impl DiskController {
             panic!("DiskController was already running.");
         }
 
+        // Shared by (well, copied to) both threads.
+        let interrupt_num = self.interrupt_num;
+
         // Thread 1: worker (handles disk commands).
         let (worker_tx, worker_rx) = mpsc::channel();
         self.worker_tx = Some(worker_tx);
@@ -89,7 +93,7 @@ impl DiskController {
                 return;
             }
             DiskController::worker_iteration(
-                &worker_interrupt_tx, &worker_dir_name, &worker_shared_data, &cmd);
+                &worker_interrupt_tx, interrupt_num, &worker_dir_name, &worker_shared_data, &cmd);
         });
         self.worker_thread = Some(worker_thread);
 
@@ -99,8 +103,8 @@ impl DiskController {
         let watcher_shared_data = Arc::clone(&self.shared_data);
         let mut watcher = notify::immediate_watcher(move |event: notify::Result<notify::Event>| {
             DiskController::watcher_iteration(
-                &watcher_interrupt_tx, &watcher_dir_name,
-                &watcher_shared_data, &event.unwrap());
+                &watcher_interrupt_tx, interrupt_num,
+                &watcher_dir_name, &watcher_shared_data, &event.unwrap());
         }).unwrap();
         watcher.configure(notify::Config::PreciseEvents(true)).unwrap();
         watcher.watch(self.dir_path.as_ref(), notify::RecursiveMode::NonRecursive).unwrap();
@@ -120,7 +124,7 @@ impl DiskController {
         watcher.unwatch(self.dir_path.as_ref()).unwrap();
     }
 
-    fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, dir_path: &Path,
+    fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32, dir_path: &Path,
                         shared_data: &Arc<Mutex<SharedData>>, cmd: &DiskCommand) {
         // Acquire the shared data.
         let mut sd = shared_data.lock().unwrap();
@@ -130,7 +134,7 @@ impl DiskController {
             ($x:expr) => {
                 {
                     sd.status = $x;
-                    interrupt_tx.send(INTERRUPT_DISK).expect("Failed to send disk interrupt.");
+                    interrupt_tx.send(interrupt_num).unwrap();
                     return;
                 }
             };
@@ -197,8 +201,8 @@ impl DiskController {
         }
     }
 
-    fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, dir_path: &Path,
-                         watcher_shared_data: &Arc<Mutex<SharedData>>,
+    fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32,
+                         dir_path: &Path, watcher_shared_data: &Arc<Mutex<SharedData>>,
                          event: &notify::Event) {
         // We only care about files being created or removed. Therefore we
         // need Create, Remove, and Modify(Name(From)) events.
@@ -214,8 +218,7 @@ impl DiskController {
                     sd.status = STATUS_DISCONNECTED;
                     sd.blocks_available = 0;
                     // Send interrupt.
-                    watcher_interrupt_tx.send(INTERRUPT_DISK)
-                        .expect("Failed to send disk interrupt.");
+                    watcher_interrupt_tx.send(interrupt_num).unwrap();
                 }
                 Some(file_path) => {
                     // Query the file.
@@ -243,8 +246,7 @@ impl DiskController {
                         }
                     }
                     // Send interrupt.
-                    watcher_interrupt_tx.send(INTERRUPT_DISK)
-                        .expect("Failed to send disk interrupt.");
+                    watcher_interrupt_tx.send(interrupt_num).unwrap();
                 }
             }
         }
@@ -308,8 +310,7 @@ impl DiskController {
                     _ => {
                         let status = &mut self.shared_data.lock().unwrap().status;
                         *status = STATUS_BAD_COMMAND;
-                        self.interrupt_tx.send(INTERRUPT_DISK)
-                            .expect("Failed to send disk interrupt.");
+                        self.interrupt_tx.send(self.interrupt_num).unwrap();
                     }
                 };
             }
@@ -360,6 +361,8 @@ mod tests {
     use tempfile;
     use rand::Rng;
 
+    const INTERRUPT_NUM: u32 = 42;
+
     // A test fixture with an auto-started-stopped disk controller and a temp dir.
     struct DiskControllerFixture {
         disk: DiskController,
@@ -374,7 +377,7 @@ mod tests {
             let disk_dir = temp_dir.path().join("disk");
             fs::create_dir(&disk_dir)?;
             let (tx, rx) = mpsc::channel();
-            let mut disk = DiskController::new(&disk_dir, tx);
+            let mut disk = DiskController::new(&disk_dir, tx, INTERRUPT_NUM);
             disk.start();
             Ok(DiskControllerFixture {
                 disk,
@@ -407,7 +410,7 @@ mod tests {
                     COMMAND_SUSTAINED_READ, COMMAND_SUSTAINED_WRITE].iter() {
             fixture.disk.store_control(ADDRESS_CMD, *cmd);
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             {
                 let sd = fixture.disk.shared_data.lock().unwrap();
                 assert_eq!(sd.status, STATUS_DISCONNECTED);
@@ -433,7 +436,7 @@ mod tests {
         // Insert disk.
         fs::rename(&outer_location, &inner_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(int, INTERRUPT_DISK);
+        assert_eq!(int, INTERRUPT_NUM);
         {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
@@ -443,7 +446,7 @@ mod tests {
         // Eject disk.
         fs::rename(&inner_location, &outer_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(int, INTERRUPT_DISK);
+        assert_eq!(int, INTERRUPT_NUM);
         {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_DISCONNECTED);
@@ -466,7 +469,7 @@ mod tests {
         // Insert and assert not connected.
         fs::rename(&outer_location, &inner_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(int, INTERRUPT_DISK);
+        assert_eq!(int, INTERRUPT_NUM);
         {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_DISCONNECTED);
@@ -475,7 +478,7 @@ mod tests {
         // Eject and sanity check.
         fs::remove_file(&inner_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(int, INTERRUPT_DISK);
+        assert_eq!(int, INTERRUPT_NUM);
         {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_DISCONNECTED);
@@ -488,7 +491,7 @@ mod tests {
         // Create directly inside as there's no data to sync.
         fs::create_dir(&inner_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(int, INTERRUPT_DISK);
+        assert_eq!(int, INTERRUPT_NUM);
         {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_DISCONNECTED);
@@ -497,7 +500,7 @@ mod tests {
         // Eject and sanity check.
         fs::remove_dir(&inner_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(int, INTERRUPT_DISK);
+        assert_eq!(int, INTERRUPT_NUM);
         {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_DISCONNECTED);
@@ -512,7 +515,7 @@ mod tests {
         // Insert and assert connected with size 0.
         fs::rename(&outer_location, &inner_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(int, INTERRUPT_DISK);
+        assert_eq!(int, INTERRUPT_NUM);
         {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
@@ -523,7 +526,7 @@ mod tests {
             COMMAND_SUSTAINED_READ, COMMAND_SUSTAINED_WRITE].iter() {
             fixture.disk.store_control(ADDRESS_CMD, *cmd);
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             {
                 let sd = fixture.disk.shared_data.lock().unwrap();
                 assert_eq!(sd.status, STATUS_BAD_COMMAND);
@@ -532,7 +535,7 @@ mod tests {
         // Eject and sanity check.
         fs::remove_file(&inner_location).unwrap();
         let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(int, INTERRUPT_DISK);
+        assert_eq!(int, INTERRUPT_NUM);
         {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_DISCONNECTED);
@@ -558,7 +561,7 @@ mod tests {
             fs::create_dir(&disk_dir)?;
             // Create disk controller.
             let (tx, rx) = mpsc::channel();
-            let mut disk = DiskController::new(&disk_dir, tx);
+            let mut disk = DiskController::new(&disk_dir, tx, INTERRUPT_NUM);
             disk.start();
             // Create disk.
             const FILE_NAME: &str = "x.simdisk";
@@ -571,7 +574,7 @@ mod tests {
             // Insert disk.
             fs::rename(&outer_location, &inner_location).unwrap();
             let int = rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             {
                 let sd = disk.shared_data.lock().unwrap();
                 assert_eq!(sd.status, STATUS_SUCCESS);
@@ -608,7 +611,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_READ);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
         }
@@ -622,7 +625,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_WRITE);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 0);
@@ -636,7 +639,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_READ);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 0);
@@ -650,7 +653,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_READ);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 1);
@@ -671,7 +674,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_SUSTAINED_WRITE);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 1);
@@ -680,7 +683,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_SUSTAINED_WRITE);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 2);
@@ -691,7 +694,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_SUSTAINED_READ);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 1);
@@ -702,7 +705,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_SUSTAINED_READ);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 2);
@@ -731,7 +734,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_WRITE);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             assert_eq!(fixture.disk.load_status(ADDRESS_STATUS), STATUS_SUCCESS);
         }
 
@@ -741,7 +744,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_READ);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             assert_eq!(fixture.disk.load_status(ADDRESS_STATUS), STATUS_SUCCESS);
             for i in 0..4096 {
                 assert_eq!(fixture.disk.load_data(i), 0);
@@ -754,7 +757,7 @@ mod tests {
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_READ);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_DISK);
+            assert_eq!(int, INTERRUPT_NUM);
             assert_eq!(fixture.disk.load_status(ADDRESS_STATUS), STATUS_SUCCESS);
             for i in 0..20 {
                 assert_eq!(fixture.disk.load_data(i), 0);
