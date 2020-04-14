@@ -24,10 +24,10 @@ pub struct MMU {
     interrupt_channel: Sender<u32>,
     disk_a: Rc<RefCell<DiskController>>,
     disk_b: Rc<RefCell<DiskController>>,
-    display: Rc<DisplayController>,
+    display: DisplayController,
     keyboard: Rc<RefCell<KeyboardController>>,
-    ram: Rc<RefCell<RAM>>,
-    rom: Rc<ROM>,
+    ram: RAM,
+    rom: ROM,
     pdpr: u32,  // Page Directory Pointer Register
     pfsr: u32,  // Page Fault Status Register
 }
@@ -36,10 +36,10 @@ impl MMU {
     pub fn new(interrupt_channel: Sender<u32>,
                disk_a: Rc<RefCell<DiskController>>,
                disk_b: Rc<RefCell<DiskController>>,
-               display: Rc<DisplayController>,
+               display: DisplayController,
                keyboard: Rc<RefCell<KeyboardController>>,
-               ram: Rc<RefCell<RAM>>,
-               rom: Rc<ROM>) -> Self {
+               ram: RAM,
+               rom: ROM) -> Self {
         MMU {
             interrupt_channel,
             disk_a,
@@ -139,7 +139,7 @@ impl MMU {
         } else if address < 16384 {  // Disk B data
             self.disk_b.borrow_mut().store_data(address - 12288, value);
         } else {                     // RAM
-            self.ram.borrow_mut().store(address - 16384, value);
+            self.ram.store(address - 16384, value);
         }
     }
 
@@ -192,7 +192,7 @@ impl MMU {
         } else if address < 16384 {  // Disk B data
             self.disk_b.borrow().load_data(address - 12288)
         } else {                     // RAM
-            self.ram.borrow().load(address - 16384)
+            self.ram.load(address - 16384)
         }
     }
 
@@ -283,12 +283,12 @@ mod tests {
             let disk_b = Rc::new(RefCell::new(DiskController::new(
                 disk_b_dir.path(), interrupt_tx.clone(), 0)));
             let (display_tx, _) = mpsc::channel();
-            let display = Rc::new(DisplayController::new(display_tx));
+            let display = DisplayController::new(display_tx);
             let (keyboard_tx, keyboard_rx) = mpsc::channel();
             let keyboard = Rc::new(RefCell::new(KeyboardController::new(
                 keyboard_tx, keyboard_rx, interrupt_tx.clone())));
-            let ram = Rc::new(RefCell::new(RAM::new()));
-            let rom = Rc::new(ROM::new());
+            let ram = RAM::new();
+            let rom = ROM::new();
 
             MMUFixture {
                 mmu: MMU {
