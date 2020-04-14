@@ -36,7 +36,7 @@ Those values listed as N/A currently have no meaning. They may be assigned in fu
 |    24 |    DOWN   |     |   152 |    N/A    |
 |    25 |    LEFT   |     |   153 |    N/A    |
 |    26 |   RIGHT   |     |   154 |    N/A    |
-|    27 |    EOF    |     |   155 |    N/A    |
+|    27 |    N/A    |     |   155 |    N/A    |
 |    28 |    N/A    |     |   156 |    N/A    |
 |    29 |    N/A    |     |   157 |    N/A    |
 |    30 |    N/A    |     |   158 |    N/A    |

@@ -143,7 +143,7 @@ fn key_str_to_u8(key: &str) -> Option<u8> {
         "ArrowDown" => Some(24),
         "ArrowLeft" => Some(25),
         "ArrowRight" => Some(26),
-        // 27 is EOF
+        // 27 is N/A
         // 28 is N/A
         // 29 is N/A
         // 30 is N/A
