@@ -1,6 +1,4 @@
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex, mpsc::Sender};
 
 use crate::cpu::{INTERRUPT_ILLEGAL_OPERATION, INTERRUPT_PAGE_FAULT};
 use crate::disk::DiskController;
@@ -22,10 +20,10 @@ enum Intent {
 
 pub struct MMU {
     interrupt_channel: Sender<u32>,
-    disk_a: Rc<RefCell<DiskController>>,
-    disk_b: Rc<RefCell<DiskController>>,
+    disk_a: Arc<Mutex<DiskController>>,
+    disk_b: Arc<Mutex<DiskController>>,
     display: DisplayController,
-    keyboard: Rc<RefCell<KeyboardController>>,
+    keyboard: Arc<Mutex<KeyboardController>>,
     ram: RAM,
     rom: ROM,
     pdpr: u32,  // Page Directory Pointer Register
@@ -34,10 +32,10 @@ pub struct MMU {
 
 impl MMU {
     pub fn new(interrupt_channel: Sender<u32>,
-               disk_a: Rc<RefCell<DiskController>>,
-               disk_b: Rc<RefCell<DiskController>>,
+               disk_a: Arc<Mutex<DiskController>>,
+               disk_b: Arc<Mutex<DiskController>>,
                display: DisplayController,
-               keyboard: Rc<RefCell<KeyboardController>>,
+               keyboard: Arc<Mutex<KeyboardController>>,
                ram: RAM,
                rom: ROM) -> Self {
         MMU {
@@ -82,35 +80,35 @@ impl MMU {
         };
     }
 
-    pub fn load_virtual_8(&mut self, address: u32, is_fetch: bool) -> u8 {
+    pub fn load_virtual_8(&mut self, address: u32, is_fetch: bool) -> Option<u8> {
         let intent = if is_fetch {Intent::Execute} else {Intent::Read};
         match self.virtual_to_physical_address(address, intent) {
             Some(physical_address) => self.load_physical_8(physical_address),
             None => {
                 self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                0
+                None
             }
         }
     }
 
-    pub fn load_virtual_16(&mut self, address: u32, is_fetch: bool) -> u16 {
+    pub fn load_virtual_16(&mut self, address: u32, is_fetch: bool) -> Option<u16> {
         let intent = if is_fetch {Intent::Execute} else {Intent::Read};
         match self.virtual_to_physical_address(address, intent) {
             Some(physical_address) => self.load_physical_16(physical_address),
             None => {
                 self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                0
+                None
             }
         }
     }
 
-    pub fn load_virtual_32(&mut self, address: u32, is_fetch: bool) -> u32 {
+    pub fn load_virtual_32(&mut self, address: u32, is_fetch: bool) -> Option<u32> {
         let intent = if is_fetch {Intent::Execute} else {Intent::Read};
         match self.virtual_to_physical_address(address, intent) {
             Some(physical_address) => self.load_physical_32(physical_address),
             None => {
                 self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                0
+                None
             }
         }
     }
@@ -129,15 +127,15 @@ impl MMU {
         } else if address < 8177 {   // Keyboard, Reserved, Disk A read-only
             reject!();
         } else if address < 8182 {   // Disk A control
-            self.disk_a.borrow_mut().store_control(address - 8177, value);
+            self.disk_a.lock().unwrap().store_control(address - 8177, value);
         } else if address < 8187 {   // Disk B read-only
             reject!();
         } else if address < 8192 {   // Disk B control
-            self.disk_b.borrow_mut().store_control(address - 8187, value);
+            self.disk_b.lock().unwrap().store_control(address - 8187, value);
         } else if address < 12288 {  // Disk A data
-            self.disk_a.borrow_mut().store_data(address - 8192, value);
+            self.disk_a.lock().unwrap().store_data(address - 8192, value);
         } else if address < 16384 {  // Disk B data
-            self.disk_b.borrow_mut().store_data(address - 12288, value);
+            self.disk_b.lock().unwrap().store_data(address - 12288, value);
         } else {                     // RAM
             self.ram.store(address - 16384, value);
         }
@@ -157,63 +155,61 @@ impl MMU {
         self.store_physical_8(address + 3, lower);
     }
 
-    pub fn load_physical_8(&self, address: u32) -> u8 {
+    pub fn load_physical_8(&self, address: u32) -> Option<u8> {
         macro_rules! reject {
-            () => {{self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()}};
+            () => {{
+                self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                None
+            }};
         }
 
         if address < 32 {            // Interrupt handlers
             unimplemented!();
         } else if address < 64 {     // Reserved
-            reject!();
-            0
+            reject!()
         } else if address < 576 {    // ROM
-            self.rom.load(address - 64)
+            Some(self.rom.load(address - 64))
         } else if address < 6576 {   // Memory-mapped display
-            reject!();
-            0
+            reject!()
         } else if address < 6578 {   // Keyboard buffers
-            self.keyboard.borrow().load(address - 6576)
+            Some(self.keyboard.lock().unwrap().load(address - 6576))
         } else if address < 8172 {   // Reserved
-            reject!();
-            0
+            reject!()
         } else if address < 8177 {   // Disk A read-only
-            self.disk_a.borrow().load_status(address - 8172)
+            Some(self.disk_a.lock().unwrap().load_status(address - 8172))
         } else if address < 8182 {   // Disk A control
-            reject!();
-            0
+            reject!()
         } else if address < 8187 {   // Disk B read-only
-            self.disk_b.borrow().load_status(address - 8182)
+            Some(self.disk_b.lock().unwrap().load_status(address - 8182))
         } else if address < 8192 {   // Disk B control
-            reject!();
-            0
+            reject!()
         } else if address < 12288 {  // Disk A data
-            self.disk_a.borrow().load_data(address - 8192)
+            Some(self.disk_a.lock().unwrap().load_data(address - 8192))
         } else if address < 16384 {  // Disk B data
-            self.disk_b.borrow().load_data(address - 12288)
+            Some(self.disk_b.lock().unwrap().load_data(address - 12288))
         } else {                     // RAM
-            self.ram.load(address - 16384)
+            Some(self.ram.load(address - 16384))
         }
     }
 
-    pub fn load_physical_16(&self, address: u32) -> u16 {
-        let upper = self.load_physical_8(address);
-        let lower = self.load_physical_8(address + 1);
-        u16::from_be_bytes([upper, lower])
+    pub fn load_physical_16(&self, address: u32) -> Option<u16> {
+        let upper = self.load_physical_8(address)?;
+        let lower = self.load_physical_8(address + 1)?;
+        Some(u16::from_be_bytes([upper, lower]))
     }
 
-    pub fn load_physical_32(&self, address: u32) -> u32 {
-        let upper = self.load_physical_8(address);
-        let upper_mid = self.load_physical_8(address + 1);
-        let lower_mid = self.load_physical_8(address + 2);
-        let lower = self.load_physical_8(address + 3);
-        u32::from_be_bytes([upper, upper_mid, lower_mid, lower])
+    pub fn load_physical_32(&self, address: u32) -> Option<u32> {
+        let upper = self.load_physical_8(address)?;
+        let upper_mid = self.load_physical_8(address + 1)?;
+        let lower_mid = self.load_physical_8(address + 2)?;
+        let lower = self.load_physical_8(address + 3)?;
+        Some(u32::from_be_bytes([upper, upper_mid, lower_mid, lower]))
     }
 
     fn virtual_to_physical_address(&mut self, virtual_address: u32, intent: Intent) -> Option<u32> {
         // Find the directory entry.
         let directory_entry_address = self.pdpr + 4*(virtual_address >> 22); // First 10 bits of v-addr.
-        let directory_entry = self.load_physical_32(directory_entry_address);
+        let directory_entry = self.load_physical_32(directory_entry_address)?;
         // Check it's valid.
         if (directory_entry & 1) == 0 {
             self.pfsr = PAGE_FAULT_INVALID_PAGE;
@@ -222,7 +218,7 @@ impl MMU {
         // Find the page table entry.
         let page_table_base = directory_entry & 0xFFFFF000;  // First 20 bits of entry.
         let page_table_offset = 4*((virtual_address >> 12) & 0x3FF);  // Second 10 bits of v-addr.
-        let page_table_entry = self.load_physical_32(page_table_base + page_table_offset);
+        let page_table_entry = self.load_physical_32(page_table_base + page_table_offset)?;
         // Check it's valid.
         if (page_table_entry & 1) == 0 {
             self.pfsr = PAGE_FAULT_INVALID_PAGE;
@@ -278,14 +274,14 @@ mod tests {
             let (interrupt_tx, interrupt_rx) = mpsc::channel();
             let disk_a_dir = tempfile::tempdir().unwrap();
             let disk_b_dir = tempfile::tempdir().unwrap();
-            let disk_a = Rc::new(RefCell::new(DiskController::new(
+            let disk_a = Arc::new(Mutex::new(DiskController::new(
                 disk_a_dir.path(), interrupt_tx.clone(), 0)));
-            let disk_b = Rc::new(RefCell::new(DiskController::new(
+            let disk_b = Arc::new(Mutex::new(DiskController::new(
                 disk_b_dir.path(), interrupt_tx.clone(), 0)));
             let (display_tx, _) = mpsc::channel();
             let display = DisplayController::new(display_tx);
             let (keyboard_tx, keyboard_rx) = mpsc::channel();
-            let keyboard = Rc::new(RefCell::new(KeyboardController::new(
+            let keyboard = Arc::new(Mutex::new(KeyboardController::new(
                 keyboard_tx, keyboard_rx, interrupt_tx.clone())));
             let ram = RAM::new();
             let rom = ROM::new();
@@ -312,10 +308,10 @@ mod tests {
     fn test_physical_ram() {
         let mut fixture = MMUFixture::new();
 
-        assert_eq!(fixture.mmu.load_physical_32(RAM_BASE), 0);
+        assert_eq!(fixture.mmu.load_physical_32(RAM_BASE), Some(0));
         fixture.mmu.store_physical_8(RAM_BASE, 0x01);
         fixture.mmu.store_physical_16(RAM_BASE + 2, 0x1234);
-        assert_eq!(fixture.mmu.load_physical_32(RAM_BASE), 0x01001234);
+        assert_eq!(fixture.mmu.load_physical_32(RAM_BASE), Some(0x01001234));
     }
 
     #[test]
@@ -352,8 +348,8 @@ mod tests {
         assert_eq!(fixture.mmu.load_virtual_32(0, false), 0x55DEADBE);
         assert_eq!(fixture.mmu.load_virtual_8(4, false), 0xEF);
         // Read it back through physical where we expect it to be.
-        assert_eq!(fixture.mmu.load_physical_32(0x0000A000), 0x55DEADBE);
-        assert_eq!(fixture.mmu.load_physical_8(0x0000A004), 0xEF);
+        assert_eq!(fixture.mmu.load_physical_32(0x0000A000), Some(0x55DEADBE));
+        assert_eq!(fixture.mmu.load_physical_8(0x0000A004), Some(0xEF));
     }
 
     #[test]
@@ -534,6 +530,6 @@ mod tests {
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
 
         // Assert the write didn't go through either time.
-        assert_eq!(fixture.mmu.load_physical_32(0x6123), 0);
+        assert_eq!(fixture.mmu.load_physical_32(0x6123), Some(0));
     }
 }
