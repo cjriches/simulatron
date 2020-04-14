@@ -1,4 +1,4 @@
-use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::mpsc;
 use std::thread;
 
 use crate::mmu;
@@ -38,16 +38,19 @@ impl PublicRegisters {
 
 pub struct CPU {
     mmu: mmu::MMU,
-    interrupt_rx: Receiver<u32>,
+    interrupt_tx: mpsc::Sender<u32>,
+    interrupt_rx: mpsc::Receiver<u32>,
     registers: PublicRegisters,
     program_counter: u32,
     kernel_mode: bool,
 }
 
 impl CPU {
-    pub fn new(mmu: mmu::MMU, interrupt_rx: Receiver<u32>) -> Self {
+    pub fn new(mmu: mmu::MMU, interrupt_tx: mpsc::Sender<u32>,
+               interrupt_rx: mpsc::Receiver<u32>) -> Self {
         CPU {
             mmu,
+            interrupt_tx,
             interrupt_rx,
             registers: PublicRegisters::new(),
             program_counter: 64,  // Start of ROM.
@@ -64,24 +67,80 @@ impl CPU {
     }
 
     fn fetch_execute_cycle(&mut self) {
+        // Define a macro for fetching from memory and continuing the loop if it fails.
+        macro_rules! load {
+            ($f:ident, $address:expr, $fetch:expr) => {{
+                let val = self.$f($address, $fetch);
+                if let None = val {continue;}
+                val.unwrap()
+            }}
+        }
+
         loop {
             // Check for interrupts.
             match self.interrupt_rx.try_recv() {
                 Ok(interrupt) => unimplemented!(),
-                Err(TryRecvError::Disconnected) => panic!(),
-                Err(TryRecvError::Empty) => {},
+                Err(mpsc::TryRecvError::Disconnected) => panic!(),
+                Err(mpsc::TryRecvError::Empty) => {},
             }
+
             // Fetch instruction.
-            let opcode = self.load_8(self.program_counter, true);
+            let opcode = load!(load_8, self.program_counter, true);
             self.program_counter += 1;
-            if let None = opcode {
-                // We'll have an interrupt on our hands, so go back to the start of the loop.
-                continue;
+            println!("Opcode is: {:#x}", opcode);
+
+            // Retrieve operands.
+            let op1;
+            let op2;
+            let op3;
+            if opcode < 32 {
+                // No operands.
+                op1 = 0;
+                op2 = 0;
+                op3 = 0;
+            } else if opcode < 128 {
+                // 1 operand.
+                op1 = load!(load_32, self.program_counter, true);
+                self.program_counter += 4;
+                op2 = 0;
+                op3 = 0;
+            } else if opcode < 224 {
+                // 2 operands.
+                op1 = load!(load_32, self.program_counter, true);
+                self.program_counter += 4;
+                op2 = load!(load_32, self.program_counter, true);
+                self.program_counter += 4;
+                op3 = 0;
+            } else {
+                // 3 operands.
+                op1 = load!(load_32, self.program_counter, true);
+                self.program_counter += 4;
+                op2 = load!(load_32, self.program_counter, true);
+                self.program_counter += 4;
+                op3 = load!(load_32, self.program_counter, true);
+                self.program_counter += 4;
             }
-            let opcode = opcode.unwrap();  // Safe, we've checked for None.
-            // Decode and execute instruction.
-            println!("Opcode is {}!", opcode);
-            unimplemented!();
+            println!("Operands are: {}, {}, {}", op1, op2, op3);
+
+            // Execute instruction.
+            match opcode {
+                0x00 => {  // HALT
+                    if self.kernel_mode {
+                        break;
+                    } else {
+                        self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    }
+                }
+                0x01 => {  // PAUSE
+                    unimplemented!()
+                }
+                0x82 => {  // STORE literal value into literal address
+                    self.store_32(op2, op1);
+                }
+                _ => {  // Unrecognised
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                }
+            }
         }
     }
 

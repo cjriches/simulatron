@@ -262,8 +262,8 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 | ------:| ------------ | --------------- | --- | ------:| ----------- | ------------------------------------------------- |
 |   0x00 | HALT         |                 |     |   0x80 | LOAD        | literal address                                   |
 |   0x01 | PAUSE        |                 |     |   0x81 | LOAD        | register ref                                      |
-|   0x02 | USERMODE     |                 |     |   0x82 | STORE       | literal address / literal address                 |
-|   0x03 | SYSCALL      |                 |     |   0x83 | STORE       | literal address / register ref                    |
+|   0x02 | USERMODE     |                 |     |   0x82 | STORE       | literal value / literal address                   |
+|   0x03 | SYSCALL      |                 |     |   0x83 | STORE       | literal value / register ref                      |
 |   0x04 | RETURN       |                 |     |   0x84 | STORE       | register ref / literal address                    |
 |   0x05 | IRETURN      |                 |     |   0x85 | STORE       | register ref / register ref                       |
 |   0x06 |              |                 |     |   0x86 | COPY        | literal value                                     |

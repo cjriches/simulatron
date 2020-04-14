@@ -26,6 +26,7 @@ impl Simulatron {
         let interrupt_tx_mmu = interrupt_tx.clone();
         let interrupt_tx_disk_a = interrupt_tx.clone();
         let interrupt_tx_disk_b = interrupt_tx.clone();
+        let interrupt_tx_cpu = interrupt_tx.clone();
         let (display_tx, display_rx) = mpsc::channel();
         let display_tx_ui = display_tx.clone();
         let (keyboard_tx, keyboard_rx) = mpsc::channel();
@@ -44,7 +45,7 @@ impl Simulatron {
         let mmu = mmu::MMU::new(interrupt_tx_mmu, Arc::clone(&disk_a), Arc::clone(&disk_b),
                                 display, Arc::clone(&keyboard), ram, rom);
         let ui = ui::UI::new(display_tx_ui, display_rx, keyboard_tx_ui);
-        let cpu = Some(cpu::CPU::new(mmu, interrupt_rx));
+        let cpu = Some(cpu::CPU::new(mmu, interrupt_tx_cpu, interrupt_rx));
 
         Simulatron {
             interrupt_tx,
