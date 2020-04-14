@@ -2,29 +2,31 @@
 ### Version 1.0
 
 ## Registers Available
-| Register Reference | Full Name                       | Description                                     |
-| ------------------ | ------------------------------- | ----------------------------------------------- |
-| r0                 | Integer Register 0              | 32-bit integer general purpose register.        |
-| r1                 | Integer Register 1              | 32-bit integer general purpose register.        |
-| r2                 | Integer Register 2              | 32-bit integer general purpose register.        |
-| r3                 | Integer Register 3              | 32-bit integer general purpose register.        |
-| r4                 | Integer Register 4              | 32-bit integer general purpose register.        |
-| r5                 | Integer Register 5              | 32-bit integer general purpose register.        |
-| r6                 | Integer Register 6              | 32-bit integer general purpose register.        |
-| r7                 | Integer Register 7              | 32-bit integer general purpose register.        |
-| f0                 | Float Register 0                | 32-bit floating-point general purpose register. |
-| f1                 | Float Register 1                | 32-bit floating-point general purpose register. |
-| f2                 | Float Register 2                | 32-bit floating-point general purpose register. |
-| f3                 | Float Register 3                | 32-bit floating-point general purpose register. |
-| f4                 | Float Register 4                | 32-bit floating-point general purpose register. |
-| f5                 | Float Register 5                | 32-bit floating-point general purpose register. |
-| f6                 | Float Register 6                | 32-bit floating-point general purpose register. |
-| f7                 | Float Register 7                | 32-bit floating-point general purpose register. |
-| SPR                | Stack Pointer Register          | Points to the current top of the stack.         |
-| PDPR               | Page Directory Pointer Register | Points to the current page directory.           |
-| IMR                | Interrupt Mask Register         | Enables/disables specific interrupts.           |
+| Register Reference | Short name | Full Name                       | Description                                     |
+| ------------------:| ---------- | ------------------------------- | ----------------------------------------------- |
+|                  0 | r0         | Integer Register 0              | 32-bit integer general purpose register.        |
+|                  1 | r1         | Integer Register 1              | 32-bit integer general purpose register.        |
+|                  2 | r2         | Integer Register 2              | 32-bit integer general purpose register.        |
+|                  3 | r3         | Integer Register 3              | 32-bit integer general purpose register.        |
+|                  4 | r4         | Integer Register 4              | 32-bit integer general purpose register.        |
+|                  5 | r5         | Integer Register 5              | 32-bit integer general purpose register.        |
+|                  6 | r6         | Integer Register 6              | 32-bit integer general purpose register.        |
+|                  7 | r7         | Integer Register 7              | 32-bit integer general purpose register.        |
+|                  8 | f0         | Float Register 0                | 32-bit floating-point general purpose register. |
+|                  9 | f1         | Float Register 1                | 32-bit floating-point general purpose register. |
+|                 10 | f2         | Float Register 2                | 32-bit floating-point general purpose register. |
+|                 11 | f3         | Float Register 3                | 32-bit floating-point general purpose register. |
+|                 12 | f4         | Float Register 4                | 32-bit floating-point general purpose register. |
+|                 13 | f5         | Float Register 5                | 32-bit floating-point general purpose register. |
+|                 14 | f6         | Float Register 6                | 32-bit floating-point general purpose register. |
+|                 15 | f7         | Float Register 7                | 32-bit floating-point general purpose register. |
+|                 16 | FLAGS      | Flags Register                  | Holds the flags as described below. 16 bits.    |
+|                 17 | USPR       | User Stack Pointer Register     | Points to the current top of the user stack.    |
+|                 18 | KSPR       | Kernel Stack Pointer Register   | Points to the current top of the kernel stack.  |
+|                 19 | PDPR       | Page Directory Pointer Register | Points to the current page directory.           |
+|                 20 | IMR        | Interrupt Mask Register         | Enables/disables specific interrupts. 16 bits.  |
 
-Note that PDPR and IMR are privileged registers; they can only be accessed in kernel mode.
+KSPR, PDPR, and IMR are privileged registers; they can only be accessed in kernel mode.
 
 To move values between integer and floating-point registers, the COPY instruction should be used. This automatically performs the required conversions.
 
@@ -52,9 +54,70 @@ There are several flags set by arithmetic or bitwise operations; these may be in
 |   C  | The last operation either carried or borrowed a bit beyond the size of the register. |
 |   O  | The last operation resulted in a value too large for the register.                   |
 
-## Assembly Instructions
+The register is 16 bits wide, but there are only 15 spaces for flags. Bit 15 is used during interrupt handling; it will always be zero when read, and writing it has no effect. The reserved bits should never be manually set to anything other than zero.
 
-##### Key
+```
+______________________________________________
+|14|13|12|11|10|9 |8 |7 |6 |5 |4 |3 |2 |1 |0 |
+|            RESERVED            |O |C |N |Z |
+______________________________________________
+```
+
+## Interrupts
+There are eight different interrupts, represented by the integers 0-7. When an interrupt is raised, it will be latched by the CPU. Between instruction cycles, the CPU will check for latched interrupts and service them. If there are multiple interrupts waiting, they will be prioritised in descending order. If an interrupt is disabled, it will not be serviced but will remain latched until it is enabled.
+
+An interrupt is enabled if and only if the IMR bit corresponding to its number is set to 1.
+
+Servicing an interrupt causes the following to happen as a single atomic operation:
+1. If in user mode, the processor switches into kernel mode.
+2. The FLAGS are pushed onto the stack. Bit 15 will be 0 if the processor was in user mode, 1 if the processor was in kernel mode.
+3. The address of the next instruction is pushed onto the stack. Note that if the processor was in user mode, this will still be a virtual address.
+4. The current IMR is pushed onto the stack.
+5. The IMR is set to 0, disabling all interrupts.
+6. The processor jumps to the address held in physical memory address (interrupt number * 4).
+
+Note that no other state is saved, so if the interrupt handler wishes to preserve register values it should push and pop them itself. The handler can return by executing IRETURN, although this is not mandatory. It is also possible to modify the values on the stack before executing IRETURN to change what will happen.
+
+Executing IRETURN causes the following to happen as a single atomic operation:
+1. The IMR is popped off the stack.
+2. The next instruction to execute is popped off the stack.
+3. The FLAGS are popped off the stack.
+4. If bit 15 of the flags was 0, the processor will enter user mode.
+
+##### Interrupt definitions
+| Number | Name              | Cause                                                       |
+| ------:| ----------------- | ----------------------------------------------------------- |
+|      0 | Syscall           | The `SYSCALL` instruction.                                  |
+|      1 | Keyboard          | A key being pressed.                                        |
+|      2 | Disk A            | Disk A completes an operation.                              |
+|      3 | Disk B            | Disk B completes an operation.                              |
+|      4 | Page Fault        | Raised by the MMU - see memory management docs for details. |
+|      5 | Divide by 0       | Integer division by zero was attempted.                     |
+|      6 | Illegal Operation | An illegal operation was attempted, e.g. calling a privileged instruction in user mode, or trying to write to a read-only address. |
+|      7 | Timer             | Raised as described in the `TIMER` instruction.             |
+
+Example interrupt servicing (assume physical address 0 holds 0x00008420):
+```
+Mode: user            Next instruction: 0x00001234                                     Mode: kernel          Next instruction: 0x00008420
+Flags: 0x0001         IMR: 0x007F                     ---> Interrupt 0 arrives --->    Flags: 0x0001         IMR: 0x0000
+UStack: 0xDEADBEEF    KStack: 0xFAFFCAFE                                               UStack: 0xDEADBEEF    KStack: 0x007F
+                                                                                                                     0x00001234
+                                                                                                                     0x0001
+                                                                                                                     0xFAFFCAFE
+```
+
+Example return from interrupt at end of handler:
+```
+Mode: kernel          Next instruction: 0x00008500                                 Mode: user            Next instruction: 0x00001234
+Flags: 0x0000         IMR: 0x0000                     ---> Execute IRETURN --->    Flags: 0x0001         IMR: 0x007F
+UStack: 0xDEADBEEF    KStack: 0x007F                                               UStack: 0xDEADBEEF    KStack: 0xFAFFCAFE
+                              0x00001234
+                              0x0001
+```
+
+## Instructions
+
+##### Operand Type Key
 | Description | Meaning                                                       |
 | ----------- | ------------------------------------------------------------- |
 | Address     | A literal address or a register reference.                    |
@@ -69,14 +132,17 @@ There are several flags set by arithmetic or bitwise operations; these may be in
 | Pause                    | PAUSE        |                          |
 | Set timer                | TIMER        | Num milliseconds integer |
 | Enter user mode          | USERMODE     |                          |
+| Return from interrupt    | IRETURN      |                          |
 
 `HALT`: Immediately halt the processor. No further instructions will be executed under any circumstances, and the machine is safe to power off.
 
 `PAUSE`: Temporarily halt the processor. Any received interrupt will resume execution at the following instruction after the interrupt is handled. If all interrupts are disabled, this instruction is semantically equivalent to HALT.
 
- `TIMER`: Set the interrupt timer. It will send a timer interrupt after at least the given number of milliseconds, repeating indefinitely with the same period. A value of zero will disable the timer.
+`TIMER`: Set the interrupt timer. It will send a timer interrupt after at least the given number of milliseconds, repeating indefinitely with the same period. A value of zero will disable the timer.
  
- `USERMODE`: Drop from kernel mode to user mode.
+`USERMODE`: Pop the target virtual address off the stack, enter user mode, and jump to it.
+ 
+`IRETURN`: See the interrupt section.
 
 ##### Data Movement
 | Description       | Instruction | Operand 1            | Operand 2            | Operand 3      |
@@ -94,6 +160,8 @@ There are several flags set by arithmetic or bitwise operations; these may be in
 `PUSH`: Decrement the stack pointer by the appropriate amount and then write the given value to the stack.
 
 `POP`: Read the top value from the stack, then increment the stack pointer by the appropriate amount.
+
+PUSH and POP will use KSPR if in kernel mode, and USPR if in user mode.
 
 `BLOCKCOPY`: Copy a contiguous block of memory of the given length from the source to the destination address.
 
@@ -179,13 +247,15 @@ None of these operations are applicable to floats.
 
 `ABOVE`/`BELOW`: Unsigned comparison.
 
-`CALL`: Pushes the address of the next instruction onto the stack and jumps to the given address.
+`CALL`: Pushes the address of the next instruction followed by the current flags onto the stack and jumps to the given address.
 
-`RETURN`: Pops the return address of the top of the stack and jumps to it.
+`RETURN`: Restores the flags from the stack, then pops the return address and jumps to it.
 
 `SYSCALL`: Raises a syscall interrupt. 
 
 ## Opcodes
+Opcodes have a fixed length of one byte. All operands have length 4 bytes. Each instruction will automatically fetch the appropriate number of operands. 
+
 If an unmapped opcode is encountered, no operation will take place and an illegal operation interrupt will be raised.
 
 | Opcode | Instruction  | Variant         |     | Opcode | Instruction | Variant                                           |
@@ -195,7 +265,7 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 |   0x02 | USERMODE     |                 |     |   0x82 | STORE       | literal address / literal address                 |
 |   0x03 | SYSCALL      |                 |     |   0x83 | STORE       | literal address / register ref                    |
 |   0x04 | RETURN       |                 |     |   0x84 | STORE       | register ref / literal address                    |
-|   0x05 |              |                 |     |   0x85 | STORE       | register ref / register ref                       |
+|   0x05 | IRETURN      |                 |     |   0x85 | STORE       | register ref / register ref                       |
 |   0x06 |              |                 |     |   0x86 | COPY        | literal value                                     |
 |   0x07 |              |                 |     |   0x87 | COPY        | register ref                                      |
 |   0x08 |              |                 |     |   0x88 | SWAP        | literal address                                   |

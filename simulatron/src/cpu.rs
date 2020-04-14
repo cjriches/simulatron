@@ -2,11 +2,12 @@ use std::sync::mpsc::Receiver;
 
 pub const INTERRUPT_SYSCALL: u32 = 0;
 pub const INTERRUPT_KEYBOARD: u32 = 1;
-pub const INTERRUPT_DISK: u32 = 2;
-pub const INTERRUPT_PAGE_FAULT: u32 = 3;
-pub const INTERRUPT_DIV_BY_0: u32 = 4;
-pub const INTERRUPT_ILLEGAL_OPERATION: u32 = 5;
-pub const INTERRUPT_TIMER: u32 = 6;
+pub const INTERRUPT_DISK_A: u32 = 2;
+pub const INTERRUPT_DISK_B: u32 = 3;
+pub const INTERRUPT_PAGE_FAULT: u32 = 4;
+pub const INTERRUPT_DIV_BY_0: u32 = 5;
+pub const INTERRUPT_ILLEGAL_OPERATION: u32 = 6;
+pub const INTERRUPT_TIMER: u32 = 7;
 
 pub struct CPU {
     interrupt_rx: Receiver<u32>,

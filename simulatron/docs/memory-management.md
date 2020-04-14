@@ -11,14 +11,14 @@ Physical addresses are mapped as follows. All ranges are inclusive.
 
 |     Addresses    |                   Mapping                    | Read/Write |
 | ----------------:| -------------------------------------------- | ---------- |
-|             0-31 | Interrupt Handlers (32 bytes)                | Both       |
+|             0-31 | Interrupt handler addresses (32 bytes)       | Both       |
 |            32-63 | Reserved (32 bytes)                          | Neither    |
 |           64-575 | ROM (512 bytes)                              | Read       |
-|         576-2575 | Display Characters (2000 bytes)              | Write      |
-|        2576-4575 | Display Foreground Colours (2000 bytes)      | Write      |
-|        4576-6575 | Display Background Colours (2000 bytes)      | Write      |
-|             6576 | Keyboard Key Buffer (1 byte)                 | Read       |
-|             6577 | Keyboard Metadata Buffer (1 byte)            | Read       |
+|         576-2575 | Display characters (2000 bytes)              | Write      |
+|        2576-4575 | Display foreground colours (2000 bytes)      | Write      |
+|        4576-6575 | Display background colours (2000 bytes)      | Write      |
+|             6576 | Keyboard key buffer (1 byte)                 | Read       |
+|             6577 | Keyboard metadata buffer (1 byte)            | Read       |
 |        6578-8171 | Reserved (1594 bytes)                        | Neither    |
 |             8172 | Disk A status (1 byte)                       | Read       |
 |        8173-8176 | Disk A blocks available (4 bytes)            | Read       |
