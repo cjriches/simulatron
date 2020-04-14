@@ -1,5 +1,5 @@
 # Instruction Set
-### Version 1.0
+### Version 2.0.0-alpha
 
 ## Registers Available
 | Register Reference | Short name | Full Name                       | Description                                     |
