@@ -373,7 +373,7 @@ impl CPU {
                         Some(RegisterType::Word) =>
                             self.store_32(op2, self.registers.get_32_by_ref(op1)),
                         Some(RegisterType::Float) =>
-                            unimplemented!(),
+                            self.store_32(op2, f32_to_u32(self.registers.get_float_by_ref(op1))),
                         None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
                     };
                 }
@@ -386,7 +386,7 @@ impl CPU {
                         Some(RegisterType::Word) =>
                             self.registers.store_32_by_ref(op2, op1),
                         Some(RegisterType::Float) =>
-                            unimplemented!(),
+                            self.registers.store_float_by_ref(op2, u32_to_f32(op1)),
                         None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
                     };
                 }
@@ -513,5 +513,23 @@ impl CPU {
         *spr += 1;
         let result = self.load_8(old_spr, false);
         result
+    }
+}
+
+// WARNING!
+// These functions are theoretically very dangerous. They do not perform any conversion, they
+// just reinterpret the bit pattern as the new type. This is exactly what we
+// want to let us store float values in RAM, but if misused could result in
+// undefined behaviour.
+
+fn u32_to_f32(u: u32) -> f32 {
+    unsafe {
+        std::mem::transmute::<u32, f32>(u)
+    }
+}
+
+fn f32_to_u32(f: f32) -> u32 {
+    unsafe {
+        std::mem::transmute::<f32, u32>(f)
     }
 }

@@ -16,7 +16,9 @@
 
 KSPR, PDPR, and IMR are privileged registers; they can only be accessed in kernel mode.
 
-To move values between integer and floating-point registers, the COPY instruction should be used. This automatically performs the required conversions.
+To move values between integer and floating-point registers, the COPY instruction should be used. This automatically performs the required conversions. Storing a float to memory and then loading it as an integer (or vice versa) will NOT perform any conversion.
+
+Integers are stored in 2's complement representation; floats are stored in the IEEE 754 binary32 representation.
 
 The r* registers can all be accessed in multiple ways. Appending an 'h' accesses only the lower half (16 bits); appending a 'b' accesses only the lowest byte. Operations on this subset will consider the register to be of that size, e.g. `COPY 255 r0` then `ADD 1 r0b` will overflow to zero.
 ```
