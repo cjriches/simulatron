@@ -266,22 +266,23 @@ impl CPU {
             }}
         }
 
-        // Define a macro for privileged operations.
+        // Similar macro for stack.
+        macro_rules! pop {
+            ($f:ident) => {{
+                let val = self.$f();
+                if let None = val {continue;}
+                val.unwrap()
+            }}
+        }
+
+        // Define a guard macro for privileged operations.
         macro_rules! privileged {
-            ($action:stmt) => {{
-                if self.kernel_mode {
-                    $action
-                } else {
+            () => {{
+                if !self.kernel_mode {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    continue;
                 }
-            }};
-            ($action:block) => {{
-                if self.kernel_mode {
-                    $action
-                } else {
-                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                }
-            }};
+            }}
         }
 
         let mut pausing = false;
@@ -359,10 +360,48 @@ impl CPU {
             // Execute instruction.
             match opcode {
                 0x00 => {  // HALT
-                    privileged!(break);
+                    privileged!();
+                    break;
                 }
                 0x01 => {  // PAUSE
-                    privileged!(pausing = true);
+                    privileged!();
+                    pausing = true;
+                }
+                0x05 => {  // IRETURN
+                    privileged!();
+                    // Restore the IMR from the stack.
+                    self.registers.imr = pop!(pop_16);
+                    // Pop the program counter off the stack.
+                    self.program_counter = pop!(pop_32);
+                    // Pop the flags off the stack.
+                    let flags = pop!(pop_16);
+                    // If bit 15 is 0, enter user mode.
+                    if (flags & 0b1000000000000000) == 0 {
+                        self.kernel_mode = false;
+                    }
+                    // Set the flags.
+                    self.registers.flags = flags & 0b0111111111111111;
+                }
+                0x80 => {  // LOAD literal address into register ref
+                    match RegisterType::from_reg_ref(op2) {
+                        Some(RegisterType::Byte) => {
+                            let val = load!(load_8, op1, false);
+                            self.registers.store_8_by_ref(op2, val);
+                        }
+                        Some(RegisterType::Half) => {
+                            let val = load!(load_16, op1, false);
+                            self.registers.store_16_by_ref(op2, val);
+                        }
+                        Some(RegisterType::Word) => {
+                            let val = load!(load_32, op1, false);
+                            self.registers.store_32_by_ref(op2, val);
+                        }
+                        Some(RegisterType::Float) => {
+                            let val = u32_to_f32(load!(load_32, op1, false));
+                            self.registers.store_float_by_ref(op2, val);
+                        }
+                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
+                    };
                 }
                 0x82 => {  // STORE register ref into literal address
                     match RegisterType::from_reg_ref(op1) {
