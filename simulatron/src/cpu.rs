@@ -185,7 +185,8 @@ impl InterruptLatch {
             match self.interrupt_rx.try_recv() {
                 Ok(interrupt) => {
                     // If enabled, directly return. If disabled, latch it and check again.
-                    if (imr & (1 << interrupt as u16)) > 0 {
+                    // Also directly return JOIN_THREAD.
+                    if interrupt == JOIN_THREAD || (imr & (1 << interrupt as u16)) > 0 {
                         return Some(interrupt);
                     } else {
                         self.latched[interrupt as usize] = true;
@@ -210,7 +211,8 @@ impl InterruptLatch {
         loop {
             let interrupt = self.interrupt_rx.recv().unwrap();
             // If enabled, directly return. If disabled, latch it and check again.
-            if (imr & (1 << interrupt as u16)) > 0 {
+            // Also directly return JOIN_THREAD.
+            if interrupt == JOIN_THREAD || (imr & (1 << interrupt as u16)) > 0 {
                 return interrupt;
             } else {
                 self.latched[interrupt as usize] = true;
@@ -287,6 +289,10 @@ impl CPU {
                 self.interrupts.try_get_next(self.registers.imr)
             };
             if let Some(interrupt) = possible_interrupt {
+                // If it's the join thread command, exit.
+                if interrupt == JOIN_THREAD {
+                    break;
+                }
                 // Remember mode and switch to kernel mode.
                 let old_mode = if self.kernel_mode {
                     0b1000000000000000
