@@ -321,7 +321,7 @@ mod tests {
         fixture.mmu.store_physical_32(RAM_BASE, directory_entry);
         let page_entry = 0x00006007; // Frame 2 of RAM, Valid, Present, Readable.
         fixture.mmu.store_physical_32(RAM_BASE + 0x1000, page_entry);
-        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0, Intent::Read),
+        assert_eq!(fixture.mmu.virtual_to_physical_address(0, PDPR, Intent::Read),
                    Some(0x00006000));
     }
 
@@ -341,8 +341,8 @@ mod tests {
         // Assert no interrupts.
         fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)).unwrap_err();
         // Read it back through virtual.
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0, false), 0x55DEADBE);
-        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 4, false), 0xEF);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0, false), Some(0x55DEADBE));
+        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 4, false), Some(0xEF));
         // Read it back through physical where we expect it to be.
         assert_eq!(fixture.mmu.load_physical_32(0x0000A000), Some(0x55DEADBE));
         assert_eq!(fixture.mmu.load_physical_8(0x0000A004), Some(0xEF));
@@ -381,11 +381,11 @@ mod tests {
         const PDPR: u32 = 0x00420000;
         // 0 is an invalid page directory entry; don't need to write anything.
         // Any translation should fail.
-        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0, false), 0);
+        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0, false), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_INVALID_PAGE);
-        assert_eq!(fixture.mmu.load_virtual_16(PDPR, 0x1000, true), 0);
+        assert_eq!(fixture.mmu.load_virtual_16(PDPR, 0x1000, true), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_INVALID_PAGE);
@@ -402,11 +402,11 @@ mod tests {
             fixture.mmu.store_physical_32(0x00004000 + (i*4), page_entry);
         }
         // Any translation should still fail.
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, false), 0);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, false), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_INVALID_PAGE);
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, true), 0);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, true), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_INVALID_PAGE);
@@ -436,31 +436,31 @@ mod tests {
         fixture.mmu.store_physical_32(0x00005008, 0x00008013);
 
         // First page entry should only allow read.
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, false), 0);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, false), Some(0));
         fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)).unwrap_err();
         fixture.mmu.store_virtual_32(PDPR, 0x0000, 56);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, true), 0);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, true), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
 
         // Second page entry should only allow write.
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, false), 0);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, false), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
         fixture.mmu.store_virtual_32(PDPR, 0x1000, 56);
         fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)).unwrap_err();
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, true), 0);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, true), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
 
         // Third page entry should only allow execute.
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x2000, false), 0);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x2000, false), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
@@ -468,7 +468,7 @@ mod tests {
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x2000, true), 0);
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x2000, true), Some(0));
         fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)).unwrap_err();
     }
 
@@ -483,7 +483,7 @@ mod tests {
         fixture.mmu.store_physical_32(0x00005000, 0x0000601D);
 
         fixture.mmu.store_physical_8(0x6FFF, 12);
-        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0x0FFF, false), 0);
+        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0x0FFF, false), None);
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_NOT_PRESENT);
@@ -491,7 +491,7 @@ mod tests {
         // Set present.
         fixture.mmu.store_physical_8(0x00005003, 0x1F);
 
-        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0x0FFF, true), 12);
+        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0x0FFF, true), Some(12));
         fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)).unwrap_err();
     }
 
