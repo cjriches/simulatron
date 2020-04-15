@@ -20,6 +20,7 @@ enum Intent {
 
 pub struct MMU {
     interrupt_channel: Sender<u32>,
+    interrupt_vector: [u8; 32],
     disk_a: Arc<Mutex<DiskController>>,
     disk_b: Arc<Mutex<DiskController>>,
     display: DisplayController,
@@ -39,6 +40,7 @@ impl MMU {
                rom: ROM) -> Self {
         MMU {
             interrupt_channel,
+            interrupt_vector: [0; 32],
             disk_a,
             disk_b,
             display,
@@ -113,7 +115,7 @@ impl MMU {
         }
 
         if address < 32 {            // Interrupt handlers
-            unimplemented!();
+            self.interrupt_vector[address as usize] = value;
         } else if address < 576 {    // Reserved, ROM
             reject!();
         } else if address < 6576 {   // Memory-mapped display
@@ -158,7 +160,7 @@ impl MMU {
         }
 
         if address < 32 {            // Interrupt handlers
-            unimplemented!();
+            Some(self.interrupt_vector[address as usize])
         } else if address < 64 {     // Reserved
             reject!()
         } else if address < 576 {    // ROM
@@ -284,6 +286,7 @@ mod tests {
             MMUFixture {
                 mmu: MMU {
                     interrupt_channel: interrupt_tx,
+                    interrupt_vector: [0; 32],
                     disk_a,
                     disk_b,
                     display,

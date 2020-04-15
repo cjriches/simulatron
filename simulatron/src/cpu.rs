@@ -80,7 +80,8 @@ impl Registers {
             let masked = self.r[index] & 0xFFFF0000;
             self.r[index] = masked | (value as u32);
         } else if reg_ref == 32 {
-            self.flags = value;
+            let masked_value = value & 0b0111111111111111;  // Ignore bit 15.
+            self.flags = masked_value;
         } else if reg_ref == 36 {
             self.imr = value;
         } else {
@@ -157,10 +158,71 @@ impl Registers {
     }
 }
 
+struct InterruptLatch {
+    latched: [bool; 8],
+    interrupt_rx: mpsc::Receiver<u32>,
+}
+
+impl InterruptLatch {
+    pub fn new(interrupt_rx: mpsc::Receiver<u32>) -> Self {
+        InterruptLatch {
+            latched: [false; 8],
+            interrupt_rx,
+        }
+    }
+
+    pub fn try_get_next(&mut self, imr: u16) -> Option<u32> {
+        // First, try and service latched interrupts, prioritising higher numbers first.
+        for i in (0..8).rev() {
+            if self.latched[i] && (imr & (1 << i as u16)) > 0 {
+                self.latched[i] = false;
+                return Some(i as u32);
+            }
+        }
+
+        // If there aren't any enabled latched interrupts, check the channel.
+        loop {
+            match self.interrupt_rx.try_recv() {
+                Ok(interrupt) => {
+                    // If enabled, directly return. If disabled, latch it and check again.
+                    if (imr & (1 << interrupt as u16)) > 0 {
+                        return Some(interrupt);
+                    } else {
+                        self.latched[interrupt as usize] = true;
+                    }
+                },
+                Err(mpsc::TryRecvError::Disconnected) => panic!(),
+                Err(mpsc::TryRecvError::Empty) => return None,  // If the channel's empty, return.
+            }
+        }
+    }
+
+    pub fn wait_for_next(&mut self, imr: u16) -> u32 {
+        // First, try and service latched interrupts, prioritising higher numbers first.
+        for i in (0..8).rev() {
+            if self.latched[i] && (imr & (1 << i as u16)) > 0 {
+                self.latched[i] = false;
+                return i as u32;
+            }
+        }
+
+        // If there aren't any enabled latched interrupts, block on a channel receive.
+        loop {
+            let interrupt = self.interrupt_rx.recv().unwrap();
+            // If enabled, directly return. If disabled, latch it and check again.
+            if (imr & (1 << interrupt as u16)) > 0 {
+                return interrupt;
+            } else {
+                self.latched[interrupt as usize] = true;
+            }
+        }
+    }
+}
+
 pub struct CPU {
     mmu: mmu::MMU,
     interrupt_tx: mpsc::Sender<u32>,
-    interrupt_rx: mpsc::Receiver<u32>,
+    interrupts: InterruptLatch,
     registers: Registers,
     program_counter: u32,
     kernel_mode: bool,
@@ -172,7 +234,7 @@ impl CPU {
         CPU {
             mmu,
             interrupt_tx,
-            interrupt_rx,
+            interrupts: InterruptLatch::new(interrupt_rx),
             registers: Registers::new(),
             program_counter: 64,  // Start of ROM.
             kernel_mode: true,
@@ -199,21 +261,50 @@ impl CPU {
 
         // Define a macro for privileged operations.
         macro_rules! privileged {
+            ($action:stmt) => {{
+                if self.kernel_mode {
+                    $action
+                } else {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                }
+            }};
             ($action:block) => {{
                 if self.kernel_mode {
                     $action
                 } else {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                 }
-            }}
+            }};
         }
 
+        let mut pausing = false;
         loop {
             // Check for interrupts.
-            match self.interrupt_rx.try_recv() {
-                Ok(interrupt) => unimplemented!(),
-                Err(mpsc::TryRecvError::Disconnected) => panic!(),
-                Err(mpsc::TryRecvError::Empty) => {},
+            let possible_interrupt = if pausing {
+                pausing = false;
+                Some(self.interrupts.wait_for_next(self.registers.imr))
+            } else {
+                self.interrupts.try_get_next(self.registers.imr)
+            };
+            if let Some(interrupt) = possible_interrupt {
+                // Remember mode and switch to kernel mode.
+                let old_mode = if self.kernel_mode {
+                    0b1000000000000000
+                } else {
+                    0
+                };
+                self.kernel_mode = true;
+                // Push flags to stack, with bit 15 set to the old mode.
+                let flags = self.registers.flags | old_mode;
+                self.push_16(flags);
+                // Push the program counter to stack.
+                self.push_32(self.program_counter);
+                // Push the IMR to stack.
+                self.push_16(self.registers.imr);
+                // Disable all interrupts.
+                self.registers.imr = 0;
+                // Jump to the interrupt handler.
+                self.program_counter = self.load_32(interrupt * 4, false).unwrap();
             }
 
             // Fetch instruction.
@@ -257,9 +348,10 @@ impl CPU {
             // Execute instruction.
             match opcode {
                 0x00 => {  // HALT
-                    privileged!({
-                        break;
-                    });
+                    privileged!(break);
+                }
+                0x01 => {  // PAUSE
+                    privileged!(pausing = true);
                 }
                 0x82 => {  // STORE register ref into literal address
                     match RegisterType::from_reg_ref(op1) {
@@ -340,5 +432,75 @@ impl CPU {
         } else {
             self.mmu.load_virtual_8(self.registers.pdpr, address, is_fetch)
         }
+    }
+
+    fn push_32(&mut self, value: u32) {
+        let spr = if self.kernel_mode {
+            &mut self.registers.kspr
+        } else {
+            &mut self.registers.uspr
+        };
+        *spr -= 4;
+        let spr = *spr;  // Copy value and drop mutable reference so we are allowed to call store_32.
+        self.store_32(spr, value);
+    }
+
+    fn push_16(&mut self, value: u16) {
+        let spr = if self.kernel_mode {
+            &mut self.registers.kspr
+        } else {
+            &mut self.registers.uspr
+        };
+        *spr -= 2;
+        let spr = *spr;
+        self.store_16(spr, value);
+    }
+
+    fn push_8(&mut self, value: u8) {
+        let spr = if self.kernel_mode {
+            &mut self.registers.kspr
+        } else {
+            &mut self.registers.uspr
+        };
+        *spr -= 1;
+        let spr = *spr;
+        self.store_8(spr, value);
+    }
+
+    fn pop_32(&mut self) -> Option<u32> {
+        let spr = if self.kernel_mode {
+            &mut self.registers.kspr
+        } else {
+            &mut self.registers.uspr
+        };
+        // Perform the dance of the borrow checker.
+        let old_spr = *spr;
+        *spr += 4;
+        let result = self.load_32(old_spr, false);
+        result
+    }
+
+    fn pop_16(&mut self) -> Option<u16> {
+        let spr = if self.kernel_mode {
+            &mut self.registers.kspr
+        } else {
+            &mut self.registers.uspr
+        };
+        let old_spr = *spr;
+        *spr += 2;
+        let result = self.load_16(old_spr, false);
+        result
+    }
+
+    fn pop_8(&mut self) -> Option<u8> {
+        let spr = if self.kernel_mode {
+            &mut self.registers.kspr
+        } else {
+            &mut self.registers.uspr
+        };
+        let old_spr = *spr;
+        *spr += 1;
+        let result = self.load_8(old_spr, false);
+        result
     }
 }
