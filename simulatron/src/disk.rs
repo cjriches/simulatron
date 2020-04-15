@@ -549,7 +549,7 @@ mod tests {
     // A test fixture containing a connected disk of the given size.
     struct ConnectedDiskControllerFixture {
         disk: DiskController,
-        temp_dir: tempfile::TempDir,
+        _temp_dir: tempfile::TempDir,
         interrupt_rx: mpsc::Receiver<u32>,
     }
 
@@ -582,7 +582,7 @@ mod tests {
             }
             Ok(Self{
                 disk,
-                temp_dir,
+                _temp_dir: temp_dir,
                 interrupt_rx: rx,
             })
         }

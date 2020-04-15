@@ -355,7 +355,7 @@ impl CPU {
                 op3 = load!(load_32, self.program_counter, true);
                 self.program_counter += 4;
             }
-            println!("Operands are: {}, {}, {}", op1, op2, op3);
+            println!("Operands are: {:#x}, {:#x}, {:#x}", op1, op2, op3);
 
             // Execute instruction.
             match opcode {
@@ -570,5 +570,189 @@ fn u32_to_f32(u: u32) -> f32 {
 fn f32_to_u32(f: f32) -> u32 {
     unsafe {
         std::mem::transmute::<f32, u32>(f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    use crate::{disk::DiskController, display::DisplayController,
+                keyboard::{KeyboardController, KeyMessage, key_str_to_u8},
+                ram::RAM, rom::ROM, ui::UICommand};
+
+    fn run(rom_data: [u8; 512], keypress: Option<KeyMessage>) -> (CPU, Vec<UICommand>) {
+        // Create communication channels.
+        let (interrupt_tx, interrupt_rx) = mpsc::channel();
+        let interrupt_tx_keyboard = interrupt_tx.clone();
+        let interrupt_tx_mmu = interrupt_tx.clone();
+        let interrupt_tx_disk_a = interrupt_tx.clone();
+        let interrupt_tx_disk_b = interrupt_tx.clone();
+        let (ui_tx, ui_rx) = mpsc::channel();
+        let ui_tx_display = ui_tx.clone();
+        let (keyboard_tx, keyboard_rx) = mpsc::channel();
+        let keyboard_tx_manual = keyboard_tx.clone();
+
+        // Create components.
+        let disk_a = Arc::new(Mutex::new(DiskController::new(
+            "UNUSED", interrupt_tx_disk_a, INTERRUPT_DISK_A)));
+        let disk_b = Arc::new(Mutex::new(DiskController::new(
+            "UNUSED", interrupt_tx_disk_b, INTERRUPT_DISK_B)));
+        let display = DisplayController::new(ui_tx_display);
+        let keyboard = Arc::new(Mutex::new(KeyboardController::new(
+            keyboard_tx, keyboard_rx, interrupt_tx_keyboard)));
+        let ram = RAM::new();
+        let rom = ROM::new(rom_data);
+        let mmu = MMU::new(interrupt_tx_mmu, Arc::clone(&disk_a), Arc::clone(&disk_b),
+                           display, Arc::clone(&keyboard), ram, rom);
+        let cpu = CPU::new(ui_tx, mmu, interrupt_tx, interrupt_rx);
+
+        // Run the CPU till halt.
+        keyboard.lock().unwrap().start();
+        let cpu_thread = cpu.start();
+        if let Some(message) = keypress {
+            keyboard_tx_manual.send(message).unwrap();
+        }
+        let resulting_cpu = cpu_thread.join().unwrap();
+        keyboard.lock().unwrap().stop();
+        // Collect any resulting UI commands.
+        let ui_commands = ui_rx.try_iter().collect();
+        (resulting_cpu, ui_commands)
+    }
+
+    #[test]
+    fn test_halt() {
+        // Simplest possible test; check the CPU halts immediately on opcode 0.
+        let (_, ui_commands) = run([0; 512], None);
+        assert_eq!(ui_commands.len(), 2);  // Enable and Disable messages.
+    }
+
+    #[test]
+    fn test_copy_literal() {
+        let mut rom = [0; 512];
+        rom[0] = 0x86;  // Copy literal
+        rom[1] = 0x42;  // some random number
+        rom[2] = 0x06;
+        rom[3] = 0x96;
+        rom[4] = 0x96;
+        rom[8] = 0x03;  // into r3.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.registers.r[3], 0x42069696);
+    }
+
+    #[test]
+    fn test_store_literal_address() {
+        let mut rom = [0; 512];
+        rom[0] = 0x86;  // Copy literal
+        rom[1] = 0x12;  // some random number
+        rom[2] = 0x34;
+        rom[3] = 0x56;
+        rom[4] = 0x78;
+                        // into r0.
+
+        rom[9] = 0x82;  // Store
+                        // r0 into
+        rom[16] = 0x4A; // address 0x00004ABC.
+        rom[17] = 0xBC;
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.mmu.load_physical_32(0x00004ABC), Some(0x12345678));
+    }
+
+    #[test]
+    fn test_load_literal_address() {
+        let mut rom = [0; 512];
+        rom[0] = 0x86;  // Copy literal
+        rom[1] = 0xFF;  // some random number
+        rom[2] = 0xFF;
+        rom[3] = 0xFF;
+        rom[4] = 0xFF;
+        rom[8] = 0x07;  // into r7.
+
+        rom[9] = 0x80;  // Load from
+        rom[13] = 0x80; // ROM byte 0x40 (64)
+        rom[17] = 0x17; // into r7b.
+
+        rom[64] = 0x55;
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.registers.r[7], 0xFFFFFF55);
+    }
+
+    #[test]
+    fn test_keyboard() {
+        let mut rom = [0; 512];
+        rom[0] = 0x86;  // Copy literal
+        rom[3] = 0x50;  // address 0x00005000
+        rom[8] = 0x22;  // into kspr.
+
+        rom[9] = 0x86;  // Copy literal
+        rom[12] = 0x40; // address 0x00004000
+                        // into r0.
+
+        rom[18] = 0x82; // Store
+                        // r0 into
+        rom[26] = 0x04; // keyboard interrupt handler.
+
+        // Address 0x4000 is HALT, so we should halt on interrupt.
+
+        rom[27] = 0x86; // Copy literal
+        rom[31] = 0x02; // keyboard interrupt only
+        rom[35] = 0x24; // into imr.
+
+        rom[36] = 0x01; // Pause (will only be reached if this happens before interrupt sent).
+        rom[37] = 0x01; // Pause (should never happen, acts as a fail condition).
+
+        const KEY: &str = "F";
+        let (cpu, ui_commands) = run(rom, Some(KeyMessage::Key(KEY, false, false).unwrap()));
+        assert_eq!(ui_commands.len(), 2);
+
+        // Assert that the key was correctly detected.
+        assert_eq!(cpu.mmu.load_physical_8(0x19B0), Some(key_str_to_u8(KEY).unwrap()));
+        assert_eq!(cpu.mmu.load_physical_8(0x19B1), Some(0));
+    }
+
+    #[test]
+    fn test_interrupt_handle_kernel_mode() {
+        let mut rom = [0; 512];
+        rom[0] = 0x86;  // Copy literal
+        rom[3] = 0x50;  // address 0x00005000
+        rom[8] = 0x22;  // into kspr.
+
+        rom[9] = 0x86;  // Copy literal
+        rom[13] = 0xC0; // address 0x000000C0 (ROM byte 128)
+                        // into r0.
+
+        rom[18] = 0x82; // Store
+                        // r0 into
+        rom[26] = 0x04; // keyboard interrupt handler.
+
+        rom[27] = 0x86; // Copy literal
+        rom[31] = 0x02; // keyboard interrupt only
+        rom[35] = 0x24; // into imr.
+
+        rom[36] = 0x86; // Copy literal
+        rom[40] = 0x11; // some random number
+        rom[44] = 0x16; // into r6b.
+
+        // Interrupt handler.
+        rom[128] = 0x86; // Copy literal
+        rom[131] = 0x55; // some random number
+        rom[132] = 0x66;
+        rom[136] = 0x0D; // into r5h.
+        rom[137] = 0x05; // IRETURN.
+
+        const KEY: &str = "Escape";
+        let (cpu, ui_commands) = run(rom, Some(KeyMessage::Key(KEY, false, false).unwrap()));
+        assert_eq!(ui_commands.len(), 2);
+
+        // Assert that the interrupt handler ran and returned.
+        assert_eq!(cpu.registers.r[5], 0x00005566);
+        assert_eq!(cpu.registers.r[6], 0x00000011);
     }
 }

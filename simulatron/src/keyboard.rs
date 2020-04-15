@@ -114,7 +114,7 @@ impl KeyboardController {
     }
 }
 
-fn key_str_to_u8(key: &str) -> Option<u8> {
+pub fn key_str_to_u8(key: &str) -> Option<u8> {
     match key {
         // 0 is NULL
         "F1" => Some(1),

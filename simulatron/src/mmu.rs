@@ -256,32 +256,28 @@ mod tests {
     use rand;
     use std::sync::mpsc::{self, Receiver};
     use std::time::Duration;
-    use tempfile;
 
     const RAM_BASE: u32 = 0x4000;
 
     struct MMUFixture {
         mmu: MMU,
         interrupt_rx: Receiver<u32>,
-        temp_dirs: [tempfile::TempDir; 2],
     }
 
     impl MMUFixture {
         fn new() -> Self {
             let (interrupt_tx, interrupt_rx) = mpsc::channel();
-            let disk_a_dir = tempfile::tempdir().unwrap();
-            let disk_b_dir = tempfile::tempdir().unwrap();
             let disk_a = Arc::new(Mutex::new(DiskController::new(
-                disk_a_dir.path(), interrupt_tx.clone(), 0)));
+                "UNUSED", interrupt_tx.clone(), 0)));
             let disk_b = Arc::new(Mutex::new(DiskController::new(
-                disk_b_dir.path(), interrupt_tx.clone(), 0)));
+                "UNUSED", interrupt_tx.clone(), 0)));
             let (display_tx, _) = mpsc::channel();
             let display = DisplayController::new(display_tx);
             let (keyboard_tx, keyboard_rx) = mpsc::channel();
             let keyboard = Arc::new(Mutex::new(KeyboardController::new(
                 keyboard_tx, keyboard_rx, interrupt_tx.clone())));
             let ram = RAM::new();
-            let rom = ROM::new();
+            let rom = ROM::new([0; 512]);
 
             MMUFixture {
                 mmu: MMU {
@@ -296,7 +292,6 @@ mod tests {
                     pfsr: 0
                 },
                 interrupt_rx,
-                temp_dirs: [disk_a_dir, disk_b_dir],
             }
         }
     }
