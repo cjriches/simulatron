@@ -77,6 +77,8 @@ impl UI {
 
         // Construct the UI. The WebView struct temporarily takes ownership of the keyboard_tx,
         // it will give it back at the end.
+        // The mut is only necessary in release mode, so disable the warning if in debug mode.
+        #[cfg_attr(debug_assertions, allow(unused_mut))]
         let mut wv = web_view::builder()
             .title(UI::TITLE_DISABLED)
             .content(Content::Html(&frontend))
