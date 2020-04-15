@@ -2,29 +2,17 @@
 ### Version 2.0.0-alpha
 
 ## Registers Available
-| Register Reference | Short name | Full Name                       | Description                                     |
-| ------------------:| ---------- | ------------------------------- | ----------------------------------------------- |
-|                  0 | r0         | Integer Register 0              | 32-bit integer general purpose register.        |
-|                  1 | r1         | Integer Register 1              | 32-bit integer general purpose register.        |
-|                  2 | r2         | Integer Register 2              | 32-bit integer general purpose register.        |
-|                  3 | r3         | Integer Register 3              | 32-bit integer general purpose register.        |
-|                  4 | r4         | Integer Register 4              | 32-bit integer general purpose register.        |
-|                  5 | r5         | Integer Register 5              | 32-bit integer general purpose register.        |
-|                  6 | r6         | Integer Register 6              | 32-bit integer general purpose register.        |
-|                  7 | r7         | Integer Register 7              | 32-bit integer general purpose register.        |
-|                  8 | f0         | Float Register 0                | 32-bit floating-point general purpose register. |
-|                  9 | f1         | Float Register 1                | 32-bit floating-point general purpose register. |
-|                 10 | f2         | Float Register 2                | 32-bit floating-point general purpose register. |
-|                 11 | f3         | Float Register 3                | 32-bit floating-point general purpose register. |
-|                 12 | f4         | Float Register 4                | 32-bit floating-point general purpose register. |
-|                 13 | f5         | Float Register 5                | 32-bit floating-point general purpose register. |
-|                 14 | f6         | Float Register 6                | 32-bit floating-point general purpose register. |
-|                 15 | f7         | Float Register 7                | 32-bit floating-point general purpose register. |
-|                 16 | FLAGS      | Flags Register                  | Holds the flags as described below. 16 bits.    |
-|                 17 | USPR       | User Stack Pointer Register     | Points to the current top of the user stack.    |
-|                 18 | KSPR       | Kernel Stack Pointer Register   | Points to the current top of the kernel stack.  |
-|                 19 | PDPR       | Page Directory Pointer Register | Points to the current page directory.           |
-|                 20 | IMR        | Interrupt Mask Register         | Enables/disables specific interrupts. 16 bits.  |
+| Register Reference | Short name | Full Name                       | Description                                      |
+| ------------------:| ---------- | ------------------------------- | ------------------------------------------------ |
+|                0-7 | r0-r7      | Integer Registers 0-7 (full)    | 32-bit integer general purpose registers.        |
+|               8-15 | r0h-r7h    | Integer Registers 0-7 (half)    | Lower 16 bits of r0-r7.                          |
+|              16-23 | r0b-r7b    | Integer Registers 0-7 (byte)    | Lowest 8 bits of r0-r7.                          |
+|              24-31 | f0-f7      | Float Registers 0-7             | 32-bit floating-point general purpose registers. |
+|                 32 | FLAGS      | Flags Register                  | Holds the flags as described below. 16 bits.     |
+|                 33 | USPR       | User Stack Pointer Register     | Points to the current top of the user stack.     |
+|                 34 | KSPR       | Kernel Stack Pointer Register   | Points to the current top of the kernel stack.   |
+|                 35 | PDPR       | Page Directory Pointer Register | Points to the current page directory.            |
+|                 36 | IMR        | Interrupt Mask Register         | Enables/disables specific interrupts. 16 bits.   |
 
 KSPR, PDPR, and IMR are privileged registers; they can only be accessed in kernel mode.
 
@@ -148,12 +136,14 @@ UStack: 0xDEADBEEF    KStack: 0x007F                                            
 | Description       | Instruction | Operand 1            | Operand 2            | Operand 3      |
 | ----------------- | ----------- | -------------------- | -------------------- | -------------- |
 | Load              | LOAD        | Source address       | Destination register |                |
-| Store             | STORE       | Source value         | Destination address  |                |
+| Store             | STORE       | Source register      | Destination address  |                |
 | Copy              | COPY        | Source value         | Destination register |                |
 | Atomic Swap       | SWAP        | Source register      | Source address       |                |
 | Push              | PUSH        | Source value         |                      |                |
 | Pop               | POP         | Destination register |                      |                |
 | Block Memory Copy | BLOCKCOPY   | Source address       | Destination address  | Length integer |
+
+`STORE`: Note that storing a literal is not allowed. This is because there would be no way to determine whether the literal is 8, 16, or 32 bits in length.
 
 `COPY`: Either load a register with a constant value, or copy one register into another. This can copy between integer and floating-point registers, and automatically converts the values into the destination representation. Note that only a full 32-bit integer register can be copied into a floating-point register, and converting a float to an integer will truncate towards zero.
 
@@ -241,7 +231,7 @@ None of these operations are applicable to floats.
 (2): JNOTZERO is an alias for JNOTEQUAL.
 ```
 
-`COMPARE`: Subtracts the first operand from the second and discards the result, setting flags as appropriate.
+`COMPARE`: Subtracts the first operand from the second and discards the result, setting flags as appropriate. Note that comparing two literals is not allowed, as there would be no way of determining whether the operation is 8, 16, or 32 bits in length.
 
 `GREATER`/`LESSER`: Signed comparison.
 
@@ -262,10 +252,10 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 | ------:| ------------ | --------------- | --- | ------:| ----------- | ------------------------------------------------- |
 |   0x00 | HALT         |                 |     |   0x80 | LOAD        | literal address                                   |
 |   0x01 | PAUSE        |                 |     |   0x81 | LOAD        | register ref                                      |
-|   0x02 | USERMODE     |                 |     |   0x82 | STORE       | literal value / literal address                   |
-|   0x03 | SYSCALL      |                 |     |   0x83 | STORE       | literal value / register ref                      |
-|   0x04 | RETURN       |                 |     |   0x84 | STORE       | register ref / literal address                    |
-|   0x05 | IRETURN      |                 |     |   0x85 | STORE       | register ref / register ref                       |
+|   0x02 | USERMODE     |                 |     |   0x82 | STORE       | literal address                                   |
+|   0x03 | SYSCALL      |                 |     |   0x83 | STORE       | register ref                                      |
+|   0x04 | RETURN       |                 |     |   0x84 |             |                                                   |
+|   0x05 | IRETURN      |                 |     |   0x85 |             |                                                   |
 |   0x06 |              |                 |     |   0x86 | COPY        | literal value                                     |
 |   0x07 |              |                 |     |   0x87 | COPY        | register ref                                      |
 |   0x08 |              |                 |     |   0x88 | SWAP        | literal address                                   |
@@ -306,10 +296,10 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 |   0x2B | JEQUAL       | literal address |     |   0xAB | LROTCARRY   | register ref                                      |
 |   0x2C | JEQUAL       | register ref    |     |   0xAC | RROTCARRY   | literal integer                                   |
 |   0x2D | JNOTEQUAL    | literal address |     |   0xAD | RROTCARRY   | register ref                                      |
-|   0x2E | JNOTEQUAL    | register ref    |     |   0xAE | COMPARE     | literal value / literal value                     |
-|   0x2F | JGREATER     | literal address |     |   0xAF | COMPARE     | literal value / register ref                      |
-|   0x30 | JGREATER     | register ref    |     |   0xB0 | COMPARE     | register ref / literal value                      |
-|   0x31 | JGREATEREQ   | literal address |     |   0xB1 | COMPARE     | register ref / register ref                       |
+|   0x2E | JNOTEQUAL    | register ref    |     |   0xAE | COMPARE     | literal value / register ref                      |
+|   0x2F | JGREATER     | literal address |     |   0xAF | COMPARE     | register ref / literal value                      |
+|   0x30 | JGREATER     | register ref    |     |   0xB0 | COMPARE     | register ref / register ref                       |
+|   0x31 | JGREATEREQ   | literal address |     |   0xB1 |             |                                                   |
 |   0x32 | JGREATEREQ   | register ref    |     |   0xB2 |             |                                                   |
 |   0x33 | JABOVE       | literal address |     |   0xB3 |             |                                                   |
 |   0x34 | JABOVE       | register ref    |     |   0xB4 |             |                                                   |
