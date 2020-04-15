@@ -13,26 +13,147 @@ pub const INTERRUPT_ILLEGAL_OPERATION: u32 = 6;
 pub const INTERRUPT_TIMER: u32 = 7;
 pub const JOIN_THREAD: u32 = 4294967295;  // Not a real interrupt, just a thread join command.
 
-struct PublicRegisters {
+struct Registers {
     r: [u32; 8],
     f: [f32; 8],
     flags: u16,
     uspr: u32,  // User Stack Pointer Register
     kspr: u32,  // Kernel Stack Pointer Register
-    // Page Directory Pointer Register is located in MMU.
+    pdpr: u32,  // Page Directory Pointer Register
     imr: u16,   // Interrupt Mask Register
 }
 
-impl PublicRegisters {
+enum RegisterType {
+    Byte,   // u8
+    Half,   // u16
+    Word,   // u32
+    Float,  // f32
+}
+
+impl RegisterType {
+    pub fn from_reg_ref(reg_ref: u32) -> Option<Self> {
+        if reg_ref < 8 {
+            Some(RegisterType::Word)
+        } else if reg_ref < 16 {
+            Some(RegisterType::Half)
+        } else if reg_ref < 24 {
+            Some(RegisterType::Byte)
+        } else if reg_ref < 32 {
+            Some(RegisterType::Float)
+        } else if reg_ref == 32 {
+            Some(RegisterType::Half)
+        } else if reg_ref < 36 {
+            Some(RegisterType::Word)
+        } else if reg_ref == 36 {
+            Some(RegisterType::Half)
+        } else {
+            None
+        }
+    }
+}
+
+impl Registers {
     pub fn new() -> Self {
-        PublicRegisters {
+        Registers {
             r: [0; 8],
             f: [0.0; 8],
             flags: 0,
             uspr: 0,
             kspr: 0,
+            pdpr: 0,
             imr: 0,
         }
+    }
+
+    pub fn store_8_by_ref(&mut self, reg_ref: u32, value: u8) {
+        if reg_ref < 16 || reg_ref > 23 {
+            panic!("Invalid 8-bit register reference.");
+        }
+        let index = (reg_ref - 16) as usize;
+        let masked = self.r[index] & 0xFFFFFF00;
+        self.r[index] = masked | (value as u32);
+    }
+
+    pub fn store_16_by_ref(&mut self, reg_ref: u32, value: u16) {
+        if (8..16).contains(&reg_ref) {
+            let index = (reg_ref - 8) as usize;
+            let masked = self.r[index] & 0xFFFF0000;
+            self.r[index] = masked | (value as u32);
+        } else if reg_ref == 32 {
+            self.flags = value;
+        } else if reg_ref == 36 {
+            self.imr = value;
+        } else {
+            panic!("Invalid 16-bit register reference.");
+        }
+    }
+
+    pub fn store_32_by_ref(&mut self, reg_ref: u32, value: u32) {
+        if reg_ref < 8 {
+            self.r[reg_ref as usize] = value;
+        } else if reg_ref == 33 {
+            self.uspr = value;
+        } else if reg_ref == 34 {
+            self.kspr = value;
+        } else if reg_ref == 35 {
+            self.pdpr = value;
+        } else {
+            panic!("Invalid 32-bit register reference.")
+        }
+    }
+
+    pub fn store_float_by_ref(&mut self, reg_ref: u32, value: f32) {
+        if reg_ref < 24 || reg_ref > 31 {
+            panic!("Invalid float register reference.");
+        }
+        let index = (reg_ref - 24) as usize;
+        self.f[index] = value;
+    }
+
+    pub fn get_8_by_ref(&self, reg_ref: u32) -> u8 {
+        if reg_ref < 16 || reg_ref > 23 {
+            panic!("Invalid 8-bit register reference.");
+        }
+        let index = (reg_ref - 16) as usize;
+        self.r[index] as u8
+    }
+
+    pub fn get_16_by_ref(&self, reg_ref: u32) -> u16 {
+        match reg_ref {
+            8 => self.r[0] as u16,
+            9 => self.r[1] as u16,
+            10 => self.r[2] as u16,
+            11 => self.r[3] as u16,
+            12 => self.r[4] as u16,
+            13 => self.r[5] as u16,
+            14 => self.r[6] as u16,
+            15 => self.r[7] as u16,
+            32 => self.flags,
+            36 => self.imr,
+            _ => panic!("Invalid 16-bit register reference."),
+        }
+    }
+
+    pub fn get_32_by_ref(&self, reg_ref: u32) -> u32 {
+        if reg_ref < 8 {
+            self.r[reg_ref as usize]
+        } else if reg_ref == 33 {
+            self.uspr
+        } else if reg_ref == 34 {
+            self.kspr
+        } else if reg_ref == 35 {
+            self.pdpr
+        } else {
+            panic!("Invalid 32-bit register reference.")
+        }
+    }
+
+    pub fn get_float_by_ref(&self, reg_ref: u32) -> f32 {
+        if reg_ref < 24 || reg_ref > 31 {
+            panic!("Invalid float register reference.");
+        }
+        let index = (reg_ref - 24) as usize;
+        self.f[index]
     }
 }
 
@@ -40,7 +161,7 @@ pub struct CPU {
     mmu: mmu::MMU,
     interrupt_tx: mpsc::Sender<u32>,
     interrupt_rx: mpsc::Receiver<u32>,
-    registers: PublicRegisters,
+    registers: Registers,
     program_counter: u32,
     kernel_mode: bool,
 }
@@ -52,7 +173,7 @@ impl CPU {
             mmu,
             interrupt_tx,
             interrupt_rx,
-            registers: PublicRegisters::new(),
+            registers: Registers::new(),
             program_counter: 64,  // Start of ROM.
             kernel_mode: true,
         }
@@ -73,6 +194,17 @@ impl CPU {
                 let val = self.$f($address, $fetch);
                 if let None = val {continue;}
                 val.unwrap()
+            }}
+        }
+
+        // Define a macro for privileged operations.
+        macro_rules! privileged {
+            ($action:block) => {{
+                if self.kernel_mode {
+                    $action
+                } else {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                }
             }}
         }
 
@@ -125,17 +257,35 @@ impl CPU {
             // Execute instruction.
             match opcode {
                 0x00 => {  // HALT
-                    if self.kernel_mode {
+                    privileged!({
                         break;
-                    } else {
-                        self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                    }
+                    });
                 }
-                0x01 => {  // PAUSE
-                    unimplemented!()
+                0x82 => {  // STORE register ref into literal address
+                    match RegisterType::from_reg_ref(op1) {
+                        Some(RegisterType::Byte) =>
+                            self.store_8(op2, self.registers.get_8_by_ref(op1)),
+                        Some(RegisterType::Half) =>
+                            self.store_16(op2, self.registers.get_16_by_ref(op1)),
+                        Some(RegisterType::Word) =>
+                            self.store_32(op2, self.registers.get_32_by_ref(op1)),
+                        Some(RegisterType::Float) =>
+                            unimplemented!(),
+                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
+                    };
                 }
-                0x82 => {  // STORE literal value into literal address
-                    self.store_32(op2, op1);
+                0x86 => {  // COPY literal into register ref
+                    match RegisterType::from_reg_ref(op2) {
+                        Some(RegisterType::Byte) =>
+                            self.registers.store_8_by_ref(op2, op1 as u8),
+                        Some(RegisterType::Half) =>
+                            self.registers.store_16_by_ref(op2, op1 as u16),
+                        Some(RegisterType::Word) =>
+                            self.registers.store_32_by_ref(op2, op1),
+                        Some(RegisterType::Float) =>
+                            unimplemented!(),
+                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
+                    };
                 }
                 _ => {  // Unrecognised
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
@@ -148,7 +298,7 @@ impl CPU {
         if self.kernel_mode {
             self.mmu.store_physical_32(address, value);
         } else {
-            self.mmu.store_virtual_32(address, value);
+            self.mmu.store_virtual_32(self.registers.pdpr, address, value);
         }
     }
 
@@ -156,7 +306,7 @@ impl CPU {
         if self.kernel_mode {
             self.mmu.store_physical_16(address, value);
         } else {
-            self.mmu.store_virtual_16(address, value);
+            self.mmu.store_virtual_16(self.registers.pdpr, address, value);
         }
     }
 
@@ -164,7 +314,7 @@ impl CPU {
         if self.kernel_mode {
             self.mmu.store_physical_8(address, value);
         } else {
-            self.mmu.store_virtual_8(address, value);
+            self.mmu.store_virtual_8(self.registers.pdpr, address, value);
         }
     }
 
@@ -172,7 +322,7 @@ impl CPU {
         if self.kernel_mode {
             self.mmu.load_physical_32(address)
         } else {
-            self.mmu.load_virtual_32(address, is_fetch)
+            self.mmu.load_virtual_32(self.registers.pdpr, address, is_fetch)
         }
     }
 
@@ -180,7 +330,7 @@ impl CPU {
         if self.kernel_mode {
             self.mmu.load_physical_16(address)
         } else {
-            self.mmu.load_virtual_16(address, is_fetch)
+            self.mmu.load_virtual_16(self.registers.pdpr, address, is_fetch)
         }
     }
 
@@ -188,7 +338,7 @@ impl CPU {
         if self.kernel_mode {
             self.mmu.load_physical_8(address)
         } else {
-            self.mmu.load_virtual_8(address, is_fetch)
+            self.mmu.load_virtual_8(self.registers.pdpr, address, is_fetch)
         }
     }
 }
