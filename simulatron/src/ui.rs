@@ -9,6 +9,7 @@ enum InternalUICommand {
     SetChar {row: u32, col: u32, character: char},
     SetFg {row: u32, col: u32, r: u8, g: u8, b: u8},
     SetBg {row: u32, col: u32, r: u8, g: u8, b: u8},
+    SetEnabled(bool),
     JoinThread,  // This is not exposed by UICommand; only this module can use it.
 }
 
@@ -28,6 +29,10 @@ impl UICommand {
         UICommand(InternalUICommand::SetBg {row, col, r, g, b})
     }
 
+    pub fn SetEnabled(enabled: bool) -> Self {
+        UICommand(InternalUICommand::SetEnabled(enabled))
+    }
+
     fn JoinThread() -> Self {
         UICommand(InternalUICommand::JoinThread)
     }
@@ -38,8 +43,8 @@ impl UICommand {
 }
 
 pub struct UI {
-    display_tx: Sender<UICommand>,
-    display_rx: Option<Receiver<UICommand>>,
+    ui_tx: Sender<UICommand>,
+    ui_rx: Option<Receiver<UICommand>>,
     keyboard_tx: Option<Sender<KeyMessage>>,
 }
 
@@ -48,17 +53,20 @@ impl UI {
                display_rx: Receiver<UICommand>,
                keyboard_tx: Sender<KeyMessage>) -> Self {
         UI {
-            display_tx,
-            display_rx: Some(display_rx),
+            ui_tx: display_tx,
+            ui_rx: Some(display_rx),
             keyboard_tx: Some(keyboard_tx),
         }
     }
+
+    const TITLE_DISABLED: &'static str = "Simulatron 2.0 Standard Terminal [PROCESSOR HALTED]";
+    const TITLE_ENABLED: &'static str = "Simulatron 2.0 Standard Terminal";
 
     pub fn run(&mut self) {
         // Take temporary ownership of the channels.
         // The unwrap is safe, as the only place where those variables are None
         // is within this method itself.
-        let display_rx = self.display_rx.take().unwrap();
+        let display_rx = self.ui_rx.take().unwrap();
         let keyboard_tx = self.keyboard_tx.take().unwrap();
 
         // The frontend gets included in the binary at compile time. However, format! must
@@ -70,7 +78,7 @@ impl UI {
         // Construct the UI. The WebView struct temporarily takes ownership of the keyboard_tx,
         // it will give it back at the end.
         let mut wv = web_view::builder()
-            .title("Simulatron 2.0 Standard Terminal")
+            .title(UI::TITLE_DISABLED)
             .content(Content::Html(&frontend))
             .size(1060, 600)
             .resizable(false)
@@ -97,19 +105,15 @@ impl UI {
         // Disable right-click and select unless running in debug mode.
         #[cfg(not(debug_assertions))]
         {
-            wv.eval("disable_interaction()").expect("Failed to disable UI interaction.");
+            wv.eval("prevent_interaction()").unwrap();
         }
-
-        // Configure the frontend so it is ready to function.
-        wv.eval("add_keyboard_listener()").expect("UI failed to attach to the keyboard.");
 
         // Set up listener thread for display changes. This thread temporarily takes ownership
         // of display_rx, it will give it back at the end.
         let wv_handle = wv.handle();
         let thread_handle = thread::spawn(move || loop {
             // Receive the next command.
-            let command = display_rx.recv()
-                .expect("Failed to receive command from display controller.");
+            let command = display_rx.recv().unwrap();
             // Match it to the action, executing the corresponding Javascript function.
             match *command.internal() {
                 InternalUICommand::SetChar {row, col, character} => {
@@ -118,19 +122,32 @@ impl UI {
                         {String::from("&nbsp;")} else {character.to_string()};
                     wv_handle.dispatch(move |web_view|
                         web_view.eval(&format!("set_char({},{},'{}')", row, col, character)))
-                        .expect("Failed to set character in UI.");
+                            .unwrap();
                 }
                 InternalUICommand::SetFg {row, col, r, g, b} => {
                     wv_handle.dispatch(move |web_view|
                         web_view.eval(&format!("set_fg({},{},'rgb({},{},{})')",
                                                row, col, r, g, b)))
-                        .expect("Failed to set foreground colour in UI.");
+                            .unwrap();
                 }
                 InternalUICommand::SetBg {row, col, r, g, b} => {
                     wv_handle.dispatch(move |web_view|
                         web_view.eval(&format!("set_bg({},{},'rgb({},{},{})')",
                                                row, col, r, g, b)))
-                        .expect("Failed to set background colour in UI.");
+                            .unwrap();
+                }
+                InternalUICommand::SetEnabled(enable) => {
+                    if enable {
+                        wv_handle.dispatch(|web_view| {
+                            web_view.eval("enable()")?;
+                            web_view.set_title(UI::TITLE_ENABLED)
+                        }).unwrap();
+                    } else {
+                        wv_handle.dispatch(|web_view| {
+                            web_view.eval("disable()")?;
+                            web_view.set_title(UI::TITLE_DISABLED)
+                        }).unwrap();
+                    }
                 }
                 InternalUICommand::JoinThread => {
                     return display_rx;
@@ -139,16 +156,14 @@ impl UI {
         });
 
         // Run the UI and wait for it to exit.
-        let keyboard_tx = wv.run().expect("UI terminated with error.");
+        let keyboard_tx = wv.run().unwrap();
 
         // Join the listener thread.
-        self.display_tx.send(UICommand::JoinThread())
-            .expect("Failed to send JoinThread to UI listener thread.");
-        let display_rx = thread_handle.join()
-            .expect("UI listener thread terminated with error.");
+        self.ui_tx.send(UICommand::JoinThread()).unwrap();
+        let display_rx = thread_handle.join().unwrap();
 
         // Re-acquire ownership of resources.
         self.keyboard_tx = Some(keyboard_tx);
-        self.display_rx = Some(display_rx);
+        self.ui_rx = Some(display_rx);
     }
 }

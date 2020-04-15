@@ -1,7 +1,8 @@
 use std::sync::mpsc;
 use std::thread;
 
-use crate::mmu;
+use crate::mmu::MMU;
+use crate::ui::UICommand;
 
 pub const INTERRUPT_SYSCALL: u32 = 0;
 pub const INTERRUPT_KEYBOARD: u32 = 1;
@@ -222,7 +223,8 @@ impl InterruptLatch {
 }
 
 pub struct CPU {
-    mmu: mmu::MMU,
+    ui_tx: mpsc::Sender<UICommand>,
+    mmu: MMU,
     interrupt_tx: mpsc::Sender<u32>,
     interrupts: InterruptLatch,
     registers: Registers,
@@ -231,9 +233,10 @@ pub struct CPU {
 }
 
 impl CPU {
-    pub fn new(mmu: mmu::MMU, interrupt_tx: mpsc::Sender<u32>,
-               interrupt_rx: mpsc::Receiver<u32>) -> Self {
+    pub fn new(ui_tx: mpsc::Sender<UICommand>, mmu: MMU,
+               interrupt_tx: mpsc::Sender<u32>, interrupt_rx: mpsc::Receiver<u32>) -> Self {
         CPU {
+            ui_tx,
             mmu,
             interrupt_tx,
             interrupts: InterruptLatch::new(interrupt_rx),
@@ -246,7 +249,9 @@ impl CPU {
     pub fn start(mut self) -> thread::JoinHandle<Self> {
         // The thread takes ownership of the CPU object, then returns it on being joined.
         thread::spawn(move || {
+            self.ui_tx.send(UICommand::SetEnabled(true)).unwrap();
             self.fetch_execute_cycle();
+            self.ui_tx.send(UICommand::SetEnabled(false)).unwrap();
             self
         })
     }
