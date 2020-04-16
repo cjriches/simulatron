@@ -9,28 +9,28 @@ The Simulatron uses memory-mapped IO, so various devices can be accessed within 
 
 Physical addresses are mapped as follows. All ranges are inclusive.
 
-|     Addresses    |                   Mapping                    | Read/Write |
+|  Addresses (hex) |                   Mapping                    | Read/Write |
 | ----------------:| -------------------------------------------- | ---------- |
-|             0-31 | Interrupt handler addresses (32 bytes)       | Both       |
-|            32-63 | Reserved (32 bytes)                          | Neither    |
-|           64-575 | ROM (512 bytes)                              | Read       |
-|         576-2575 | Display characters (2000 bytes)              | Write      |
-|        2576-4575 | Display foreground colours (2000 bytes)      | Write      |
-|        4576-6575 | Display background colours (2000 bytes)      | Write      |
-|             6576 | Keyboard key buffer (1 byte)                 | Read       |
-|             6577 | Keyboard metadata buffer (1 byte)            | Read       |
-|        6578-8171 | Reserved (1594 bytes)                        | Neither    |
-|             8172 | Disk A status (1 byte)                       | Read       |
-|        8173-8176 | Disk A blocks available (4 bytes)            | Read       |
-|        8177-8180 | Disk A block address (4 bytes)               | Write      |
-|             8181 | Disk A command register (1 byte)             | Write      |
-|             8182 | Disk B status (1 byte)                       | Read       |
-|        8183-8186 | Disk B blocks available (4 bytes)            | Read       |
-|        8187-8190 | Disk B block address (4 bytes)               | Write      |
-|             8191 | Disk B command register (1 byte)             | Write      |
-|       8192-12287 | Disk A data (4096 bytes)                     | Both       |
-|      12288-16383 | Disk B data (4096 bytes)                     | Both       |
-| 16384-4294967295 | RAM (4,294,950,912 bytes = just under 4 GiB) | Both       |
+|             0-1F | Interrupt handler addresses (32 bytes)       | Both       |
+|            20-3F | Reserved (32 bytes)                          | Neither    |
+|           40-23F | ROM (512 bytes)                              | Read       |
+|          240-A0F | Display characters (2000 bytes)              | Write      |
+|         A10-11DF | Display foreground colours (2000 bytes)      | Write      |
+|        11E0-19AF | Display background colours (2000 bytes)      | Write      |
+|             19B0 | Keyboard key buffer (1 byte)                 | Read       |
+|             19B1 | Keyboard metadata buffer (1 byte)            | Read       |
+|        19B2-1FEB | Reserved (1594 bytes)                        | Neither    |
+|             1FEC | Disk A status (1 byte)                       | Read       |
+|        1FED-1FF0 | Disk A blocks available (4 bytes)            | Read       |
+|        1FF1-1FF4 | Disk A block address (4 bytes)               | Write      |
+|             1FF5 | Disk A command register (1 byte)             | Write      |
+|             1FF6 | Disk B status (1 byte)                       | Read       |
+|        1FF7-1FFA | Disk B blocks available (4 bytes)            | Read       |
+|        1FFB-1FFE | Disk B block address (4 bytes)               | Write      |
+|             1FFF | Disk B command register (1 byte)             | Write      |
+|        2000-2FFF | Disk A data (4096 bytes)                     | Both       |
+|        3000-3FFF | Disk B data (4096 bytes)                     | Both       |
+|    4000-FFFFFFFF | RAM (4,294,950,912 bytes = just under 4 GiB) | Both       |
 
 Note that frames 0 and 1 are taken up by various mappings, frames 2 and 3 are Disk A and B data respectively, and all remaining frames are RAM.
 
