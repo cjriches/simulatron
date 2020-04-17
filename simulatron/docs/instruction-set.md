@@ -74,7 +74,7 @@ Executing IRETURN causes the following to happen as a single atomic operation:
 3. The FLAGS are popped off the stack.
 4. If bit 15 of the flags was 0, the processor will enter user mode.
 
-##### Interrupt definitions
+### Interrupt definitions
 | Number | Name              | Cause                                                       |
 | ------:| ----------------- | ----------------------------------------------------------- |
 |      0 | Syscall           | The `SYSCALL` instruction.                                  |
@@ -112,88 +112,144 @@ A full list of all instructions is given below. Some instructions are mapped to 
 
 Operands are ordered such that data flows from right-to-left. This makes it possible for destination register references to be inspected before fetching the source operand, which in turn makes it possible for the source operand length to vary on the destination register. Of course, any assembly language implementations do not need to follow this pattern, and are free to switch operand orders in the source code if a left-to-right flow is deemed to be more intuitive.
 
-##### Privileged instructions
+### Privileged instructions
 These are only executable in kernel mode. If the CPU is in user mode, an illegal operation interrupt will be raised.
-* `HALT`: Immediately halt the processor. No further instructions will be executed under any circumstances, and the machine is safe to power off.
-* `PAUSE`: Temporarily halt the processor. Any enabled interrupt will wake the processor, which will resume from where it left off and immediately execute the interrupt handler.
-* `TIMER num_milliseconds`: Set the interrupt timer. It will send a timer interrupt after at least the given number of milliseconds, repeating indefinitely with the same period. A value of zero will disable the timer.
-* `USERMODE`: Pop the target address off the stack, enter user mode, and jump to it. Note that the address will be interpreted as virtual by the current page table.
-* `IRETURN`: See the interrupt section.
 
-##### Data movement instructions
-* `LOAD register address`: Load from the given memory address into the given register.
-* `STORE address register`: Store the given register into the given memory address.
-* `COPY destination source`: Either load a register with a constant value, or copy one register into another. This can copy between integer and floating-point registers, and automatically converts the values into the destination representation. Note that converting a float to an integer will truncate towards zero.
-* `SWAP register address`: Atomically exchange the values of a memory location and a register.
-* `PUSH register`: Decrement the stack pointer by the appropriate amount and then copy the given register to the stack.
-* `POP register`: Copy the top of the stack into the given register and then increment the stack pointer by the appropriate amount.
-* `BLOCKCOPY length destination source`: Copy `length` bytes from the source memory address to the destination memory address. 
+`HALT`: Immediately halt the processor. No further instructions will be executed under any circumstances, and the machine is safe to power off.
+
+`PAUSE`: Temporarily halt the processor. Any enabled interrupt will wake the processor, which will resume from where it left off and immediately execute the interrupt handler.
+
+`TIMER num_milliseconds`: Set the interrupt timer. It will send a timer interrupt after at least the given number of milliseconds, repeating indefinitely with the same period. A value of zero will disable the timer.
+
+`USERMODE`: Pop the target address off the stack, enter user mode, and jump to it. Note that the address will be interpreted as virtual by the current page table.
+
+`IRETURN`: See the interrupt section.
+
+### Data movement instructions
+`LOAD register address`: Load from the given memory address into the given register.
+
+`STORE address register`: Store the given register into the given memory address.
+
+`COPY destination source`: Either load a register with a constant value, or copy one register into another. This can copy between integer and floating-point registers, and automatically converts the values into the destination representation. Note that converting a float to an integer will truncate towards zero.
+
+`SWAP register address`: Atomically exchange the values of a memory location and a register.
+
+`PUSH register`: Decrement the stack pointer by the appropriate amount and then copy the given register to the stack.
+
+`POP register`: Copy the top of the stack into the given register and then increment the stack pointer by the appropriate amount.
+
+`BLOCKCOPY length destination source`: Copy `length` bytes from the source memory address to the destination memory address. 
 
 Note that PUSH and POP will use KSPR if in kernel mode, and USPR if in user mode.
 
-##### Arithmetic instructions
+### Arithmetic instructions
 Operand types must match, i.e. `ADD r0 f0` would be illegal.
-* `NEGATE register`: Arithmetically negate the given register.
-* `ADD register value`: Add the given value to the given register.
-* `ADDCARRY register value`: Add the given value plus the `C` flag to the given register. Not applicable to floats.
-* `SUB register value`: Subtract the given value from the given register.
-* `SUBBORROW register value`: Subtract the given value plus the `C` flag from the given register. Not applicable to floats.
-* `MULT register value`: Multiply the given register by the given value.
-* `SDIV register value`: Signed division; divide the given register by the given value. Integer division will truncate towards zero.
-* `UDIV register value`: Unsigned division; divide the given register by the given value. Truncates towards negative infinity. Not applicable to floats.
-* `SREM register value`: Signed division; divide the given register by the given value and store the remainder in the register.
-* `UREM register value`: Unsigned division; divide the given register by the given value and store the remainder in the register. Not applicable to floats.
 
-##### Bitwise instructions
+`NEGATE register`: Arithmetically negate the given register.
+
+`ADD register value`: Add the given value to the given register.
+
+`ADDCARRY register value`: Add the given value plus the `C` flag to the given register. Not applicable to floats.
+
+`SUB register value`: Subtract the given value from the given register.
+
+`SUBBORROW register value`: Subtract the given value plus the `C` flag from the given register. Not applicable to floats.
+
+`MULT register value`: Multiply the given register by the given value.
+
+`SDIV register value`: Signed division; divide the given register by the given value. Integer division will truncate towards zero.
+
+`UDIV register value`: Unsigned division; divide the given register by the given value. Truncates towards negative infinity. Not applicable to floats.
+
+`SREM register value`: Signed division; divide the given register by the given value and store the remainder in the register.
+
+`UREM register value`: Unsigned division; divide the given register by the given value and store the remainder in the register. Not applicable to floats.
+
+### Bitwise instructions
 None of these instructions are applicable to floats.
-* `NOT register`: Logically negate the given register.
-* `AND register value`: Logically AND the given register with the given value.
-* `OR register value`: Logically OR the given register with the given value.
-* `XOR register value`: Logically XOR the given register with the given value.
-* `LSHIFT register num_bits`: Shift the given register left by the given number of bits.
-* `RSHIFTL register num_bits`: Logical/Unsigned shift the given register right by the given number of bits; left-most bits will be filled with zeroes.
-* `RSHIFTA register num_bits`: Arithmetic/Signed shift the given register right by the given number of bits; left-most bits will be filled with the sign bit.
-* `LROT register num_bits`: Rotate the given register left by the given number of bits.
-* `RROT register num_bits`: Rotate the given register right by the given number of bits.
-* `LROTCARRY register num_bits`: Rotate the given register left by the given number of bits, including the `C` flag in the rotation as if it were to the left of the register.
-* `RROTCARRY register num_bits`: Rotate the given register right by the given number of bits, including the `C` flag in the rotation as if it were to the right of the register.
 
-##### Flow control instructions
-* `JUMP address`: Unconditionally jump to the given address.
-* `COMPARE value1 value2`: Subtract `value1` from `value2` and discard the result. Flags will still be set.
-* `JEQUAL address`: Jump to the given address if the last comparison had `value1 = value2`, i.e. `Z`=1.
-* `JNOTEQUAL address`: Jump to the given address if the last comparison had `value1 != value2`, i.e. `Z`=0.
-* `JGREATER address`: Jump to the given address if the last comparison had `value1 < value2` (signed comparison), i.e. `N`=`O` and `Z`=0.
-* `JGREATEREQ address`: Jump to the given address if the last comparison had `value1 <= value2` (signed comparison), i.e. `N`=`O` or `Z`=1.
-* `JABOVE address`: Like JGREATER but unsigned, i.e. `C`=0 and `Z`=0.
-* `JABOVEEQ address`: Like JGREATEREQ but unsigned, i.e. `C`=0 or `Z`=1.
-* `JLESSER address`: Jump to the given address if the last comparison had `value1 > value2` (signed comparison), i.e. `N`!=`O`.
-* `JLESSEREQ address`: Jump to the given address if the last comparison had `value1 >= value2` (signed comparison), i.e. `N`!=`O` or `Z`=1.
-* `JBELOW address`: Like JLESSER but unsigned, i.e. `C`=1.
-* `JBELOWEQ address`: Like JLESSEREQ but unsigned, i.e. `C`=1 or `Z`=1.
-* `JOVERFLOW address`: Jump to the given address if the last operation overflowed, i.e. `O`=1.
-* `JNOTOVERFLOW address`: Jump to the given address if the last operation didn't overflow, i.e. `O`=0.
-* `CALL address`: Push the address of the next instruction followed by the current flags to the stack, and unconditionally jump to the given address.
-* `RETURN`: Pops flags from the stack, then pops the return address from the stack and unconditionally jumps to it.
-* `SYSCALL`: Raise a syscall interrupt.
+`NOT register`: Logically negate the given register.
+
+`AND register value`: Logically AND the given register with the given value.
+
+`OR register value`: Logically OR the given register with the given value.
+
+`XOR register value`: Logically XOR the given register with the given value.
+
+`LSHIFT register num_bits`: Shift the given register left by the given number of bits.
+
+`RSHIFTL register num_bits`: Logical/Unsigned shift the given register right by the given number of bits; left-most bits will be filled with zeroes.
+
+`RSHIFTA register num_bits`: Arithmetic/Signed shift the given register right by the given number of bits; left-most bits will be filled with the sign bit.
+
+`LROT register num_bits`: Rotate the given register left by the given number of bits.
+
+`RROT register num_bits`: Rotate the given register right by the given number of bits.
+
+`LROTCARRY register num_bits`: Rotate the given register left by the given number of bits, including the `C` flag in the rotation as if it were to the left of the register.
+
+`RROTCARRY register num_bits`: Rotate the given register right by the given number of bits, including the `C` flag in the rotation as if it were to the right of the register.
+
+### Flow control instructions
+`JUMP address`: Unconditionally jump to the given address.
+
+`COMPARE value1 value2`: Subtract `value1` from `value2` and discard the result. Flags will still be set.
+
+`JEQUAL address`: Jump to the given address if the last comparison had `value1 = value2`, i.e. `Z`=1.
+
+`JNOTEQUAL address`: Jump to the given address if the last comparison had `value1 != value2`, i.e. `Z`=0.
+
+`JGREATER address`: Jump to the given address if the last comparison had `value1 < value2` (signed comparison), i.e. `N`=`O` and `Z`=0.
+
+`JGREATEREQ address`: Jump to the given address if the last comparison had `value1 <= value2` (signed comparison), i.e. `N`=`O` or `Z`=1.
+
+`JABOVE address`: Like JGREATER but unsigned, i.e. `C`=0 and `Z`=0.
+
+`JABOVEEQ address`: Like JGREATEREQ but unsigned, i.e. `C`=0 or `Z`=1.
+
+`JLESSER address`: Jump to the given address if the last comparison had `value1 > value2` (signed comparison), i.e. `N`!=`O`.
+
+`JLESSEREQ address`: Jump to the given address if the last comparison had `value1 >= value2` (signed comparison), i.e. `N`!=`O` or `Z`=1.
+
+`JBELOW address`: Like JLESSER but unsigned, i.e. `C`=1.
+
+`JBELOWEQ address`: Like JLESSEREQ but unsigned, i.e. `C`=1 or `Z`=1.
+
+`JOVERFLOW address`: Jump to the given address if the last operation overflowed, i.e. `O`=1.
+
+`JNOTOVERFLOW address`: Jump to the given address if the last operation didn't overflow, i.e. `O`=0.
+
+`CALL address`: Push the address of the next instruction followed by the current flags to the stack, and unconditionally jump to the given address.
+
+`RETURN`: Pop flags from the stack, then pop the return address from the stack and unconditionally jump to it.
+
+`SYSCALL`: Raise a syscall interrupt.
 
 ## Opcodes
 Opcodes have a fixed length of one byte. The number of operands depends on the opcode; the length of operands depends on the opcode and potentially on other operands that appear earlier. 
 
 If an unmapped opcode is encountered, no operation will take place and an illegal operation interrupt will be raised.
 
-##### Operand types
-* `Literal address`: A 4-byte literal address.
-* `Register ref address`: A 1-byte register reference to one of r0-r7, the contents of which will be interpreted to contain a 4-byte address.
-* `Literal integer`: A 4-byte literal integer.
-* `Register ref integer`: A 1-byte register reference to any integer register, the contents of which will be interpreted as an integer of the appropriate length.
-* `Literal byte`: A 1-byte literal integer.
-* `Register ref byte`: A 1-byte register reference to one of r0b-r7b, the contents of which will be interpreted to contain a 1-byte integer.
-* `Register ref`: A 1-byte reference to any register.
-* `Variable literal`: A variable-length literal which may represent a 1, 2, or 4 byte integer, or a 4-byte float. These only appear after a `Register ref` operand; the length of the register referred to defines the literal length.
-* `Variable integer literal`: A variable-length literal which may represent a 1, 2, or 4 byte integer. These only appear after a `Register ref integer` operand; the length of the register referred to defines the literal length.
+### Operand types
+`Literal address`: A 4-byte literal address.
 
-##### Opcode table
+`Register ref address`: A 1-byte register reference to one of r0-r7, the contents of which will be interpreted to contain a 4-byte address.
+
+`Literal integer`: A 4-byte literal integer.
+
+`Register ref integer`: A 1-byte register reference to any integer register, the contents of which will be interpreted as an integer of the appropriate length.
+
+`Literal byte`: A 1-byte literal integer.
+
+`Register ref byte`: A 1-byte register reference to one of r0b-r7b, the contents of which will be interpreted to contain a 1-byte integer.
+
+`Register ref`: A 1-byte reference to any register.
+
+`Variable literal`: A variable-length literal which may represent a 1, 2, or 4 byte integer, or a 4-byte float. These only appear after a `Register ref` operand; the length of the register referred to defines the literal length.
+
+`Variable integer literal`: A variable-length literal which may represent a 1, 2, or 4 byte integer. These only appear after a `Register ref integer` operand; the length of the register referred to defines the literal length.
+
+### Opcode table
 |Opcode|Instruction |Operand 1 type      |Operand 2 type          |Operand 3 type      |
 |-----:|------------|--------------------|------------------------|--------------------|
 |  0x00|HALT        |                    |                        |                    |
