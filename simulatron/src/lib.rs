@@ -35,54 +35,68 @@ impl Simulatron {
 
         // Set up test ROM.
         let mut test_rom = [0; 512];
-        test_rom[0] = 0x86;  // Copy literal
-        test_rom[4] = 0x24;  // character '$'
-        test_rom[8] = 0x10;  // into r0b.
+        test_rom[0] = 0x0A;  // Copy literal
+        test_rom[1] = 0x10;  // into r0b
+        test_rom[2] = 0x24;  // character '$'.
 
-        test_rom[9] = 0x82;  // Store
-        test_rom[13] = 0x10; // r0b into
-        test_rom[16] = 0x02; // address of first display character.
-        test_rom[17] = 0x40;
+        test_rom[3] = 0x08;  // Store into
+        test_rom[4] = 0x00;
+        test_rom[5] = 0x00;
+        test_rom[6] = 0x02;
+        test_rom[7] = 0x40;  // first display character
+        test_rom[8] = 0x10;  // r0b.
 
-        test_rom[18] = 0x86; // Copy literal
-        test_rom[21] = 0x50; // address 0x00005000
-        test_rom[26] = 0x22; // into kspr.
+        test_rom[9] = 0x0A;  // Copy literal
+        test_rom[10] = 0x22; // into kspr
+        test_rom[11] = 0x00;
+        test_rom[12] = 0x00;
+        test_rom[13] = 0x50;
+        test_rom[14] = 0x00; // address 0x00005000.
 
-        test_rom[27] = 0x86; // Copy literal
-        test_rom[30] = 0x40; // address 0x00004000
-                             // into r0.
+        test_rom[15] = 0x0A; // Copy literal
+        test_rom[16] = 0x00; // into r0
+        test_rom[17] = 0x00;
+        test_rom[18] = 0x00;
+        test_rom[19] = 0x40;
+        test_rom[20] = 0x00; // address 0x00004000.
 
-        test_rom[36] = 0x82; // Store
-                             // r0 into
-        test_rom[44] = 0x04; // keyboard interrupt handler.
+        test_rom[21] = 0x08; // Store into
+        test_rom[22] = 0x00;
+        test_rom[23] = 0x00;
+        test_rom[24] = 0x00;
+        test_rom[25] = 0x04; // keyboard interrupt handler
+        test_rom[26] = 0x00; // r0.
 
-        test_rom[45] = 0x86; // Copy literal
-        test_rom[49] = 0x05; // instruction IRETURN
-        test_rom[53] = 0x10; // into r0b.
+        test_rom[27] = 0x0A; // Copy literal
+        test_rom[28] = 0x11; // into r1b
+        test_rom[29] = 0x05; // instruction IRETURN.
 
-        test_rom[54] = 0x82; // Store
-        test_rom[58] = 0x10; // r0b into
-        test_rom[61] = 0x40; // literal address 0x00004000.
+        test_rom[30] = 0x09; // Store into
+        test_rom[31] = 0x00; // address in r0
+        test_rom[32] = 0x11; // r1b.
 
-        test_rom[63] = 0x86; // Copy literal
-        test_rom[67] = 0x02; // keyboard interrupt only
-        test_rom[71] = 0x24; // into imr.
+        test_rom[33] = 0x0A; // Copy literal
+        test_rom[34] = 0x24; // into imr
+        test_rom[35] = 0x00;
+        test_rom[36] = 0x02; // keyboard interrupt only.
 
-        test_rom[72] = 0x01; // Pause.
+        test_rom[37] = 0x01; // Pause.
 
-        test_rom[73] = 0x80; // Load from literal
-        test_rom[76] = 0x19; // address of key buffer
-        test_rom[77] = 0xB0;
-        test_rom[81] = 0x10; // into r0b.
+        test_rom[38] = 0x06; // Load
+        test_rom[39] = 0x10; // into r0b
+        test_rom[40] = 0x00;
+        test_rom[41] = 0x00;
+        test_rom[42] = 0x19;
+        test_rom[43] = 0xB0; // key buffer.
 
-        test_rom[82] = 0x82; // Store
-        test_rom[86] = 0x10; // r0b into
-        test_rom[89] = 0x02; // address of second display character.
-        test_rom[90] = 0x41;
+        test_rom[44] = 0x08; // Store into
+        test_rom[45] = 0x00;
+        test_rom[46] = 0x00;
+        test_rom[47] = 0x02;
+        test_rom[48] = 0x41; // second display character
+        test_rom[49] = 0x10; // r0b.
 
-        test_rom[91] = 0x01; // Pause.
-
-        test_rom[92] = 0x00; // Halt.
+        test_rom[50] = 0x01; // Pause.
 
         // Create components.
         let disk_a = Arc::new(Mutex::new(disk::DiskController::new(

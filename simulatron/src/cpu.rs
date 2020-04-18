@@ -314,6 +314,14 @@ impl CPU {
             }}
         }
 
+        // A macro for printing on debug build.
+        macro_rules! debug {
+            ($($x:expr),*) => {{
+                #[cfg(debug_assertions)]
+                println!($($x),*);
+            }}
+        }
+
         let mut pausing = false;
         loop {
             // Check for interrupts.
@@ -352,16 +360,20 @@ impl CPU {
             let opcode = fetch_8!();
 
             // Decode and execute instruction.
+            debug!();
             match opcode {
                 0x00 => {  // HALT
+                    debug!("HALT");
                     privileged!();
                     break;
                 }
                 0x01 => {  // PAUSE
+                    debug!("PAUSE");
                     privileged!();
                     pausing = true;
                 }
                 0x05 => {  // IRETURN
+                    debug!("IRETURN");
                     privileged!();
                     // Restore the IMR from the stack.
                     self.registers.imr = pop!(pop_16);
@@ -377,52 +389,66 @@ impl CPU {
                     self.registers.flags = flags & 0b0111111111111111;
                 }
                 0x06 => {  // LOAD literal address into register ref
+                    debug!("LOAD literal address");
                     let reg_ref_dest = fetch_8!();
                     let literal_address = fetch_32!();
+                    debug!("Dest: {:#x} Address: {:#x}", reg_ref_dest, literal_address);
                     self.instruction_load(reg_ref_dest, literal_address);
                 }
                 0x07 => {  // LOAD register ref address into register ref
+                    debug!("LOAD register ref address");
                     let reg_ref_dest = fetch_8!();
                     let reg_ref_address = fetch_8!();
                     if let Some(RegisterType::Word) = RegisterType::from_reg_ref(reg_ref_address) {
                         let address = self.registers.load_32_by_ref(reg_ref_address);
+                        debug!("Dest: {:#x} Address: {:#x}", reg_ref_dest, address);
                         self.instruction_load(reg_ref_dest, address);
                     } else {
                         self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                     }
                 }
                 0x08 => {  // STORE register ref into literal address
+                    debug!("STORE literal address");
                     let literal_address = fetch_32!();
                     let reg_ref_source = fetch_8!();
+                    debug!("Address: {:#x} Source: {:#x}", literal_address, reg_ref_source);
                     self.instruction_store(literal_address, reg_ref_source);
                 }
                 0x09 => {  // STORE register ref into register ref address
+                    debug!("STORE register ref address");
                     let reg_ref_address = fetch_8!();
                     let reg_ref_source = fetch_8!();
                     if let Some(RegisterType::Word) = RegisterType::from_reg_ref(reg_ref_address) {
                         let address = self.registers.load_32_by_ref(reg_ref_address);
+                        debug!("Address: {:#x} Source: {:#x}", address, reg_ref_source);
                         self.instruction_store(address, reg_ref_source);
                     } else {
                         self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                     }
                 }
                 0x0A => {  // COPY variable literal into register ref
+                    debug!("COPY variable literal");
                     let reg_ref_dest = fetch_8!();
+                    debug!("into {:#x}", reg_ref_dest);
                     match RegisterType::from_reg_ref(reg_ref_dest) {
                         Some(RegisterType::Byte) => {
                             let val = fetch_8!();
+                            debug!("Byte: {:#x}", val);
                             self.registers.store_8_by_ref(reg_ref_dest, val);
                         }
                         Some(RegisterType::Half) => {
                             let val = fetch_16!();
+                            debug!("Half: {:#x}", val);
                             self.registers.store_16_by_ref(reg_ref_dest, val);
                         }
                         Some(RegisterType::Word) => {
                             let val = fetch_32!();
+                            debug!("Word: {:#x}", val);
                             self.registers.store_32_by_ref(reg_ref_dest, val);
                         }
                         Some(RegisterType::Float) => {
                             let val = fetch_float!();
+                            debug!("Float: {}", val);
                             self.registers.store_float_by_ref(reg_ref_dest, val);
                         }
                         None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
