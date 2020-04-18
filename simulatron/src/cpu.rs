@@ -1,5 +1,6 @@
 use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 use crate::mmu::MMU;
 use crate::ui::UICommand;
@@ -222,8 +223,14 @@ impl InterruptLatch {
     }
 }
 
+enum TimerCommand {
+    SetTimer(u32),
+    JoinThread,
+}
+
 pub struct CPU {
     ui_tx: mpsc::Sender<UICommand>,
+    timer_tx: Option<mpsc::Sender<TimerCommand>>,
     mmu: MMU,
     interrupt_tx: mpsc::Sender<u32>,
     interrupts: InterruptLatch,
@@ -237,6 +244,7 @@ impl CPU {
                interrupt_tx: mpsc::Sender<u32>, interrupt_rx: mpsc::Receiver<u32>) -> Self {
         CPU {
             ui_tx,
+            timer_tx: None,
             mmu,
             interrupt_tx,
             interrupts: InterruptLatch::new(interrupt_rx),
@@ -249,9 +257,39 @@ impl CPU {
     pub fn start(mut self) -> thread::JoinHandle<Self> {
         // The thread takes ownership of the CPU object, then returns it on being joined.
         thread::spawn(move || {
+            let (timer_tx, timer_rx) = mpsc::channel();
+            let timer_interrupt_tx = self.interrupt_tx.clone();
+            let timer_thread = thread::spawn(move || {
+                let mut interval = 0;
+                loop {
+                    if interval == 0 {
+                        // Wait indefinitely for a command.
+                        match timer_rx.recv().unwrap() {
+                            TimerCommand::SetTimer(new_interval) => interval = new_interval,
+                            TimerCommand::JoinThread => return,
+                        };
+                    } else {
+                        // Wait for a command for up to `interval`, then send a timer interrupt.
+                        match timer_rx.recv_timeout(Duration::from_millis(interval as u64)) {
+                            Ok(TimerCommand::SetTimer(new_interval)) => interval = new_interval,
+                            Ok(TimerCommand::JoinThread) => return,
+                            Err(mpsc::RecvTimeoutError::Timeout) =>
+                                timer_interrupt_tx.send(INTERRUPT_TIMER).unwrap(),
+                            Err(mpsc::RecvTimeoutError::Disconnected) => panic!(),
+                        };
+                    }
+                }
+            });
+            self.timer_tx = Some(timer_tx);
+
             self.ui_tx.send(UICommand::SetEnabled(true)).unwrap();
             self.fetch_execute_cycle();
             self.ui_tx.send(UICommand::SetEnabled(false)).unwrap();
+
+            let timer_tx = self.timer_tx.take().unwrap();
+            timer_tx.send(TimerCommand::JoinThread).unwrap();
+            timer_thread.join().unwrap();
+
             self
         })
     }
@@ -371,6 +409,27 @@ impl CPU {
                     debug!("PAUSE");
                     privileged!();
                     pausing = true;
+                }
+                0x02 => {  // TIMER with literal word
+                    debug!("TIMER literal word");
+                    privileged!();
+                    let milliseconds = fetch_32!();
+                    debug!("Timer milliseconds: {:#x}", milliseconds);
+                    self.timer_tx.as_ref().unwrap()
+                        .send(TimerCommand::SetTimer(milliseconds)).unwrap();
+                }
+                0x03 => {  // TIMER with register ref word
+                    debug!("TIMER register ref word");
+                    privileged!();
+                    let reg_ref = fetch_8!();
+                    if let Some(RegisterType::Word) = RegisterType::from_reg_ref(reg_ref) {
+                        let milliseconds = self.registers.load_32_by_ref(reg_ref);
+                        debug!("Timer milliseconds: {:#x}", milliseconds);
+                        self.timer_tx.as_ref().unwrap()
+                            .send(TimerCommand::SetTimer(milliseconds)).unwrap();
+                    } else {
+                        self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    }
                 }
                 0x05 => {  // IRETURN
                     debug!("IRETURN");
@@ -900,5 +959,97 @@ mod tests {
         // Assert that the interrupt handler ran and returned.
         assert_eq!(cpu.registers.r[5], 0x00005566);
         assert_eq!(cpu.registers.r[6], 0x00000011);
+    }
+
+    #[test]
+    fn test_timer_literal_interval() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x22;  // into kspr
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x50;
+        rom[5] = 0x00;  // address 0x00005000.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x00;  // into r0
+        rom[8] = 0x00;
+        rom[9] = 0x00;
+        rom[10] = 0x40;
+        rom[11] = 0x00; // address 0x00004000.
+
+        rom[12] = 0x08; // Store into
+        rom[13] = 0x00;
+        rom[14] = 0x00;
+        rom[15] = 0x00;
+        rom[16] = 0x07; // timer interrupt handler
+        rom[17] = 0x00; // r0.
+
+        // Address 0x4000 is HALT, so we should halt on interrupt.
+
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x24; // into imr
+        rom[20] = 0x00;
+        rom[21] = 0x80; // timer interrupt only.
+
+        rom[22] = 0x02; // Set timer to
+        rom[23] = 0x00;
+        rom[24] = 0x00;
+        rom[25] = 0x00;
+        rom[26] = 0x64; // 100 milliseconds.
+
+        rom[27] = 0x01; // Pause.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        // Simply by halting we confirm that the test was successful.
+    }
+
+    #[test]
+    fn test_timer_reg_interval() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x22;  // into kspr
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x50;
+        rom[5] = 0x00;  // address 0x00005000.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x00;  // into r0
+        rom[8] = 0x00;
+        rom[9] = 0x00;
+        rom[10] = 0x40;
+        rom[11] = 0x00; // address 0x00004000.
+
+        rom[12] = 0x08; // Store into
+        rom[13] = 0x00;
+        rom[14] = 0x00;
+        rom[15] = 0x00;
+        rom[16] = 0x07; // timer interrupt handler
+        rom[17] = 0x00; // r0.
+
+        // Address 0x4000 is HALT, so we should halt on interrupt.
+
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x24; // into imr
+        rom[20] = 0x00;
+        rom[21] = 0x80; // timer interrupt only.
+
+        rom[22] = 0x0A; // Copy literal
+        rom[23] = 0x00; // into r0
+        rom[24] = 0x00;
+        rom[25] = 0x00;
+        rom[26] = 0x00;
+        rom[27] = 0x64; // 100 milliseconds.
+
+        rom[28] = 0x03; // Set timer to
+        rom[29] = 0x00; // interval in r0.
+
+        rom[30] = 0x01; // Pause.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        // Simply by halting we confirm that the test was successful.
     }
 }

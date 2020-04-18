@@ -230,18 +230,22 @@ Opcodes have a fixed length of one byte. The number of operands depends on the o
 
 If an unmapped opcode is encountered, no operation will take place and an illegal operation interrupt will be raised.
 
+Note that if an opcode takes multiple register references to registers with unspecified lengths, the destination register will define the size of the operation.
+
 ### Operand types
 `Literal address`: A 4-byte literal address.
 
 `Register ref address`: A 1-byte register reference to any 32-bit integer register, the contents of which will be interpreted to contain a 4-byte address.
-
-`Literal integer`: A 4-byte literal integer.
 
 `Register ref integer`: A 1-byte register reference to any integer register, the contents of which will be interpreted as an integer of the appropriate length.
 
 `Literal byte`: A 1-byte literal integer.
 
 `Register ref byte`: A 1-byte register reference to one of r0b-r7b, the contents of which will be interpreted to contain a 1-byte integer.
+
+`Literal word`: A 4-byte literal integer.
+
+`Register ref word`: A 1-byte register reference to any 32-bit integer register, the contents of which will be interpreted to contain a 4-byte integer. This is equivalent in all but name to `Register ref address`.
 
 `Register ref`: A 1-byte reference to any register.
 
@@ -254,8 +258,8 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 |-----:|------------|--------------------|------------------------|--------------------|
 |  0x00|HALT        |                    |                        |                    |
 |  0x01|PAUSE       |                    |                        |                    |
-|  0x02|TIMER       |Literal integer     |                        |                    |
-|  0x03|TIMER       |Register ref integer|                        |                    |
+|  0x02|TIMER       |Literal word        |                        |                    |
+|  0x03|TIMER       |Register ref word   |                        |                    |
 |  0x04|USERMODE    |                    |                        |                    |
 |  0x05|IRETURN     |                    |                        |                    |
 |  0x06|LOAD        |Register ref        |Literal address         |                    |
@@ -268,14 +272,14 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 |  0x0D|SWAP        |Register ref        |Register ref address    |                    |
 |  0x0E|PUSH        |Register ref        |                        |                    |
 |  0x0F|POP         |Register ref        |                        |                    |
-|  0x10|BLOCKCOPY   |Literal integer     |Literal address         |Literal address     |
-|  0x11|BLOCKCOPY   |Literal integer     |Literal address         |Register ref address|
-|  0x12|BLOCKCOPY   |Literal integer     |Register ref address    |Literal address     |
-|  0x13|BLOCKCOPY   |Literal integer     |Register ref address    |Register ref address|
-|  0x14|BLOCKCOPY   |Register ref integer|Literal address         |Literal address     |
-|  0x15|BLOCKCOPY   |Register ref integer|Literal address         |Register ref address|
-|  0x16|BLOCKCOPY   |Register ref integer|Register ref address    |Literal address     |
-|  0x17|BLOCKCOPY   |Register ref integer|Register ref address    |Register ref address|
+|  0x10|BLOCKCOPY   |Literal word        |Literal address         |Literal address     |
+|  0x11|BLOCKCOPY   |Literal word        |Literal address         |Register ref address|
+|  0x12|BLOCKCOPY   |Literal word        |Register ref address    |Literal address     |
+|  0x13|BLOCKCOPY   |Literal word        |Register ref address    |Register ref address|
+|  0x14|BLOCKCOPY   |Register ref word   |Literal address         |Literal address     |
+|  0x15|BLOCKCOPY   |Register ref word   |Literal address         |Register ref address|
+|  0x16|BLOCKCOPY   |Register ref word   |Register ref address    |Literal address     |
+|  0x17|BLOCKCOPY   |Register ref word   |Register ref address    |Register ref address|
 |  0x18|NEGATE      |Register ref        |                        |                    |
 |  0x19|ADD         |Register ref        |Variable literal        |                    |
 |  0x1A|ADD         |Register ref        |Register ref            |                    |
