@@ -25,6 +25,7 @@ struct Registers {
     imr: u16,   // Interrupt Mask Register
 }
 
+// TODO differentiate privileged registers
 enum RegisterType {
     Byte,   // u8
     Half,   // u16
@@ -431,6 +432,16 @@ impl CPU {
                         self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                     }
                 }
+                0x04 => {  // USERMODE
+                    debug!("USERMODE");
+                    privileged!();
+                    // Get the target address.
+                    self.program_counter = pop!(pop_32);
+                    // Clear flags.
+                    self.registers.flags = 0;
+                    // Enter user mode.
+                    self.kernel_mode = false;
+                }
                 0x05 => {  // IRETURN
                     debug!("IRETURN");
                     privileged!();
@@ -509,6 +520,54 @@ impl CPU {
                             let val = fetch_float!();
                             debug!("Float: {}", val);
                             self.registers.store_float_by_ref(reg_ref_dest, val);
+                        }
+                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
+                    }
+                }
+                0x0E => {  // PUSH
+                    debug!("PUSH");
+                    let reg_ref = fetch_8!();
+                    debug!("Register: {:#x}", reg_ref);
+                    match RegisterType::from_reg_ref(reg_ref) {
+                        Some(RegisterType::Byte) => {
+                            let val = self.registers.load_8_by_ref(reg_ref);
+                            self.push_8(val);
+                        }
+                        Some(RegisterType::Half) => {
+                            let val = self.registers.load_16_by_ref(reg_ref);
+                            self.push_16(val);
+                        }
+                        Some(RegisterType::Word) => {
+                            let val = self.registers.load_32_by_ref(reg_ref);
+                            self.push_32(val);
+                        }
+                        Some(RegisterType::Float) => {
+                            let val = self.registers.load_float_by_ref(reg_ref);
+                            self.push_float(val);
+                        }
+                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
+                    }
+                }
+                0x0F => {  // POP
+                    debug!("POP");
+                    let reg_ref = fetch_8!();
+                    debug!("Register: {:#x}", reg_ref);
+                    match RegisterType::from_reg_ref(reg_ref) {
+                        Some(RegisterType::Byte) => {
+                            let val = pop!(pop_8);
+                            self.registers.store_8_by_ref(reg_ref, val);
+                        }
+                        Some(RegisterType::Half) => {
+                            let val = pop!(pop_16);
+                            self.registers.store_16_by_ref(reg_ref, val);
+                        }
+                        Some(RegisterType::Word) => {
+                            let val = pop!(pop_32);
+                            self.registers.store_32_by_ref(reg_ref, val);
+                        }
+                        Some(RegisterType::Float) => {
+                            let val = pop!(pop_float);
+                            self.registers.store_float_by_ref(reg_ref, val);
                         }
                         None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
                     }
@@ -628,6 +687,17 @@ impl CPU {
         }
     }
 
+    fn push_float(&mut self, value: f32) {
+        let spr = if self.kernel_mode {
+            &mut self.registers.kspr
+        } else {
+            &mut self.registers.uspr
+        };
+        *spr -= 4;
+        let spr = *spr;  // Copy value and drop mutable reference so we are allowed to call store_float.
+        self.store_float(spr, value);
+    }
+
     fn push_32(&mut self, value: u32) {
         let spr = if self.kernel_mode {
             &mut self.registers.kspr
@@ -661,17 +731,26 @@ impl CPU {
         self.store_8(spr, value);
     }
 
+    fn pop_float(&mut self) -> Option<f32> {
+        let spr = if self.kernel_mode {
+            &mut self.registers.kspr
+        } else {
+            &mut self.registers.uspr
+        };
+        let old_spr = *spr;
+        *spr += 4;
+        self.load_float(old_spr, false)
+    }
+
     fn pop_32(&mut self) -> Option<u32> {
         let spr = if self.kernel_mode {
             &mut self.registers.kspr
         } else {
             &mut self.registers.uspr
         };
-        // Perform the dance of the borrow checker.
         let old_spr = *spr;
         *spr += 4;
-        let result = self.load_32(old_spr, false);
-        result
+        self.load_32(old_spr, false)
     }
 
     fn pop_16(&mut self) -> Option<u16> {
@@ -682,8 +761,7 @@ impl CPU {
         };
         let old_spr = *spr;
         *spr += 2;
-        let result = self.load_16(old_spr, false);
-        result
+        self.load_16(old_spr, false)
     }
 
     fn pop_8(&mut self) -> Option<u8> {
@@ -694,8 +772,7 @@ impl CPU {
         };
         let old_spr = *spr;
         *spr += 1;
-        let result = self.load_8(old_spr, false);
-        result
+        self.load_8(old_spr, false)
     }
 }
 
@@ -866,6 +943,178 @@ mod tests {
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(cpu.registers.r[6], 0x0000FF34);
+    }
+
+    #[test]
+    fn test_kernel_stack() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x22;  // into kspr
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x80;
+        rom[5] = 0x00;  // address 0x00008000.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x08;  // into r0h
+        rom[8] = 0xFF;
+        rom[9] = 0xFF;  // some random number.
+
+        rom[10] = 0x0E; // Push to the stack
+        rom[11] = 0x08; // r0h.
+
+        rom[12] = 0x0A; // Copy literal
+        rom[13] = 0x10; // into r0b
+        rom[14] = 0xAA; // some random number.
+
+        rom[15] = 0x0E; // Push to the stack
+        rom[16] = 0x10; // r0b.
+
+        rom[17] = 0x0F; // Pop from the stack
+        rom[18] = 0x09; // into r1h.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.registers.r[1], 0x0000AAFF);
+        assert_eq!(cpu.registers.kspr, 0x00007FFF);
+        assert_eq!(cpu.mmu.load_physical_32(0x00007FFC), Some(0x00AAFFFF));
+    }
+
+    #[test]
+    fn test_user_mode() {
+        let mut rom = [0; 512];
+        // Store a number for the user process to find.
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x99;  // some random number.
+
+        rom[3] = 0x08;  // Store into
+        rom[4] = 0x00;
+        rom[5] = 0x00;
+        rom[6] = 0x40;
+        rom[7] = 0x40;  // address 0x00004040
+        rom[8] = 0x10;  // r0b.
+
+        // Set the user stack pointer.
+        rom[9] = 0x0A;  // Copy literal
+        rom[10] = 0x21; // into uspr
+        rom[11] = 0x00;
+        rom[12] = 0x00;
+        rom[13] = 0x00;
+        rom[14] = 0x64; // virtual address 0x64.
+
+        // Set the page directory pointer.
+        rom[15] = 0x0A; // Copy literal
+        rom[16] = 0x23; // into pdpr
+        rom[17] = 0x00;
+        rom[18] = 0x00;
+        rom[19] = 0x00;
+        rom[20] = 0xC0; // ROM byte 0x80 (128).
+
+        // Write the user mode instructions to RAM.
+
+        // (Load the number we left behind).
+        rom[21] = 0x0A; // Copy literal
+        rom[22] = 0x08; // into r0h
+        rom[23] = 0x06; // LOAD instruction
+        rom[24] = 0x17; // into r7b.
+
+        rom[25] = 0x08; // Store into
+        rom[26] = 0x00;
+        rom[27] = 0x00;
+        rom[28] = 0x40;
+        rom[29] = 0x00; // address 0x00004000
+        rom[30] = 0x08; // r0h.
+
+        rom[31] = 0x0A; // Copy literal
+        rom[32] = 0x00; // into r0
+        rom[33] = 0x00;
+        rom[34] = 0x00;
+        rom[35] = 0x00;
+        rom[36] = 0x40; // virtual address 0x40.
+
+        rom[37] = 0x08; // Store into
+        rom[38] = 0x00;
+        rom[39] = 0x00;
+        rom[40] = 0x40;
+        rom[41] = 0x02; // address 0x00004002
+        rom[42] = 0x00; // r0.
+
+        // (Push that number to the user stack).
+        rom[43] = 0x0A; // Copy literal
+        rom[44] = 0x08; // into r0h
+        rom[45] = 0x0E; // PUSH instruction
+        rom[46] = 0x17; // register ref r7b.
+
+        rom[47] = 0x08; // Store into
+        rom[48] = 0x00;
+        rom[49] = 0x00;
+        rom[50] = 0x40;
+        rom[51] = 0x06; // address 0x000040006
+        rom[52] = 0x08; // r0h.
+
+        // Address 0x00004008 will be HALT, so the user process will cause an
+        // illegal operation interrupt.
+
+        // Enable the illegal operation interrupt. We won't set a handler, so it will jump to
+        // memory location zero, which will contain HALT, so the machine will actually halt.
+        // We do need to set kspr though.
+
+        // Set the kernel stack pointer.
+        rom[53] = 0x0A; // Copy literal
+        rom[54] = 0x22; // into kspr
+        rom[55] = 0x00;
+        rom[56] = 0x00;
+        rom[57] = 0xA0;
+        rom[58] = 0x00; // address 0x0000A000.
+
+        // Enable the interrupt.
+        rom[59] = 0x0A; // Copy literal
+        rom[60] = 0x24; // into imr
+        rom[61] = 0x00;
+        rom[62] = 0x40; // illegal operation interrupt only.
+
+        // Push the user mode address to the stack.
+        rom[63] = 0x0A; // Copy literal
+        rom[64] = 0x00; // into r0
+        rom[65] = 0x00;
+        rom[66] = 0x00;
+        rom[67] = 0x00;
+        rom[68] = 0x00; // virtual address 0x0.
+
+        rom[69] = 0x0E; // Push to the stack
+        rom[70] = 0x00; // r0.
+
+        // Almost forgot; we need to write the page table entry to main memory.
+        // Sadly we can't put that in ROM, although the page directory entry will be.
+        rom[71] = 0x0A; // Copy literal
+        rom[72] = 0x00; // into r0
+        rom[73] = 0x00;
+        rom[74] = 0x00;
+        rom[75] = 0x40;
+        rom[76] = 0x1F; // Valid, Present, RWX entry at 0x00004000.
+
+        rom[77] = 0x08; // Store into
+        rom[78] = 0x00;
+        rom[79] = 0x00;
+        rom[80] = 0xB0;
+        rom[81] = 0x00; // address 0x0000B000
+        rom[82] = 0x00; // r0.
+
+        // Enter user mode!
+        rom[83] = 0x04;
+
+        // Page directory entry.
+        rom[128] = 0x00;
+        rom[129] = 0x00;
+        rom[130] = 0xB0;
+        rom[131] = 0x01; // Valid entry at 0x0000B000.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        // Assert the user mode process stored in its stack correctly.
+        assert_eq!(cpu.registers.uspr, 0x00000063);
+        assert_eq!(cpu.mmu.load_physical_8(0x00004063), Some(0x99));
     }
 
     #[test]

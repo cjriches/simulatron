@@ -121,7 +121,7 @@ These are only executable in kernel mode. If the CPU is in user mode, an illegal
 
 `TIMER num_milliseconds`: Set the interrupt timer. It will send a timer interrupt after at least the given number of milliseconds, repeating indefinitely with the same period. A value of zero will disable the timer.
 
-`USERMODE`: Pop the target address off the stack, enter user mode, and jump to it. Note that the address will be interpreted as virtual by the current page table.
+`USERMODE`: Pop the target address off the stack, clear the flags, enter user mode, and jump to the target address. Note that the address will be interpreted as virtual by the current page table.
 
 `IRETURN`: See the interrupt section.
 
