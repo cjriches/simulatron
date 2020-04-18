@@ -233,7 +233,7 @@ If an unmapped opcode is encountered, no operation will take place and an illega
 ### Operand types
 `Literal address`: A 4-byte literal address.
 
-`Register ref address`: A 1-byte register reference to one of r0-r7, the contents of which will be interpreted to contain a 4-byte address.
+`Register ref address`: A 1-byte register reference to any 32-bit integer register, the contents of which will be interpreted to contain a 4-byte address.
 
 `Literal integer`: A 4-byte literal integer.
 

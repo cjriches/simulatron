@@ -32,7 +32,7 @@ enum RegisterType {
 }
 
 impl RegisterType {
-    pub fn from_reg_ref(reg_ref: u32) -> Option<Self> {
+    pub fn from_reg_ref(reg_ref: u8) -> Option<Self> {
         if reg_ref < 8 {
             Some(RegisterType::Word)
         } else if reg_ref < 16 {
@@ -66,7 +66,7 @@ impl Registers {
         }
     }
 
-    pub fn store_8_by_ref(&mut self, reg_ref: u32, value: u8) {
+    pub fn store_8_by_ref(&mut self, reg_ref: u8, value: u8) {
         if reg_ref < 16 || reg_ref > 23 {
             panic!("Invalid 8-bit register reference.");
         }
@@ -75,7 +75,7 @@ impl Registers {
         self.r[index] = masked | (value as u32);
     }
 
-    pub fn store_16_by_ref(&mut self, reg_ref: u32, value: u16) {
+    pub fn store_16_by_ref(&mut self, reg_ref: u8, value: u16) {
         if (8..16).contains(&reg_ref) {
             let index = (reg_ref - 8) as usize;
             let masked = self.r[index] & 0xFFFF0000;
@@ -90,7 +90,7 @@ impl Registers {
         }
     }
 
-    pub fn store_32_by_ref(&mut self, reg_ref: u32, value: u32) {
+    pub fn store_32_by_ref(&mut self, reg_ref: u8, value: u32) {
         if reg_ref < 8 {
             self.r[reg_ref as usize] = value;
         } else if reg_ref == 33 {
@@ -104,7 +104,7 @@ impl Registers {
         }
     }
 
-    pub fn store_float_by_ref(&mut self, reg_ref: u32, value: f32) {
+    pub fn store_float_by_ref(&mut self, reg_ref: u8, value: f32) {
         if reg_ref < 24 || reg_ref > 31 {
             panic!("Invalid float register reference.");
         }
@@ -112,7 +112,7 @@ impl Registers {
         self.f[index] = value;
     }
 
-    pub fn get_8_by_ref(&self, reg_ref: u32) -> u8 {
+    pub fn load_8_by_ref(&self, reg_ref: u8) -> u8 {
         if reg_ref < 16 || reg_ref > 23 {
             panic!("Invalid 8-bit register reference.");
         }
@@ -120,7 +120,7 @@ impl Registers {
         self.r[index] as u8
     }
 
-    pub fn get_16_by_ref(&self, reg_ref: u32) -> u16 {
+    pub fn load_16_by_ref(&self, reg_ref: u8) -> u16 {
         match reg_ref {
             8 => self.r[0] as u16,
             9 => self.r[1] as u16,
@@ -136,7 +136,7 @@ impl Registers {
         }
     }
 
-    pub fn get_32_by_ref(&self, reg_ref: u32) -> u32 {
+    pub fn load_32_by_ref(&self, reg_ref: u8) -> u32 {
         if reg_ref < 8 {
             self.r[reg_ref as usize]
         } else if reg_ref == 33 {
@@ -150,7 +150,7 @@ impl Registers {
         }
     }
 
-    pub fn get_float_by_ref(&self, reg_ref: u32) -> f32 {
+    pub fn load_float_by_ref(&self, reg_ref: u8) -> f32 {
         if reg_ref < 24 || reg_ref > 31 {
             panic!("Invalid float register reference.");
         }
@@ -257,11 +257,40 @@ impl CPU {
     }
 
     fn fetch_execute_cycle(&mut self) {
-        // Define a macro for fetching from memory and continuing the loop if it fails.
-        macro_rules! load {
-            ($f:ident, $address:expr, $fetch:expr) => {{
-                let val = self.$f($address, $fetch);
+        // Define macros for fetching opcodes and operands from memory and
+        // continuing the loop on failure.
+        macro_rules! fetch_float {
+            () => {{
+                let val = self.load_float(self.program_counter, true);
                 if let None = val {continue;}
+                self.program_counter += 4;
+                val.unwrap()
+            }}
+        }
+
+        macro_rules! fetch_32 {
+            () => {{
+                let val = self.load_32(self.program_counter, true);
+                if let None = val {continue;}
+                self.program_counter += 4;
+                val.unwrap()
+            }}
+        }
+
+        macro_rules! fetch_16 {
+            () => {{
+                let val = self.load_16(self.program_counter, true);
+                if let None = val {continue;}
+                self.program_counter += 2;
+                val.unwrap()
+            }}
+        }
+
+        macro_rules! fetch_8 {
+            () => {{
+                let val = self.load_8(self.program_counter, true);
+                if let None = val {continue;}
+                self.program_counter += 1;
                 val.unwrap()
             }}
         }
@@ -320,44 +349,9 @@ impl CPU {
             }
 
             // Fetch instruction.
-            let opcode = load!(load_8, self.program_counter, true);
-            self.program_counter += 1;
-            println!("Opcode is: {:#x}", opcode);
+            let opcode = fetch_8!();
 
-            // Retrieve operands.
-            let op1;
-            let op2;
-            let op3;
-            if opcode < 32 {
-                // No operands.
-                op1 = 0;
-                op2 = 0;
-                op3 = 0;
-            } else if opcode < 128 {
-                // 1 operand.
-                op1 = load!(load_32, self.program_counter, true);
-                self.program_counter += 4;
-                op2 = 0;
-                op3 = 0;
-            } else if opcode < 224 {
-                // 2 operands.
-                op1 = load!(load_32, self.program_counter, true);
-                self.program_counter += 4;
-                op2 = load!(load_32, self.program_counter, true);
-                self.program_counter += 4;
-                op3 = 0;
-            } else {
-                // 3 operands.
-                op1 = load!(load_32, self.program_counter, true);
-                self.program_counter += 4;
-                op2 = load!(load_32, self.program_counter, true);
-                self.program_counter += 4;
-                op3 = load!(load_32, self.program_counter, true);
-                self.program_counter += 4;
-            }
-            println!("Operands are: {:#x}, {:#x}, {:#x}", op1, op2, op3);
-
-            // Execute instruction.
+            // Decode and execute instruction.
             match opcode {
                 0x00 => {  // HALT
                     privileged!();
@@ -382,58 +376,117 @@ impl CPU {
                     // Set the flags.
                     self.registers.flags = flags & 0b0111111111111111;
                 }
-                0x80 => {  // LOAD literal address into register ref
-                    match RegisterType::from_reg_ref(op2) {
+                0x06 => {  // LOAD literal address into register ref
+                    let reg_ref_dest = fetch_8!();
+                    let literal_address = fetch_32!();
+                    self.instruction_load(reg_ref_dest, literal_address);
+                }
+                0x07 => {  // LOAD register ref address into register ref
+                    let reg_ref_dest = fetch_8!();
+                    let reg_ref_address = fetch_8!();
+                    if let Some(RegisterType::Word) = RegisterType::from_reg_ref(reg_ref_address) {
+                        let address = self.registers.load_32_by_ref(reg_ref_address);
+                        self.instruction_load(reg_ref_dest, address);
+                    } else {
+                        self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    }
+                }
+                0x08 => {  // STORE register ref into literal address
+                    let literal_address = fetch_32!();
+                    let reg_ref_source = fetch_8!();
+                    self.instruction_store(literal_address, reg_ref_source);
+                }
+                0x09 => {  // STORE register ref into register ref address
+                    let reg_ref_address = fetch_8!();
+                    let reg_ref_source = fetch_8!();
+                    if let Some(RegisterType::Word) = RegisterType::from_reg_ref(reg_ref_address) {
+                        let address = self.registers.load_32_by_ref(reg_ref_address);
+                        self.instruction_store(address, reg_ref_source);
+                    } else {
+                        self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    }
+                }
+                0x0A => {  // COPY variable literal into register ref
+                    let reg_ref_dest = fetch_8!();
+                    match RegisterType::from_reg_ref(reg_ref_dest) {
                         Some(RegisterType::Byte) => {
-                            let val = load!(load_8, op1, false);
-                            self.registers.store_8_by_ref(op2, val);
+                            let val = fetch_8!();
+                            self.registers.store_8_by_ref(reg_ref_dest, val);
                         }
                         Some(RegisterType::Half) => {
-                            let val = load!(load_16, op1, false);
-                            self.registers.store_16_by_ref(op2, val);
+                            let val = fetch_16!();
+                            self.registers.store_16_by_ref(reg_ref_dest, val);
                         }
                         Some(RegisterType::Word) => {
-                            let val = load!(load_32, op1, false);
-                            self.registers.store_32_by_ref(op2, val);
+                            let val = fetch_32!();
+                            self.registers.store_32_by_ref(reg_ref_dest, val);
                         }
                         Some(RegisterType::Float) => {
-                            let val = u32_to_f32(load!(load_32, op1, false));
-                            self.registers.store_float_by_ref(op2, val);
+                            let val = fetch_float!();
+                            self.registers.store_float_by_ref(reg_ref_dest, val);
                         }
-                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
-                    };
-                }
-                0x82 => {  // STORE register ref into literal address
-                    match RegisterType::from_reg_ref(op1) {
-                        Some(RegisterType::Byte) =>
-                            self.store_8(op2, self.registers.get_8_by_ref(op1)),
-                        Some(RegisterType::Half) =>
-                            self.store_16(op2, self.registers.get_16_by_ref(op1)),
-                        Some(RegisterType::Word) =>
-                            self.store_32(op2, self.registers.get_32_by_ref(op1)),
-                        Some(RegisterType::Float) =>
-                            self.store_32(op2, f32_to_u32(self.registers.get_float_by_ref(op1))),
-                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
-                    };
-                }
-                0x86 => {  // COPY literal into register ref
-                    match RegisterType::from_reg_ref(op2) {
-                        Some(RegisterType::Byte) =>
-                            self.registers.store_8_by_ref(op2, op1 as u8),
-                        Some(RegisterType::Half) =>
-                            self.registers.store_16_by_ref(op2, op1 as u16),
-                        Some(RegisterType::Word) =>
-                            self.registers.store_32_by_ref(op2, op1),
-                        Some(RegisterType::Float) =>
-                            self.registers.store_float_by_ref(op2, u32_to_f32(op1)),
-                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
-                    };
+                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
+                    }
                 }
                 _ => {  // Unrecognised
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                 }
             }
         }
+    }
+
+    fn instruction_load(&mut self, destination: u8, address: u32) {
+        match RegisterType::from_reg_ref(destination) {
+            Some(RegisterType::Byte) => {
+                let result = self.load_8(address, false);
+                if let Some(val) = result {
+                    self.registers.store_8_by_ref(destination, val);
+                }
+            }
+            Some(RegisterType::Half) => {
+                let result = self.load_16(address, false);
+                if let Some(val) = result {
+                    self.registers.store_16_by_ref(destination, val);
+                }
+            }
+            Some(RegisterType::Word) => {
+                let result = self.load_32(address, false);
+                if let Some(val) = result {
+                    self.registers.store_32_by_ref(destination, val);
+                }
+            }
+            Some(RegisterType::Float) => {
+                let result = self.load_float(address, false);
+                if let Some(val) = result {
+                    self.registers.store_float_by_ref(destination, val);
+                }
+            }
+            None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
+        };
+    }
+
+    fn instruction_store(&mut self, address: u32, source: u8) {
+        match RegisterType::from_reg_ref(source) {
+            Some(RegisterType::Byte) =>
+                self.store_8(address, self.registers.load_8_by_ref(source)),
+            Some(RegisterType::Half) =>
+                self.store_16(address, self.registers.load_16_by_ref(source)),
+            Some(RegisterType::Word) =>
+                self.store_32(address, self.registers.load_32_by_ref(source)),
+            Some(RegisterType::Float) =>
+                self.store_float(address, self.registers.load_float_by_ref(source)),
+            None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
+        };
+    }
+
+    // WARNING!
+    // This is theoretically very dangerous. No conversion is performed; we
+    // just reinterpret the bit pattern as the new type. This is exactly what we
+    // want to let us store float values in RAM, but if misused could result in
+    // undefined behaviour.
+    fn store_float(&mut self, address: u32, value: f32) {
+        let converted = unsafe {std::mem::transmute::<f32, u32>(value)};
+        self.store_32(address, converted);
     }
 
     fn store_32(&mut self, address: u32, value: u32) {
@@ -458,6 +511,12 @@ impl CPU {
         } else {
             self.mmu.store_virtual_8(self.registers.pdpr, address, value);
         }
+    }
+
+    fn load_float(&mut self, address: u32, is_fetch: bool) -> Option<f32> {
+        self.load_32(address, is_fetch).map(|int_val| {
+            unsafe {std::mem::transmute::<u32, f32>(int_val)}
+        })
     }
 
     fn load_32(&mut self, address: u32, is_fetch: bool) -> Option<u32> {
@@ -555,24 +614,6 @@ impl CPU {
     }
 }
 
-// WARNING!
-// These functions are theoretically very dangerous. They do not perform any conversion, they
-// just reinterpret the bit pattern as the new type. This is exactly what we
-// want to let us store float values in RAM, but if misused could result in
-// undefined behaviour.
-
-fn u32_to_f32(u: u32) -> f32 {
-    unsafe {
-        std::mem::transmute::<u32, f32>(u)
-    }
-}
-
-fn f32_to_u32(f: f32) -> u32 {
-    unsafe {
-        std::mem::transmute::<f32, u32>(f)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -631,12 +672,13 @@ mod tests {
     #[test]
     fn test_copy_literal() {
         let mut rom = [0; 512];
-        rom[0] = 0x86;  // Copy literal
-        rom[1] = 0x42;  // some random number
-        rom[2] = 0x06;
-        rom[3] = 0x96;
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x03;  // into r3
+        rom[2] = 0x42;
+        rom[3] = 0x06;
         rom[4] = 0x96;
-        rom[8] = 0x03;  // into r3.
+        rom[5] = 0x96;  // some random number.
+
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
@@ -646,17 +688,19 @@ mod tests {
     #[test]
     fn test_store_literal_address() {
         let mut rom = [0; 512];
-        rom[0] = 0x86;  // Copy literal
-        rom[1] = 0x12;  // some random number
-        rom[2] = 0x34;
-        rom[3] = 0x56;
-        rom[4] = 0x78;
-                        // into r0.
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x00;  // into r0
+        rom[2] = 0x12;
+        rom[3] = 0x34;
+        rom[4] = 0x56;
+        rom[5] = 0x78;  // some random number.
 
-        rom[9] = 0x82;  // Store
-                        // r0 into
-        rom[16] = 0x4A; // address 0x00004ABC.
-        rom[17] = 0xBC;
+        rom[6] = 0x08;  // Store into
+        rom[7] = 0x00;
+        rom[8] = 0x00;
+        rom[9] = 0x4A;
+        rom[10] = 0xBC; // address 0x00004ABC
+        rom[11] = 0x00; // r0.
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
@@ -664,18 +708,47 @@ mod tests {
     }
 
     #[test]
+    fn test_store_reg_address() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x00;  // into r0
+        rom[2] = 0xAB;
+        rom[3] = 0xCD;
+        rom[4] = 0xEF;
+        rom[5] = 0x00;  // some random number.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x01;  // into r1
+        rom[8] = 0x00;
+        rom[9] = 0x00;
+        rom[10] = 0x4A;
+        rom[11] = 0xBC; // address 0x00004ABC.
+
+        rom[12] = 0x09; // Store into
+        rom[13] = 0x01; // address in r1
+        rom[14] = 0x00; // r0.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.mmu.load_physical_32(0x00004ABC), Some(0xABCDEF00));
+    }
+
+    #[test]
     fn test_load_literal_address() {
         let mut rom = [0; 512];
-        rom[0] = 0x86;  // Copy literal
-        rom[1] = 0xFF;  // some random number
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x07;  // into r7
         rom[2] = 0xFF;
         rom[3] = 0xFF;
         rom[4] = 0xFF;
-        rom[8] = 0x07;  // into r7.
+        rom[5] = 0xFF;  // some random number.
 
-        rom[9] = 0x80;  // Load from
-        rom[13] = 0x80; // ROM byte 0x40 (64)
-        rom[17] = 0x17; // into r7b.
+        rom[6] = 0x06;  // Load
+        rom[7] = 0x17;  // into r7b
+        rom[8] = 0x00;
+        rom[9] = 0x00;
+        rom[10] = 0x00;
+        rom[11] = 0x80; // ROM byte 0x40 (64).
 
         rom[64] = 0x55;
 
@@ -685,28 +758,64 @@ mod tests {
     }
 
     #[test]
+    fn test_load_reg_address() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x0E;  // into r6h
+        rom[2] = 0xFF;
+        rom[3] = 0xFF;  // some random number.
+
+        rom[4] = 0x0A;  // Copy literal
+        rom[5] = 0x00;  // into r0
+        rom[6] = 0x00;
+        rom[7] = 0x00;
+        rom[8] = 0x00;
+        rom[9] = 0x80;  // ROM byte 0x40 (64).
+
+        rom[10] = 0x07; // Load
+        rom[11] = 0x16; // into r6b
+        rom[12] = 0x00; // address in r0.
+
+        rom[64] = 0x34;
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.registers.r[6], 0x0000FF34);
+    }
+
+    #[test]
     fn test_keyboard() {
         let mut rom = [0; 512];
-        rom[0] = 0x86;  // Copy literal
-        rom[3] = 0x50;  // address 0x00005000
-        rom[8] = 0x22;  // into kspr.
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x22;  // into kspr
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x50;
+        rom[5] = 0x00;  // address 0x00005000.
 
-        rom[9] = 0x86;  // Copy literal
-        rom[12] = 0x40; // address 0x00004000
-                        // into r0.
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x00;  // into r0
+        rom[8] = 0x00;
+        rom[9] = 0x00;
+        rom[10] = 0x40;
+        rom[11] = 0x00; // address 0x00004000.
 
-        rom[18] = 0x82; // Store
-                        // r0 into
-        rom[26] = 0x04; // keyboard interrupt handler.
+        rom[12] = 0x08; // Store into
+        rom[13] = 0x00;
+        rom[14] = 0x00;
+        rom[15] = 0x00;
+        rom[16] = 0x04; // keyboard interrupt handler
+        rom[17] = 0x00; // r0.
 
         // Address 0x4000 is HALT, so we should halt on interrupt.
 
-        rom[27] = 0x86; // Copy literal
-        rom[31] = 0x02; // keyboard interrupt only
-        rom[35] = 0x24; // into imr.
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x24; // into imr
+        rom[20] = 0x00;
+        rom[21] = 0x02; // keyboard interrupt only.
 
-        rom[36] = 0x01; // Pause (will only be reached if this happens before interrupt sent).
-        rom[37] = 0x01; // Pause (should never happen, acts as a fail condition).
+        rom[22] = 0x01; // Pause (will only be reached if this happens before interrupt sent).
+        rom[23] = 0x01; // Pause (should never happen, acts as a fail condition).
 
         const KEY: &str = "F";
         let (cpu, ui_commands) = run(rom, Some(KeyMessage::Key(KEY, false, false).unwrap()));
@@ -720,32 +829,43 @@ mod tests {
     #[test]
     fn test_interrupt_handle_kernel_mode() {
         let mut rom = [0; 512];
-        rom[0] = 0x86;  // Copy literal
-        rom[3] = 0x50;  // address 0x00005000
-        rom[8] = 0x22;  // into kspr.
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x22;  // into kspr
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x50;
+        rom[5] = 0x00;  // address 0x00005000.
 
-        rom[9] = 0x86;  // Copy literal
-        rom[13] = 0xC0; // address 0x000000C0 (ROM byte 128)
-                        // into r0.
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x00;  // into r0
+        rom[8] = 0x00;
+        rom[9] = 0x00;
+        rom[10] = 0x00;
+        rom[11] = 0xC0; // ROM byte 0x80 (128).
 
-        rom[18] = 0x82; // Store
-                        // r0 into
-        rom[26] = 0x04; // keyboard interrupt handler.
+        rom[12] = 0x08; // Store into
+        rom[13] = 0x00;
+        rom[14] = 0x00;
+        rom[15] = 0x00;
+        rom[16] = 0x04; // keyboard interrupt handler
+        rom[17] = 0x00; // r0.
 
-        rom[27] = 0x86; // Copy literal
-        rom[31] = 0x02; // keyboard interrupt only
-        rom[35] = 0x24; // into imr.
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x24; // into imr
+        rom[20] = 0x00;
+        rom[21] = 0x02; // keyboard interrupt only.
 
-        rom[36] = 0x86; // Copy literal
-        rom[40] = 0x11; // some random number
-        rom[44] = 0x16; // into r6b.
+        rom[22] = 0x0A; // Copy literal
+        rom[23] = 0x16; // into r6b
+        rom[24] = 0x11; // some random number.
 
         // Interrupt handler.
-        rom[128] = 0x86; // Copy literal
-        rom[131] = 0x55; // some random number
-        rom[132] = 0x66;
-        rom[136] = 0x0D; // into r5h.
-        rom[137] = 0x05; // IRETURN.
+        rom[128] = 0x0A; // Copy literal
+        rom[129] = 0x0D; // into r5h
+        rom[130] = 0x55;
+        rom[131] = 0x66; // some random number.
+
+        rom[132] = 0x05; // IRETURN.
 
         const KEY: &str = "Escape";
         let (cpu, ui_commands) = run(rom, Some(KeyMessage::Key(KEY, false, false).unwrap()));
