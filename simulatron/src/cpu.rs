@@ -25,6 +25,7 @@ struct Registers {
     imr: u16,   // Interrupt Mask Register
 }
 
+#[derive(PartialEq, Eq)]
 enum RegisterType {
     Byte,   // u8
     Half,   // u16
@@ -539,6 +540,47 @@ impl CPU {
                         None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
                     }
                 }
+                0x0B => {  // COPY register to register
+                    debug!("COPY register");
+                    let reg_ref_dest = fetch_8!();
+                    let reg_ref_source = fetch_8!();
+                    debug!("from {:#x} to {:#x}", reg_ref_source, reg_ref_dest);
+                    let source_type = RegisterType::from_reg_ref(reg_ref_source);
+                    let dest_type = RegisterType::from_reg_ref(reg_ref_dest);
+                    if source_type != dest_type {
+                        self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                        continue;
+                    }
+                    match dest_type {
+                        Some(RegisterType::Byte) => {
+                            let val = self.registers.load_8_by_ref(reg_ref_source);
+                            self.registers.store_8_by_ref(reg_ref_dest, val);
+                        }
+                        Some(RegisterType::Half) => {
+                            let val = self.registers.load_16_by_ref(reg_ref_source);
+                            self.registers.store_16_by_ref(reg_ref_dest, val);
+                        }
+                        Some(RegisterType::PrivilegedHalf) => {
+                            privileged!();
+                            let val = self.registers.load_16_by_ref(reg_ref_source);
+                            self.registers.store_16_by_ref(reg_ref_dest, val);
+                        }
+                        Some(RegisterType::Word) => {
+                            let val = self.registers.load_32_by_ref(reg_ref_source);
+                            self.registers.store_32_by_ref(reg_ref_dest, val);
+                        }
+                        Some(RegisterType::PrivilegedWord) => {
+                            privileged!();
+                            let val = self.registers.load_32_by_ref(reg_ref_source);
+                            self.registers.store_32_by_ref(reg_ref_dest, val);
+                        }
+                        Some(RegisterType::Float) => {
+                            let val = self.registers.load_float_by_ref(reg_ref_source);
+                            self.registers.store_float_by_ref(reg_ref_dest, val);
+                        }
+                        None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
+                    }
+                }
                 0x0E => {  // PUSH
                     debug!("PUSH");
                     let reg_ref = fetch_8!();
@@ -924,6 +966,33 @@ mod tests {
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(cpu.registers.r[3], 0x42069696);
+    }
+
+    #[test]
+    fn test_copy_reg() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x03;  // into r3
+        rom[2] = 0x13;
+        rom[3] = 0x57;
+        rom[4] = 0x9B;
+        rom[5] = 0xDF;  // some random number.
+
+        rom[6] = 0x0B;  // Copy register
+        rom[7] = 0x08;  // into r0h
+        rom[8] = 0x0B;  // from r3h.
+
+        // Now try an operation with unmatched sizes. Should raise an interrupt.
+        rom[9] = 0x0B;
+        rom[10] = 0x01; // into r1
+        rom[11] = 0x0B; // from r3h.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.registers.r[3], 0x13579BDF);
+        assert_eq!(cpu.registers.r[0], 0x00009BDF);
+        assert_eq!(cpu.registers.r[1], 0x00000000);
+        assert!(cpu.interrupts.latched[INTERRUPT_ILLEGAL_OPERATION as usize]);
     }
 
     #[test]
@@ -1340,7 +1409,7 @@ mod tests {
 
         rom[27] = 0x01; // Pause.
 
-        let (cpu, ui_commands) = run(rom, None);
+        let (_cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         // Simply by halting we confirm that the test was successful.
     }
@@ -1388,7 +1457,7 @@ mod tests {
 
         rom[30] = 0x01; // Pause.
 
-        let (cpu, ui_commands) = run(rom, None);
+        let (_cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         // Simply by halting we confirm that the test was successful.
     }

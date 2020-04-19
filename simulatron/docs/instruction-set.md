@@ -230,7 +230,7 @@ Opcodes have a fixed length of one byte. The number of operands depends on the o
 
 If an unmapped opcode is encountered, no operation will take place and an illegal operation interrupt will be raised.
 
-Note that if an opcode takes multiple register references to registers with unspecified lengths, the destination register will define the size of the operation.
+Note that if an opcode takes multiple register references to registers with unspecified lengths, the lengths must match, or an illegal operation interrupt will be raised.
 
 ### Operand types
 `Literal address`: A 4-byte literal address.
