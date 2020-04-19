@@ -592,6 +592,30 @@ impl CPU {
                         None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
                     }
                 }
+                0x0C => {  // SWAP with literal address
+                    debug!("SWAP literal address");
+                    let reg_ref = fetch_8!();
+                    let address = fetch_32!();
+                    debug!("register {:#x} with address {:#x}", reg_ref, address);
+                    self.instruction_swap(reg_ref, address);
+                }
+                0x0D => {  // SWAP with register ref address
+                    debug!("SWAP reg ref address");
+                    let reg_ref = fetch_8!();
+                    let address_ref = fetch_8!();
+                    let address_ref_type = RegisterType::from_reg_ref(address_ref);
+                    if let Some(RegisterType::PrivilegedWord) = address_ref_type {
+                        privileged!();
+                    }
+                    if let Some(RegisterType::Word) | Some(RegisterType::PrivilegedWord)
+                            = address_ref_type {
+                        let address = self.registers.load_32_by_ref(address_ref);
+                        debug!("register {:#x} with address {:#x}", reg_ref, address);
+                        self.instruction_swap(reg_ref, address);
+                    } else {
+                        self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    }
+                }
                 0x0E => {  // PUSH
                     debug!("PUSH");
                     let reg_ref = fetch_8!();
@@ -750,6 +774,71 @@ impl CPU {
             }
             Some(RegisterType::Float) => {
                 self.store_float(address, self.registers.load_float_by_ref(source))
+            }
+            None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
+        };
+    }
+
+    fn instruction_swap(&mut self, reg_ref: u8, address: u32) {
+        macro_rules! privileged {
+            () => {{
+                if !self.kernel_mode {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    return;
+                }
+            }}
+        }
+
+        match RegisterType::from_reg_ref(reg_ref) {
+            Some(RegisterType::Byte) => {
+                let mem_result = self.load_8(address, false);
+                if let Some(mem_val) = mem_result {
+                    let reg_val = self.registers.load_8_by_ref(reg_ref);
+                    self.store_8(address, reg_val);
+                    self.registers.store_8_by_ref(reg_ref, mem_val);
+                }
+            }
+            Some(RegisterType::Half) => {
+                let mem_result = self.load_16(address, false);
+                if let Some(mem_val) = mem_result {
+                    let reg_val = self.registers.load_16_by_ref(reg_ref);
+                    self.store_16(address, reg_val);
+                    self.registers.store_16_by_ref(reg_ref, mem_val);
+                }
+            }
+            Some(RegisterType::PrivilegedHalf) => {
+                privileged!();
+                let mem_result = self.load_16(address, false);
+                if let Some(mem_val) = mem_result {
+                    let reg_val = self.registers.load_16_by_ref(reg_ref);
+                    self.store_16(address, reg_val);
+                    self.registers.store_16_by_ref(reg_ref, mem_val);
+                }
+            }
+            Some(RegisterType::Word) => {
+                let mem_result = self.load_32(address, false);
+                if let Some(mem_val) = mem_result {
+                    let reg_val = self.registers.load_32_by_ref(reg_ref);
+                    self.store_32(address, reg_val);
+                    self.registers.store_32_by_ref(reg_ref, mem_val);
+                }
+            }
+            Some(RegisterType::PrivilegedWord) => {
+                privileged!();
+                let mem_result = self.load_32(address, false);
+                if let Some(mem_val) = mem_result {
+                    let reg_val = self.registers.load_32_by_ref(reg_ref);
+                    self.store_32(address, reg_val);
+                    self.registers.store_32_by_ref(reg_ref, mem_val);
+                }
+            }
+            Some(RegisterType::Float) => {
+                let mem_result = self.load_float(address, false);
+                if let Some(mem_val) = mem_result {
+                    let reg_val = self.registers.load_float_by_ref(reg_ref);
+                    self.store_float(address, reg_val);
+                    self.registers.store_float_by_ref(reg_ref, mem_val);
+                }
             }
             None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
         };
@@ -1102,6 +1191,50 @@ mod tests {
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(cpu.registers.r[6], 0x0000FF34);
+    }
+
+    #[test]
+    fn test_swap_literal() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x66;  // some random number.
+
+        rom[3] = 0x0C;  // Swap with literal address
+        rom[4] = 0x10;  // r0b
+        rom[5] = 0x00;
+        rom[6] = 0x00;
+        rom[7] = 0x40;
+        rom[8] = 0x00;  // address 0x00004000.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.registers.r[0], 0x00000000);
+        assert_eq!(cpu.mmu.load_physical_8(0x00004000), Some(0x66));
+    }
+
+    #[test]
+    fn test_swap_reg() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x77;  // some random number.
+
+        rom[3] = 0x0A;  // Copy literal
+        rom[4] = 0x01;  // into r1
+        rom[5] = 0x00;
+        rom[6] = 0x00;
+        rom[7] = 0x50;
+        rom[8] = 0x00;  // address 0x00005000.
+
+        rom[9] = 0x0D;  // Swap with reg ref address
+        rom[10] = 0x10; // r0b
+        rom[11] = 0x01; // address in r1.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.registers.r[0], 0x00000000);
+        assert_eq!(cpu.mmu.load_physical_8(0x00005000), Some(0x77));
     }
 
     #[test]
