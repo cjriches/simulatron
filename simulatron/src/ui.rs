@@ -5,6 +5,7 @@ use web_view::{self, Content};
 
 use crate::keyboard::KeyMessage;
 
+#[derive(Debug, PartialEq, Eq)]
 enum InternalUICommand {
     SetChar {row: u32, col: u32, character: char},
     SetFg {row: u32, col: u32, r: u8, g: u8, b: u8},
@@ -13,6 +14,7 @@ enum InternalUICommand {
     JoinThread,  // This is not exposed by UICommand; only this module can use it.
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct UICommand(InternalUICommand);
 
 #[allow(non_snake_case)]  // We're breaking method naming conventions to simulate the enum names.

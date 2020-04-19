@@ -1465,6 +1465,54 @@ mod tests {
     }
 
     #[test]
+    fn test_display() {
+        let mut rom = [0; 512];
+        // Set character 5,32 to '#'.
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x21;  // character '!'.
+
+        rom[3] = 0x08;  // Store into
+        rom[4] = 0x00;
+        rom[5] = 0x00;
+        rom[6] = 0x03;
+        rom[7] = 0xF0;  // display cell (r5,c32)
+        rom[8] = 0x10;  // r0b.
+
+        // Set foreground colour 20, 50 to dark red.
+        rom[9] = 0x0A;  // Copy literal
+        rom[10] = 0x10; // into r0b
+        rom[11] = 0x10; // RGB(85, 0, 0).
+
+        rom[12] = 0x08;  // Store into
+        rom[13] = 0x00;
+        rom[14] = 0x00;
+        rom[15] = 0x10;
+        rom[16] = 0x82;  // foreground colour cell (r20,c50)
+        rom[17] = 0x10;  // r0b.
+
+        // Set background colour 0, 0 to yellow.
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x10; // into r0b
+        rom[20] = 0x3C; // RGB(255, 255, 0).
+
+        rom[21] = 0x08;  // Store into
+        rom[22] = 0x00;
+        rom[23] = 0x00;
+        rom[24] = 0x11;
+        rom[25] = 0xE0;  // background colour cell (r0,c0)
+        rom[26] = 0x10;  // r0b.
+
+        let (_cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 5);
+        assert_eq!(ui_commands[0], UICommand::SetEnabled(true));
+        assert_eq!(ui_commands[1], UICommand::SetChar(5, 32, '!'));
+        assert_eq!(ui_commands[2], UICommand::SetFg(20, 50, 85, 0, 0));
+        assert_eq!(ui_commands[3], UICommand::SetBg(0, 0, 255, 255, 0));
+        assert_eq!(ui_commands[4], UICommand::SetEnabled(false));
+    }
+
+    #[test]
     fn test_interrupt_handle_kernel_mode() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
