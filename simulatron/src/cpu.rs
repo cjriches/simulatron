@@ -25,30 +25,33 @@ struct Registers {
     imr: u16,   // Interrupt Mask Register
 }
 
-// TODO differentiate privileged registers
 enum RegisterType {
     Byte,   // u8
     Half,   // u16
+    PrivilegedHalf,
     Word,   // u32
+    PrivilegedWord,
     Float,  // f32
 }
 
 impl RegisterType {
     pub fn from_reg_ref(reg_ref: u8) -> Option<Self> {
-        if reg_ref < 8 {
+        if reg_ref < 0x08 {
             Some(RegisterType::Word)
-        } else if reg_ref < 16 {
+        } else if reg_ref < 0x10 {
             Some(RegisterType::Half)
-        } else if reg_ref < 24 {
+        } else if reg_ref < 0x18 {
             Some(RegisterType::Byte)
-        } else if reg_ref < 32 {
+        } else if reg_ref < 0x20 {
             Some(RegisterType::Float)
-        } else if reg_ref == 32 {
+        } else if reg_ref == 0x20 {
             Some(RegisterType::Half)
-        } else if reg_ref < 36 {
+        } else if reg_ref == 0x21 {
             Some(RegisterType::Word)
-        } else if reg_ref == 36 {
-            Some(RegisterType::Half)
+        } else if reg_ref < 0x24 {
+            Some(RegisterType::PrivilegedWord)
+        } else if reg_ref == 0x24 {
+            Some(RegisterType::PrivilegedHalf)
         } else {
             None
         }
@@ -511,7 +514,19 @@ impl CPU {
                             debug!("Half: {:#x}", val);
                             self.registers.store_16_by_ref(reg_ref_dest, val);
                         }
+                        Some(RegisterType::PrivilegedHalf) => {
+                            privileged!();
+                            let val = fetch_16!();
+                            debug!("Half: {:#x}", val);
+                            self.registers.store_16_by_ref(reg_ref_dest, val);
+                        }
                         Some(RegisterType::Word) => {
+                            let val = fetch_32!();
+                            debug!("Word: {:#x}", val);
+                            self.registers.store_32_by_ref(reg_ref_dest, val);
+                        }
+                        Some(RegisterType::PrivilegedWord) => {
+                            privileged!();
                             let val = fetch_32!();
                             debug!("Word: {:#x}", val);
                             self.registers.store_32_by_ref(reg_ref_dest, val);
@@ -537,7 +552,17 @@ impl CPU {
                             let val = self.registers.load_16_by_ref(reg_ref);
                             self.push_16(val);
                         }
+                        Some(RegisterType::PrivilegedHalf) => {
+                            privileged!();
+                            let val = self.registers.load_16_by_ref(reg_ref);
+                            self.push_16(val);
+                        }
                         Some(RegisterType::Word) => {
+                            let val = self.registers.load_32_by_ref(reg_ref);
+                            self.push_32(val);
+                        }
+                        Some(RegisterType::PrivilegedWord) => {
+                            privileged!();
                             let val = self.registers.load_32_by_ref(reg_ref);
                             self.push_32(val);
                         }
@@ -561,7 +586,17 @@ impl CPU {
                             let val = pop!(pop_16);
                             self.registers.store_16_by_ref(reg_ref, val);
                         }
+                        Some(RegisterType::PrivilegedHalf) => {
+                            privileged!();
+                            let val = pop!(pop_16);
+                            self.registers.store_16_by_ref(reg_ref, val);
+                        }
                         Some(RegisterType::Word) => {
+                            let val = pop!(pop_32);
+                            self.registers.store_32_by_ref(reg_ref, val);
+                        }
+                        Some(RegisterType::PrivilegedWord) => {
+                            privileged!();
                             let val = pop!(pop_32);
                             self.registers.store_32_by_ref(reg_ref, val);
                         }
@@ -580,6 +615,15 @@ impl CPU {
     }
 
     fn instruction_load(&mut self, destination: u8, address: u32) {
+        macro_rules! privileged {
+            () => {{
+                if !self.kernel_mode {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    return;
+                }
+            }}
+        }
+
         match RegisterType::from_reg_ref(destination) {
             Some(RegisterType::Byte) => {
                 let result = self.load_8(address, false);
@@ -593,7 +637,21 @@ impl CPU {
                     self.registers.store_16_by_ref(destination, val);
                 }
             }
+            Some(RegisterType::PrivilegedHalf) => {
+                privileged!();
+                let result = self.load_16(address, false);
+                if let Some(val) = result {
+                    self.registers.store_16_by_ref(destination, val);
+                }
+            }
             Some(RegisterType::Word) => {
+                let result = self.load_32(address, false);
+                if let Some(val) = result {
+                    self.registers.store_32_by_ref(destination, val);
+                }
+            }
+            Some(RegisterType::PrivilegedWord) => {
+                privileged!();
                 let result = self.load_32(address, false);
                 if let Some(val) = result {
                     self.registers.store_32_by_ref(destination, val);
@@ -610,16 +668,37 @@ impl CPU {
     }
 
     fn instruction_store(&mut self, address: u32, source: u8) {
+        macro_rules! privileged {
+            () => {{
+                if !self.kernel_mode {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    return;
+                }
+            }}
+        }
+
         match RegisterType::from_reg_ref(source) {
-            Some(RegisterType::Byte) =>
-                self.store_8(address, self.registers.load_8_by_ref(source)),
-            Some(RegisterType::Half) =>
-                self.store_16(address, self.registers.load_16_by_ref(source)),
-            Some(RegisterType::Word) =>
-                self.store_32(address, self.registers.load_32_by_ref(source)),
-            Some(RegisterType::Float) =>
-                self.store_float(address, self.registers.load_float_by_ref(source)),
-            None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap(),
+            Some(RegisterType::Byte) => {
+                self.store_8(address, self.registers.load_8_by_ref(source))
+            }
+            Some(RegisterType::Half) => {
+                self.store_16(address, self.registers.load_16_by_ref(source))
+            }
+            Some(RegisterType::PrivilegedHalf) => {
+                privileged!();
+                self.store_16(address, self.registers.load_16_by_ref(source))
+            }
+            Some(RegisterType::Word) => {
+                self.store_32(address, self.registers.load_32_by_ref(source))
+            }
+            Some(RegisterType::PrivilegedWord) => {
+                privileged!();
+                self.store_32(address, self.registers.load_32_by_ref(source))
+            }
+            Some(RegisterType::Float) => {
+                self.store_float(address, self.registers.load_float_by_ref(source))
+            }
+            None => self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap()
         };
     }
 
@@ -1053,56 +1132,68 @@ mod tests {
         rom[51] = 0x06; // address 0x000040006
         rom[52] = 0x08; // r0h.
 
-        // Address 0x00004008 will be HALT, so the user process will cause an
-        // illegal operation interrupt.
+        // (Try and set imr. This will cause an illegal operation interrupt).
+        rom[53] = 0x0A;
+        rom[54] = 0x00; // into r0
+        rom[55] = 0x0A; // COPY instruction
+        rom[56] = 0x24; // register ref imr
+        rom[57] = 0xFF;
+        rom[58] = 0xFF; // some random number.
+
+        rom[59] = 0x08; // Store into
+        rom[60] = 0x00;
+        rom[61] = 0x00;
+        rom[62] = 0x40;
+        rom[63] = 0x08; // address 0x00004008
+        rom[64] = 0x00; // r0.
 
         // Enable the illegal operation interrupt. We won't set a handler, so it will jump to
         // memory location zero, which will contain HALT, so the machine will actually halt.
         // We do need to set kspr though.
 
         // Set the kernel stack pointer.
-        rom[53] = 0x0A; // Copy literal
-        rom[54] = 0x22; // into kspr
-        rom[55] = 0x00;
-        rom[56] = 0x00;
-        rom[57] = 0xA0;
-        rom[58] = 0x00; // address 0x0000A000.
+        rom[65] = 0x0A; // Copy literal
+        rom[66] = 0x22; // into kspr
+        rom[67] = 0x00;
+        rom[68] = 0x00;
+        rom[69] = 0xA0;
+        rom[70] = 0x00; // address 0x0000A000.
 
         // Enable the interrupt.
-        rom[59] = 0x0A; // Copy literal
-        rom[60] = 0x24; // into imr
-        rom[61] = 0x00;
-        rom[62] = 0x40; // illegal operation interrupt only.
+        rom[71] = 0x0A; // Copy literal
+        rom[72] = 0x24; // into imr
+        rom[73] = 0x00;
+        rom[74] = 0x40; // illegal operation interrupt only.
 
         // Push the user mode address to the stack.
-        rom[63] = 0x0A; // Copy literal
-        rom[64] = 0x00; // into r0
-        rom[65] = 0x00;
-        rom[66] = 0x00;
-        rom[67] = 0x00;
-        rom[68] = 0x00; // virtual address 0x0.
+        rom[75] = 0x0A; // Copy literal
+        rom[76] = 0x00; // into r0
+        rom[77] = 0x00;
+        rom[78] = 0x00;
+        rom[79] = 0x00;
+        rom[80] = 0x00; // virtual address 0x0.
 
-        rom[69] = 0x0E; // Push to the stack
-        rom[70] = 0x00; // r0.
+        rom[81] = 0x0E; // Push to the stack
+        rom[82] = 0x00; // r0.
 
         // Almost forgot; we need to write the page table entry to main memory.
         // Sadly we can't put that in ROM, although the page directory entry will be.
-        rom[71] = 0x0A; // Copy literal
-        rom[72] = 0x00; // into r0
-        rom[73] = 0x00;
-        rom[74] = 0x00;
-        rom[75] = 0x40;
-        rom[76] = 0x1F; // Valid, Present, RWX entry at 0x00004000.
+        rom[83] = 0x0A; // Copy literal
+        rom[84] = 0x00; // into r0
+        rom[85] = 0x00;
+        rom[86] = 0x00;
+        rom[87] = 0x40;
+        rom[88] = 0x1F; // Valid, Present, RWX entry at 0x00004000.
 
-        rom[77] = 0x08; // Store into
-        rom[78] = 0x00;
-        rom[79] = 0x00;
-        rom[80] = 0xB0;
-        rom[81] = 0x00; // address 0x0000B000
-        rom[82] = 0x00; // r0.
+        rom[89] = 0x08; // Store into
+        rom[90] = 0x00;
+        rom[91] = 0x00;
+        rom[92] = 0xB0;
+        rom[93] = 0x00; // address 0x0000B000
+        rom[94] = 0x00; // r0.
 
         // Enter user mode!
-        rom[83] = 0x04;
+        rom[95] = 0x04;
 
         // Page directory entry.
         rom[128] = 0x00;
