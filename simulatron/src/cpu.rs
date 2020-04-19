@@ -427,7 +427,8 @@ impl CPU {
                     debug!("TIMER register ref word");
                     privileged!();
                     let reg_ref = fetch_8!();
-                    if let Some(RegisterType::Word) = RegisterType::from_reg_ref(reg_ref) {
+                    if let Some(RegisterType::Word) | Some(RegisterType::PrivilegedWord)
+                            = RegisterType::from_reg_ref(reg_ref) {
                         let milliseconds = self.registers.load_32_by_ref(reg_ref);
                         debug!("Timer milliseconds: {:#x}", milliseconds);
                         self.timer_tx.as_ref().unwrap()
@@ -473,7 +474,12 @@ impl CPU {
                     debug!("LOAD register ref address");
                     let reg_ref_dest = fetch_8!();
                     let reg_ref_address = fetch_8!();
-                    if let Some(RegisterType::Word) = RegisterType::from_reg_ref(reg_ref_address) {
+                    let reg_ref_address_type = RegisterType::from_reg_ref(reg_ref_address);
+                    if let Some(RegisterType::PrivilegedWord) = reg_ref_address_type {
+                        privileged!();
+                    }
+                    if let Some(RegisterType::Word) | Some(RegisterType::PrivilegedWord)
+                            = reg_ref_address_type {
                         let address = self.registers.load_32_by_ref(reg_ref_address);
                         debug!("Dest: {:#x} Address: {:#x}", reg_ref_dest, address);
                         self.instruction_load(reg_ref_dest, address);
@@ -492,7 +498,12 @@ impl CPU {
                     debug!("STORE register ref address");
                     let reg_ref_address = fetch_8!();
                     let reg_ref_source = fetch_8!();
-                    if let Some(RegisterType::Word) = RegisterType::from_reg_ref(reg_ref_address) {
+                    let reg_ref_address_type = RegisterType::from_reg_ref(reg_ref_address);
+                    if let Some(RegisterType::PrivilegedWord) = reg_ref_address_type {
+                        privileged!();
+                    }
+                    if let Some(RegisterType::Word) | Some(RegisterType::PrivilegedWord)
+                            = reg_ref_address_type {
                         let address = self.registers.load_32_by_ref(reg_ref_address);
                         debug!("Address: {:#x} Source: {:#x}", address, reg_ref_source);
                         self.instruction_store(address, reg_ref_source);
