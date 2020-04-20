@@ -280,6 +280,9 @@ impl CPU {
         }
     }
 
+    // The macros confuse the IDE, which thinks variables are never used. This
+    // stops it from showing a million warnings.
+    //noinspection RsLiveness
     fn interrupt_fetch_decode_execute(&mut self, pausing: bool) -> CPUResult<PostCycleAction> {
         // Fetch the given size value and automatically increment the program counter.
         macro_rules! fetch {
@@ -488,6 +491,82 @@ impl CPU {
                 let value = self.pop(self.reg_ref_type(reg_ref)?)?;
                 self.write_to_register(reg_ref, value)?;
             }
+            0x10 => {  // BLOCKCOPY literal literal literal
+                debug!("BLOCKCOPY literal literal literal");
+                let length = fetch!(Word);
+                let dest_address = fetch!(Word);
+                let source_address = fetch!(Word);
+                debug!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                self.instruction_blockcopy(length, dest_address, source_address)?;
+            }
+            0x11 => {  // BLOCKCOPY literal literal ref
+                debug!("BLOCKCOPY literal literal ref");
+                let length = fetch!(Word);
+                let dest_address = fetch!(Word);
+                let source_address_ref = fetch!(Byte);
+                let source_address = try_tv_into_v!(self.read_from_register(source_address_ref)?);
+                debug!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                self.instruction_blockcopy(length, dest_address, source_address)?;
+            }
+            0x12 => {  // BLOCKCOPY literal ref literal
+                debug!("BLOCKCOPY literal ref literal");
+                let length = fetch!(Word);
+                let dest_address_ref = fetch!(Byte);
+                let source_address = fetch!(Word);
+                let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
+                debug!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                self.instruction_blockcopy(length, dest_address, source_address)?;
+            }
+            0x13 => {  // BLOCKCOPY literal ref ref
+                debug!("BLOCKCOPY literal ref ref");
+                let length = fetch!(Word);
+                let dest_address_ref = fetch!(Byte);
+                let source_address_ref = fetch!(Byte);
+                let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
+                let source_address = try_tv_into_v!(self.read_from_register(source_address_ref)?);
+                debug!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                self.instruction_blockcopy(length, dest_address, source_address)?;
+            }
+            0x14 => {  // BLOCKCOPY ref literal literal
+                debug!("BLOCKCOPY ref literal literal");
+                let length_ref = fetch!(Byte);
+                let dest_address = fetch!(Word);
+                let source_address = fetch!(Word);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                debug!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                self.instruction_blockcopy(length, dest_address, source_address)?;
+            }
+            0x15 => {  // BLOCKCOPY ref literal ref
+                debug!("BLOCKCOPY ref literal ref");
+                let length_ref = fetch!(Byte);
+                let dest_address = fetch!(Word);
+                let source_address_ref = fetch!(Byte);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let source_address = try_tv_into_v!(self.read_from_register(source_address_ref)?);
+                debug!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                self.instruction_blockcopy(length, dest_address, source_address)?;
+            }
+            0x16 => {  // BLOCKCOPY ref ref literal
+                debug!("BLOCKCOPY ref ref literal");
+                let length_ref = fetch!(Byte);
+                let dest_address_ref = fetch!(Byte);
+                let source_address = fetch!(Word);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
+                debug!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                self.instruction_blockcopy(length, dest_address, source_address)?;
+            }
+            0x17 => {  // BLOCKCOPY ref ref ref
+                debug!("BLOCKCOPY ref ref ref");
+                let length_ref = fetch!(Byte);
+                let dest_address_ref = fetch!(Byte);
+                let source_address_ref = fetch!(Byte);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
+                let source_address = try_tv_into_v!(self.read_from_register(source_address_ref)?);
+                debug!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                self.instruction_blockcopy(length, dest_address, source_address)?;
+            }
             _ => {  // Unrecognised
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
             }
@@ -511,6 +590,15 @@ impl CPU {
         let mem_value = self.load(address, false, (&reg_value).into())?;
         self.write_to_register(reg_ref, mem_value)?;
         self.store(address, reg_value)
+    }
+
+    fn instruction_blockcopy(&mut self, length: u32, dest_address: u32,
+                             source_address: u32) -> CPUResult<()> {
+        if self.kernel_mode {
+            self.mmu.blockcopy_physical(length, source_address, dest_address)
+        } else {
+            self.mmu.blockcopy_virtual(length, source_address, dest_address, self.pdpr)
+        }
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -1360,5 +1448,103 @@ mod tests {
         let (_cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         // Simply by halting we confirm that the test was successful.
+    }
+
+    #[test]
+    fn test_blockcopy() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x00;  // into r0
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x40;
+        rom[5] = 0x00;  // address 0x00004000.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x01;  // into r1
+        rom[8] = 0x00;
+        rom[9] = 0x00;
+        rom[10] = 0x00;
+        rom[11] = 0x80; // ROM byte 0x40 (64).
+
+        rom[12] = 0x13; // Blockcopy literal length, ref source and dest
+        rom[13] = 0x00;
+        rom[14] = 0x00;
+        rom[15] = 0x00;
+        rom[16] = 0x40; // 64 bytes
+        rom[17] = 0x00; // into address in r0
+        rom[18] = 0x01; // from address in r1.
+
+        // DATA
+        rom[64] = 0x11;
+        rom[65] = 0x22;
+        rom[66] = 0x33;
+        rom[67] = 0x44;
+        rom[68] = 0x55;
+        rom[69] = 0x66;
+        rom[70] = 0x77;
+        rom[71] = 0x88;
+        rom[72] = 0x99;
+        rom[73] = 0xAA;
+        rom[74] = 0xBB;
+        rom[75] = 0xCC;
+        rom[76] = 0xDD;
+        rom[77] = 0xEE;
+        rom[78] = 0xFF;
+        // Gap of zeroes
+        rom[113] = 0x11;
+        rom[114] = 0x22;
+        rom[115] = 0x33;
+        rom[116] = 0x44;
+        rom[117] = 0x55;
+        rom[118] = 0x66;
+        rom[119] = 0x77;
+        rom[120] = 0x88;
+        rom[121] = 0x99;
+        rom[122] = 0xAA;
+        rom[123] = 0xBB;
+        rom[124] = 0xCC;
+        rom[125] = 0xDD;
+        rom[126] = 0xEE;
+        rom[127] = 0xFF;
+        // This last byte should NOT be copied.
+        rom[128] = 0xFF;
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(cpu.mmu.load_physical_8(0x4000), Ok(0x11));
+        assert_eq!(cpu.mmu.load_physical_8(0x4001), Ok(0x22));
+        assert_eq!(cpu.mmu.load_physical_8(0x4002), Ok(0x33));
+        assert_eq!(cpu.mmu.load_physical_8(0x4003), Ok(0x44));
+        assert_eq!(cpu.mmu.load_physical_8(0x4004), Ok(0x55));
+        assert_eq!(cpu.mmu.load_physical_8(0x4005), Ok(0x66));
+        assert_eq!(cpu.mmu.load_physical_8(0x4006), Ok(0x77));
+        assert_eq!(cpu.mmu.load_physical_8(0x4007), Ok(0x88));
+        assert_eq!(cpu.mmu.load_physical_8(0x4008), Ok(0x99));
+        assert_eq!(cpu.mmu.load_physical_8(0x4009), Ok(0xAA));
+        assert_eq!(cpu.mmu.load_physical_8(0x400A), Ok(0xBB));
+        assert_eq!(cpu.mmu.load_physical_8(0x400B), Ok(0xCC));
+        assert_eq!(cpu.mmu.load_physical_8(0x400C), Ok(0xDD));
+        assert_eq!(cpu.mmu.load_physical_8(0x400D), Ok(0xEE));
+        assert_eq!(cpu.mmu.load_physical_8(0x400E), Ok(0xFF));
+        assert_eq!(cpu.mmu.load_physical_8(0x400F), Ok(0x00));
+        
+        assert_eq!(cpu.mmu.load_physical_8(0x4030), Ok(0x00));
+        assert_eq!(cpu.mmu.load_physical_8(0x4031), Ok(0x11));
+        assert_eq!(cpu.mmu.load_physical_8(0x4032), Ok(0x22));
+        assert_eq!(cpu.mmu.load_physical_8(0x4033), Ok(0x33));
+        assert_eq!(cpu.mmu.load_physical_8(0x4034), Ok(0x44));
+        assert_eq!(cpu.mmu.load_physical_8(0x4035), Ok(0x55));
+        assert_eq!(cpu.mmu.load_physical_8(0x4036), Ok(0x66));
+        assert_eq!(cpu.mmu.load_physical_8(0x4037), Ok(0x77));
+        assert_eq!(cpu.mmu.load_physical_8(0x4038), Ok(0x88));
+        assert_eq!(cpu.mmu.load_physical_8(0x4039), Ok(0x99));
+        assert_eq!(cpu.mmu.load_physical_8(0x403A), Ok(0xAA));
+        assert_eq!(cpu.mmu.load_physical_8(0x403B), Ok(0xBB));
+        assert_eq!(cpu.mmu.load_physical_8(0x403C), Ok(0xCC));
+        assert_eq!(cpu.mmu.load_physical_8(0x403D), Ok(0xDD));
+        assert_eq!(cpu.mmu.load_physical_8(0x403E), Ok(0xEE));
+        assert_eq!(cpu.mmu.load_physical_8(0x403F), Ok(0xFF));
+        assert_eq!(cpu.mmu.load_physical_8(0x4040), Ok(0x00));
     }
 }

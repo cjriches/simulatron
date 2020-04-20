@@ -56,66 +56,42 @@ impl MMU {
     }
 
     pub fn store_virtual_8(&mut self, pdpr: u32, address: u32, value: u8) -> CPUResult<()> {
-        match self.virtual_to_physical_address(address, pdpr, Intent::Write) {
-            Ok(physical_address) => self.store_physical_8(physical_address, value),
-            Err(_) => {
-                self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                Err(CPUError)
-            }
-        }
+        let physical_address = self.virtual_to_physical_address(address, pdpr, Intent::Write)?;
+        self.store_physical_8(physical_address, value)
     }
 
     pub fn store_virtual_16(&mut self, pdpr: u32, address: u32, value: u16) -> CPUResult<()> {
-        match self.virtual_to_physical_address(address, pdpr, Intent::Write) {
-            Ok(physical_address) => self.store_physical_16(physical_address, value),
-            Err(_) => {
-                self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                Err(CPUError)
-            }
-        }
+        let [upper, lower] = u16::to_be_bytes(value);
+        self.store_virtual_8(pdpr, address, upper)?;
+        self.store_virtual_8(pdpr, address + 1, lower)
     }
 
     pub fn store_virtual_32(&mut self, pdpr: u32, address: u32, value: u32) -> CPUResult<()> {
-        match self.virtual_to_physical_address(address, pdpr, Intent::Write) {
-            Ok(physical_address) => self.store_physical_32(physical_address, value),
-            Err(_) => {
-                self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                Err(CPUError)
-            }
-        }
+        let [upper, upper_mid, lower_mid, lower] = u32::to_be_bytes(value);
+        self.store_virtual_8(pdpr, address, upper)?;
+        self.store_virtual_8(pdpr, address + 1, upper_mid)?;
+        self.store_virtual_8(pdpr, address + 2, lower_mid)?;
+        self.store_virtual_8(pdpr, address + 3, lower)
     }
 
     pub fn load_virtual_8(&mut self, pdpr: u32, address: u32, is_fetch: bool) -> CPUResult<u8> {
         let intent = if is_fetch {Intent::Execute} else {Intent::Read};
-        match self.virtual_to_physical_address(address, pdpr, intent) {
-            Ok(physical_address) => self.load_physical_8(physical_address),
-            Err(_) => {
-                self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                Err(CPUError)
-            }
-        }
+        let physical_address = self.virtual_to_physical_address(address, pdpr, intent)?;
+        self.load_physical_8(physical_address)
     }
 
     pub fn load_virtual_16(&mut self, pdpr: u32, address: u32, is_fetch: bool) -> CPUResult<u16> {
-        let intent = if is_fetch {Intent::Execute} else {Intent::Read};
-        match self.virtual_to_physical_address(address, pdpr, intent) {
-            Ok(physical_address) => self.load_physical_16(physical_address),
-            Err(_) => {
-                self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                Err(CPUError)
-            }
-        }
+        let upper = self.load_virtual_8(pdpr, address, is_fetch)?;
+        let lower = self.load_virtual_8(pdpr, address + 1, is_fetch)?;
+        Ok(u16::from_be_bytes([upper, lower]))
     }
 
     pub fn load_virtual_32(&mut self, pdpr: u32, address: u32, is_fetch: bool) -> CPUResult<u32> {
-        let intent = if is_fetch {Intent::Execute} else {Intent::Read};
-        match self.virtual_to_physical_address(address, pdpr, intent) {
-            Ok(physical_address) => self.load_physical_32(physical_address),
-            Err(_) => {
-                self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                Err(CPUError)
-            }
-        }
+        let upper = self.load_virtual_8(pdpr, address, is_fetch)?;
+        let upper_mid = self.load_virtual_8(pdpr, address + 1, is_fetch)?;
+        let lower_mid = self.load_virtual_8(pdpr, address + 2, is_fetch)?;
+        let lower = self.load_virtual_8(pdpr, address + 3, is_fetch)?;
+        Ok(u32::from_be_bytes([upper, upper_mid, lower_mid, lower]))
     }
 
     pub fn store_physical_8(&mut self, address: u32, value: u8) -> CPUResult<()> {
@@ -229,6 +205,7 @@ impl MMU {
         // Check it's valid.
         if (directory_entry & 1) == 0 {
             self.pfsr = PAGE_FAULT_INVALID_PAGE;
+            self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
             return Err(CPUError);
         }
         // Find the page table entry.
@@ -238,11 +215,13 @@ impl MMU {
         // Check it's valid.
         if (page_table_entry & 1) == 0 {
             self.pfsr = PAGE_FAULT_INVALID_PAGE;
+            self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
             return Err(CPUError);
         }
         // Check it's present.
         if (page_table_entry & 2) == 0 {
             self.pfsr = PAGE_FAULT_NOT_PRESENT;
+            self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
             return Err(CPUError);
         }
         // Check permissions.
@@ -253,12 +232,14 @@ impl MMU {
         };
         if legal == 0 {
             self.pfsr = PAGE_FAULT_ILLEGAL_ACCESS;
+            self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
             return Err(CPUError);
         }
         // Check COW.
         if let Intent::Write = intent {
             if (page_table_entry & 32) != 0 {
                 self.pfsr = PAGE_FAULT_COW;
+                self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
                 return Err(CPUError);
             }
         }
@@ -266,6 +247,24 @@ impl MMU {
         let frame = page_table_entry & 0xFFFFF000;
         let frame_offset = virtual_address & 0xFFF;
         Ok(frame | frame_offset)
+    }
+
+    pub fn blockcopy_virtual(&mut self, length: u32, source_address: u32,
+                             dest_address: u32, pdpr: u32) -> CPUResult<()> {
+        for i in 0..length {
+            let val = self.load_virtual_8(pdpr, source_address + i, false)?;
+            self.store_virtual_8(pdpr, dest_address + i, val)?;
+        }
+        Ok(())
+    }
+
+    pub fn blockcopy_physical(&mut self, length: u32, source_address: u32,
+                             dest_address: u32) -> CPUResult<()> {
+        for i in 0..length {
+            let val = self.load_physical_8(source_address + i)?;
+            self.store_physical_8(dest_address + i, val)?;
+        }
+        Ok(())
     }
 }
 
