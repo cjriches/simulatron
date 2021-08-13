@@ -24,7 +24,7 @@ function _keyboard_listener(event) {
     }
     // Send the event to the Simulatron.
     let msg = {key: event.key, ctrl: event.ctrlKey, alt: event.altKey};
-    external.invoke(JSON.stringify(msg));
+    window.webkit.messageHandlers.external.postMessage(JSON.stringify(msg));
     // Prevent Ctrl-A from selecting everything.
     if (event.ctrlKey && (event.key == "a" || event.key == "A")) {
         event.preventDefault();
