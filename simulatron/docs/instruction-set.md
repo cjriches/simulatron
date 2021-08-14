@@ -139,7 +139,9 @@ These are only executable in kernel mode. If the CPU is in user mode, an illegal
 
 `POP register`: Copy the top of the stack into the given register and then increment the stack pointer by the appropriate amount.
 
-`BLOCKCOPY length destination source`: Copy `length` bytes from the source memory address to the destination memory address. 
+`BLOCKCOPY length destination source`: Copy `length` bytes from the source memory address to the destination memory address.
+
+`BLOCKSET length destination value`: Set `length` bytes to the given value, starting at the destination memory address.
 
 Note that PUSH and POP will use KSPR if in kernel mode, and USPR if in user mode.
 
@@ -195,6 +197,8 @@ None of these instructions are applicable to floats.
 `JUMP address`: Unconditionally jump to the given address.
 
 `COMPARE value1 value2`: Subtract `value1` from `value2` and discard the result. Flags will still be set.
+
+`BLOCKCMP length source1 source2`: Compare `length` bytes starting at `source1` and `source2`, setting flags appropriately. The `N` flag is set if the two blocks differ and at the point of difference, `source1` was greater.
 
 `JEQUAL address`: Jump to the given address if the last comparison had `value1 = value2`, i.e. `Z`=1.
 
@@ -281,94 +285,94 @@ Note that if an opcode takes multiple register references to registers with unsp
 |  0x15|BLOCKCOPY   |Register ref word   |Literal address         |Register ref address|
 |  0x16|BLOCKCOPY   |Register ref word   |Register ref address    |Literal address     |
 |  0x17|BLOCKCOPY   |Register ref word   |Register ref address    |Register ref address|
-|  0x18|NEGATE      |Register ref        |                        |                    |
-|  0x19|ADD         |Register ref        |Variable literal        |                    |
-|  0x1A|ADD         |Register ref        |Register ref            |                    |
-|  0x1B|ADDCARRY    |Register ref integer|Variable literal        |                    |
-|  0x1C|ADDCARRY    |Register ref integer|Register ref integer    |                    |
-|  0x1D|SUB         |Register ref        |Variable literal        |                    |
-|  0x1E|SUB         |Register ref        |Register ref            |                    |
-|  0x1F|SUBBORROW   |Register ref integer|Variable literal        |                    |
-|  0x20|SUBBORROW   |Register ref integer|Register ref integer    |                    |
-|  0x21|MULT        |Register ref        |Variable literal        |                    |
-|  0x22|MULT        |Register ref        |Register ref            |                    |
-|  0x23|SDIV        |Register ref        |Variable literal        |                    |
-|  0x24|SDIV        |Register ref        |Register ref            |                    |
-|  0x25|UDIV        |Register ref integer|Variable literal        |                    |
-|  0x26|UDIV        |Register ref integer|Register ref integer    |                    |
-|  0x27|SREM        |Register ref        |Variable literal        |                    |
-|  0x28|SREM        |Register ref        |Register ref            |                    |
-|  0x29|UREM        |Register ref integer|Variable literal        |                    |
-|  0x2A|UREM        |Register ref integer|Register ref integer    |                    |
-|  0x2B|NOT         |Register ref integer|                        |                    |
-|  0x2C|AND         |Register ref integer|Variable integer literal|                    |
-|  0x2D|AND         |Register ref integer|Register ref integer    |                    |
-|  0x2E|OR          |Register ref integer|Variable integer literal|                    |
-|  0x2F|OR          |Register ref integer|Register ref integer    |                    |
-|  0x30|XOR         |Register ref integer|Variable integer literal|                    |
-|  0x31|XOR         |Register ref integer|Register ref integer    |                    |
-|  0x32|LSHIFT      |Register ref integer|Literal byte            |                    |
-|  0x33|LSHIFT      |Register ref integer|Register ref byte       |                    |
-|  0x34|RSHIFTL     |Register ref integer|Literal byte            |                    |
-|  0x35|RSHIFTL     |Register ref integer|Register ref byte       |                    |
-|  0x36|RSHIFTA     |Register ref integer|Literal byte            |                    |
-|  0x37|RSHIFTA     |Register ref integer|Register ref byte       |                    |
-|  0x38|LROT        |Register ref integer|Literal byte            |                    |
-|  0x39|LROT        |Register ref integer|Register ref byte       |                    |
-|  0x3A|RROT        |Register ref integer|Literal byte            |                    |
-|  0x3B|RROT        |Register ref integer|Register ref byte       |                    |
-|  0x3C|LROTCARRY   |Register ref integer|Literal byte            |                    |
-|  0x3D|LROTCARRY   |Register ref integer|Register ref byte       |                    |
-|  0x3E|RROTCARRY   |Register ref integer|Literal byte            |                    |
-|  0x3F|RROTCARRY   |Register ref integer|Register ref byte       |                    |
-|  0x40|JUMP        |Literal address     |                        |                    |
-|  0x41|JUMP        |Register ref address|                        |                    |
-|  0x42|COMPARE     |Register ref        |Variable literal        |                    |
-|  0x43|COMPARE     |Register ref        |Register ref            |                    |
-|  0x44|JEQUAL      |Literal address     |                        |                    |
-|  0x45|JEQUAL      |Register ref address|                        |                    |
-|  0x46|JNOTEQUAL   |Literal address     |                        |                    |
-|  0x47|JNOTEQUAL   |Register ref address|                        |                    |
-|  0x48|JGREATER    |Literal address     |                        |                    |
-|  0x49|JGREATER    |Register ref address|                        |                    |
-|  0x4A|JGREATEREQ  |Literal address     |                        |                    |
-|  0x4B|JGREATEREQ  |Register ref address|                        |                    |
-|  0x4C|JABOVE      |Literal address     |                        |                    |
-|  0x4D|JABOVE      |Register ref address|                        |                    |
-|  0x4E|JABOVEEQ    |Literal address     |                        |                    |
-|  0x4F|JABOVEEQ    |Register ref address|                        |                    |
-|  0x50|JLESSER     |Literal address     |                        |                    |
-|  0x51|JLESSER     |Register ref address|                        |                    |
-|  0x52|JLESSEREQ   |Literal address     |                        |                    |
-|  0x53|JLESSEREQ   |Register ref address|                        |                    |
-|  0x54|JBELOW      |Literal address     |                        |                    |
-|  0x55|JBELOW      |Register ref address|                        |                    |
-|  0x56|JBELOWEQ    |Literal address     |                        |                    |
-|  0x57|JBELOWEQ    |Register ref address|                        |                    |
-|  0x58|JOVERFLOW   |Literal address     |                        |                    |
-|  0x59|JOVERFLOW   |Register ref address|                        |                    |
-|  0x5A|JNOTOVERFLOW|Literal address     |                        |                    |
-|  0x5B|JNOTOVERFLOW|Register ref address|                        |                    |
-|  0x5C|CALL        |Literal address     |                        |                    |
-|  0x5D|CALL        |Register ref address|                        |                    |
-|  0x5E|RETURN      |                    |                        |                    |
-|  0x5F|SYSCALL     |                    |                        |                    |
-|  0x60|            |                    |                        |                    |
-|  0x61|            |                    |                        |                    |
-|  0x62|            |                    |                        |                    |
-|  0x63|            |                    |                        |                    |
-|  0x64|            |                    |                        |                    |
-|  0x65|            |                    |                        |                    |
-|  0x66|            |                    |                        |                    |
-|  0x67|            |                    |                        |                    |
-|  0x68|            |                    |                        |                    |
-|  0x69|            |                    |                        |                    |
-|  0x6A|            |                    |                        |                    |
-|  0x6B|            |                    |                        |                    |
-|  0x6C|            |                    |                        |                    |
-|  0x6D|            |                    |                        |                    |
-|  0x6E|            |                    |                        |                    |
-|  0x6F|            |                    |                        |                    |
+|  0x18|BLOCKSET    |Literal word        |Literal address         |Literal byte        |
+|  0x19|BLOCKSET    |Literal word        |Literal address         |Register ref byte   |
+|  0x1A|BLOCKSET    |Literal word        |Register ref address    |Literal byte        |
+|  0x1B|BLOCKSET    |Literal word        |Register ref address    |Register ref byte   |
+|  0x1C|BLOCKSET    |Register ref word   |Literal address         |Literal byte        |
+|  0x1D|BLOCKSET    |Register ref word   |Literal address         |Register ref byte   |
+|  0x1E|BLOCKSET    |Register ref word   |Register ref address    |Literal byte        |
+|  0x1F|BLOCKSET    |Register ref word   |Register ref address    |Register ref byte   |
+|  0x20|NEGATE      |Register ref        |                        |                    |
+|  0x21|ADD         |Register ref        |Variable literal        |                    |
+|  0x22|ADD         |Register ref        |Register ref            |                    |
+|  0x23|ADDCARRY    |Register ref integer|Variable literal        |                    |
+|  0x24|ADDCARRY    |Register ref integer|Register ref integer    |                    |
+|  0x25|SUB         |Register ref        |Variable literal        |                    |
+|  0x26|SUB         |Register ref        |Register ref            |                    |
+|  0x27|SUBBORROW   |Register ref integer|Variable literal        |                    |
+|  0x28|SUBBORROW   |Register ref integer|Register ref integer    |                    |
+|  0x29|MULT        |Register ref        |Variable literal        |                    |
+|  0x2A|MULT        |Register ref        |Register ref            |                    |
+|  0x2B|SDIV        |Register ref        |Variable literal        |                    |
+|  0x2C|SDIV        |Register ref        |Register ref            |                    |
+|  0x2D|UDIV        |Register ref integer|Variable literal        |                    |
+|  0x2E|UDIV        |Register ref integer|Register ref integer    |                    |
+|  0x2F|SREM        |Register ref        |Variable literal        |                    |
+|  0x30|SREM        |Register ref        |Register ref            |                    |
+|  0x31|UREM        |Register ref integer|Variable literal        |                    |
+|  0x32|UREM        |Register ref integer|Register ref integer    |                    |
+|  0x33|NOT         |Register ref integer|                        |                    |
+|  0x34|AND         |Register ref integer|Variable integer literal|                    |
+|  0x35|AND         |Register ref integer|Register ref integer    |                    |
+|  0x36|OR          |Register ref integer|Variable integer literal|                    |
+|  0x37|OR          |Register ref integer|Register ref integer    |                    |
+|  0x38|XOR         |Register ref integer|Variable integer literal|                    |
+|  0x39|XOR         |Register ref integer|Register ref integer    |                    |
+|  0x3A|LSHIFT      |Register ref integer|Literal byte            |                    |
+|  0x3B|LSHIFT      |Register ref integer|Register ref byte       |                    |
+|  0x3C|RSHIFTL     |Register ref integer|Literal byte            |                    |
+|  0x3D|RSHIFTL     |Register ref integer|Register ref byte       |                    |
+|  0x3E|RSHIFTA     |Register ref integer|Literal byte            |                    |
+|  0x3F|RSHIFTA     |Register ref integer|Register ref byte       |                    |
+|  0x40|LROT        |Register ref integer|Literal byte            |                    |
+|  0x41|LROT        |Register ref integer|Register ref byte       |                    |
+|  0x42|RROT        |Register ref integer|Literal byte            |                    |
+|  0x43|RROT        |Register ref integer|Register ref byte       |                    |
+|  0x44|LROTCARRY   |Register ref integer|Literal byte            |                    |
+|  0x45|LROTCARRY   |Register ref integer|Register ref byte       |                    |
+|  0x46|RROTCARRY   |Register ref integer|Literal byte            |                    |
+|  0x47|RROTCARRY   |Register ref integer|Register ref byte       |                    |
+|  0x48|JUMP        |Literal address     |                        |                    |
+|  0x49|JUMP        |Register ref address|                        |                    |
+|  0x4A|COMPARE     |Register ref        |Variable literal        |                    |
+|  0x4B|COMPARE     |Register ref        |Register ref            |                    |
+|  0x4C|BLOCKCMP    |Literal word        |Literal address         |Literal address     |
+|  0x4D|BLOCKCMP    |Literal word        |Literal address         |Register ref address|
+|  0x4E|BLOCKCMP    |Literal word        |Register ref address    |Literal address     |
+|  0x4F|BLOCKCMP    |Literal word        |Register ref address    |Register ref address|
+|  0x50|BLOCKCMP    |Register ref word   |Literal address         |Literal address     |
+|  0x51|BLOCKCMP    |Register ref word   |Literal address         |Register ref address|
+|  0x52|BLOCKCMP    |Register ref word   |Register ref address    |Literal address     |
+|  0x53|BLOCKCMP    |Register ref word   |Register ref address    |Register ref address|
+|  0x54|JEQUAL      |Literal address     |                        |                    |
+|  0x55|JEQUAL      |Register ref address|                        |                    |
+|  0x56|JNOTEQUAL   |Literal address     |                        |                    |
+|  0x57|JNOTEQUAL   |Register ref address|                        |                    |
+|  0x58|JGREATER    |Literal address     |                        |                    |
+|  0x59|JGREATER    |Register ref address|                        |                    |
+|  0x5A|JGREATEREQ  |Literal address     |                        |                    |
+|  0x5B|JGREATEREQ  |Register ref address|                        |                    |
+|  0x5C|JABOVE      |Literal address     |                        |                    |
+|  0x5D|JABOVE      |Register ref address|                        |                    |
+|  0x5E|JABOVEEQ    |Literal address     |                        |                    |
+|  0x5F|JABOVEEQ    |Register ref address|                        |                    |
+|  0x60|JLESSER     |Literal address     |                        |                    |
+|  0x61|JLESSER     |Register ref address|                        |                    |
+|  0x62|JLESSEREQ   |Literal address     |                        |                    |
+|  0x63|JLESSEREQ   |Register ref address|                        |                    |
+|  0x64|JBELOW      |Literal address     |                        |                    |
+|  0x65|JBELOW      |Register ref address|                        |                    |
+|  0x66|JBELOWEQ    |Literal address     |                        |                    |
+|  0x67|JBELOWEQ    |Register ref address|                        |                    |
+|  0x68|JOVERFLOW   |Literal address     |                        |                    |
+|  0x69|JOVERFLOW   |Register ref address|                        |                    |
+|  0x6A|JNOTOVERFLOW|Literal address     |                        |                    |
+|  0x6B|JNOTOVERFLOW|Register ref address|                        |                    |
+|  0x6C|CALL        |Literal address     |                        |                    |
+|  0x6D|CALL        |Register ref address|                        |                    |
+|  0x6E|RETURN      |                    |                        |                    |
+|  0x6F|SYSCALL     |                    |                        |                    |
 |  0x70|            |                    |                        |                    |
 |  0x71|            |                    |                        |                    |
 |  0x72|            |                    |                        |                    |
