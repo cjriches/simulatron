@@ -103,6 +103,7 @@ Flags: 0x0000         IMR: 0x0000                     ---> Execute IRETURN ---> 
 UStack: 0xDEADBEEF    KStack: 0x007F                                               UStack: 0xDEADBEEF    KStack: 0xFAFFCAFE
                               0x00001234
                               0x0001
+                              0xFAFFCAFE
 ```
 
 

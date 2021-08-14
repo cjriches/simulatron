@@ -40,7 +40,7 @@ If an access of the wrong type is made (e.g. a write to a read-only section), th
 Virtual memory mapping is achieved via two-level hierarchical page table. The kernel should set the Page Directory Pointer Register to point to a valid page table in memory before entering user mode.
 
 ##### Page directory format
-The Page Directory may be located anywhere in memory and is pointed to by the PDPR. It consists of 1024 entries, each 32 bytes in size. Each entry has the following structure:
+The Page Directory may be located anywhere in memory and is pointed to by the PDPR. It consists of 1024 entries, each 32 bits in size. Each entry has the following structure:
 
 ```
 _________________________________________________________________________________________________
@@ -54,7 +54,7 @@ V stands for Valid. If 0, the linked page table does not exist, and the address 
 The given address is the upper 20 bits. As a page table must be located precisely within a single frame, the lower 12 bits are considered to all be zero.
 
 ##### Page table format
-A page table also consists of 1024 32-byte entries. It must be frame-aligned. Each entry has the following structure:
+A page table also consists of 1024 32-bit entries. It must be frame-aligned. Each entry has the following structure:
 
 ```
 _________________________________________________________________________________________________
