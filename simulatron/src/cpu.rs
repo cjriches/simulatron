@@ -319,20 +319,27 @@ impl<D: DiskController> CPUInternal<D> {
     fn cpu_loop(&mut self) {
         let mut pausing = false;
         loop {
-            match self.interrupt_fetch_decode_execute(pausing) {
+            let mut rewind = 0;
+            match self.interrupt_fetch_decode_execute(pausing, &mut rewind) {
                 Ok(PostCycleAction::Halt) => break,
                 Ok(PostCycleAction::Pause) => pausing = true,
-                Ok(PostCycleAction::None) | Err(_) => pausing = false,
+                Ok(PostCycleAction::None) => pausing = false,
+                Err(_) => {
+                    self.program_counter -= rewind;
+                    pausing = false;
+                },
             }
         }
     }
 
-    fn interrupt_fetch_decode_execute(&mut self, pausing: bool) -> CPUResult<PostCycleAction> {
+    fn interrupt_fetch_decode_execute(&mut self, pausing: bool, rewind: &mut u32) -> CPUResult<PostCycleAction> {
         // Fetch the given size value and automatically increment the program counter.
         macro_rules! fetch {
             ($type:ident) => {{
                 let value = self.load(self.program_counter, true, ValueType::$type)?;
-                self.program_counter += value.size_in_bytes();
+                let size = value.size_in_bytes();
+                self.program_counter += size;
+                *rewind += size;
                 Into::<Option<_>>::into(value).unwrap()
             }}
         }
@@ -341,7 +348,9 @@ impl<D: DiskController> CPUInternal<D> {
         macro_rules! fetch_variable_size {
             ($value_type:expr) => {{
                 let value = self.load(self.program_counter, true, $value_type)?;
-                self.program_counter += value.size_in_bytes();
+                let size = value.size_in_bytes();
+                self.program_counter += size;
+                *rewind += size;
                 value
             }}
         }
@@ -841,6 +850,8 @@ impl<D: DiskController> CPUInternal<D> {
 mod tests {
     use super::*;
 
+    use ntest::timeout;
+
     use crate::{disk::MockDiskController, display::DisplayController,
                 keyboard::{KeyboardController, KeyMessage, key_str_to_u8},
                 ram::RAM, rom::ROM, ui::UICommand};
@@ -918,17 +929,10 @@ mod tests {
         rom[7] = 0x08;  // into r0h
         rom[8] = 0x0B;  // from r3h.
 
-        // Now try an operation with unmatched sizes. Should raise an interrupt.
-        rom[9] = 0x0B;
-        rom[10] = 0x01; // into r1
-        rom[11] = 0x0B; // from r3h.
-
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[3], 0x13579BDF);
         assert_eq!(internal!(cpu).r[0], 0x00009BDF);
-        assert_eq!(internal!(cpu).r[1], 0x00000000);
-        assert!(internal!(cpu).interrupts.latched[INTERRUPT_ILLEGAL_OPERATION as usize]);
     }
 
     #[test]
@@ -1258,6 +1262,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(1000)]
     fn test_keyboard() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1404,6 +1409,35 @@ mod tests {
     }
 
     #[test]
+    #[timeout(1000)]
+    fn test_bad_reg_ref() {
+        let mut rom = [0; 512];
+        // Try a copy with unmatched sizes. Should raise an interrupt.
+        rom[0] = 0x0A; // Copy literal
+        rom[1] = 0x22; // into kspr
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x50;
+        rom[5] = 0x00; // address 0x00005000.
+
+        rom[6] = 0x0A; // Copy literal
+        rom[7] = 0x24; // into imr
+        rom[8] = 0x00;
+        rom[9] = 0x40; // illegal operation interrupt only.
+
+        rom[10] = 0x0B; // Copy register
+        rom[11] = 0x01; // into r1
+        rom[12] = 0x0B; // from r3h.
+
+        rom[13] = 0x01; // Pause. We should never hit this.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[1], 0x00000000);
+    }
+
+    #[test]
+    #[timeout(1000)]
     fn test_timer_literal_interval() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1448,6 +1482,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(1000)]
     fn test_timer_reg_interval() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
