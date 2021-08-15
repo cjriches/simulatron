@@ -140,11 +140,13 @@ These are only executable in kernel mode. If the CPU is in user mode, an illegal
 
 `POP register`: Copy the top of the stack into the given register and then increment the stack pointer by the appropriate amount.
 
+Note that PUSH and POP will use KSPR if in kernel mode, and USPR if in user mode.
+
 `BLOCKCOPY length destination source`: Copy `length` bytes from the source memory address to the destination memory address.
 
 `BLOCKSET length destination value`: Set `length` bytes to the given value, starting at the destination memory address.
 
-Note that PUSH and POP will use KSPR if in kernel mode, and USPR if in user mode.
+Note that `BLOCK*` operations are not atomic and will restart from the beginning if interrupted by a page fault, so usermode operations that cross multiple page boundaries may be quite inefficient. In this case it is probably better to break the operation up into multiple smaller instructions.
 
 ### Arithmetic instructions
 Operand types must match, i.e. `ADD r0 f0` would be illegal.
@@ -200,6 +202,8 @@ None of these instructions are applicable to floats.
 `COMPARE value1 value2`: Subtract `value1` from `value2` and discard the result. Flags will still be set.
 
 `BLOCKCMP length source1 source2`: Compare `length` bytes starting at `source1` and `source2`, setting flags appropriately. The `N` flag is set if the two blocks differ and at the point of difference, `source1` was greater.
+
+Note that long `BLKCMP` operations may be inefficient in usermode; see `BLOCKCOPY` and `BLOCKSET` for more details.
 
 `JEQUAL address`: Jump to the given address if the last comparison had `value1 = value2`, i.e. `Z`=1.
 
