@@ -700,7 +700,34 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("NEGATE");
                 let reg_ref = fetch!(Byte);
                 debug!("Negating register {:#x}", reg_ref);
-                self.instruction_negate(reg_ref)?;
+                let value = self.read_from_register(reg_ref)?;
+                let negated = match value {
+                    TypedValue::Byte(b) => TypedValue::Byte(-(b as i8) as u8),
+                    TypedValue::Half(h) => TypedValue::Half(-(h as i16) as u16),
+                    TypedValue::Word(w) => TypedValue::Word(-(w as i32) as u32),
+                    TypedValue::Float(f) => TypedValue::Float(-f),
+                };
+                self.write_to_register(reg_ref, negated)?;
+            }
+            0x21 => {  // ADD literal
+                debug!("ADD literal");
+                let reg_ref = fetch!(Byte);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                debug!("Adding {:?} to register {:#x}", value, reg_ref);
+                self.instruction_add(reg_ref, value)?;
+            }
+            0x22 => {  // ADD ref
+                debug!("ADD ref");
+                let dest = fetch!(Byte);
+                let src = fetch!(Byte);
+                // Ensure source and dest types are the same.
+                if self.reg_ref_type(dest)? != self.reg_ref_type(src)? {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    return Err(CPUError);
+                }
+                let value = self.read_from_register(src)?;
+                debug!("Adding {:?} to register {:#x}", value, dest);
+                self.instruction_add(dest, value)?;
             }
             _ => {  // Unrecognised
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
@@ -757,15 +784,30 @@ impl<D: DiskController> CPUInternal<D> {
         Ok(())
     }
 
-    fn instruction_negate(&mut self, reg_ref: u8) -> CPUResult<()> {
-        let value = self.read_from_register(reg_ref)?;
-        let negated = match value {
-            TypedValue::Byte(b) => TypedValue::Byte(-(b as i8) as u8),
-            TypedValue::Half(h) => TypedValue::Half(-(h as i16) as u16),
-            TypedValue::Word(w) => TypedValue::Word(-(w as i32) as u32),
-            TypedValue::Float(f) => TypedValue::Float(-f),
-        };
-        self.write_to_register(reg_ref, negated)
+    fn instruction_add(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        match self.read_from_register(reg_ref)? {
+            TypedValue::Byte(x) => {
+                let y = Into::<Option<u8>>::into(value).unwrap();
+                let ans = x.wrapping_add(y);
+                self.write_to_register(reg_ref, TypedValue::Byte(ans))
+            },
+            TypedValue::Half(x) => {
+                let y = Into::<Option<u16>>::into(value).unwrap();
+                let ans = x.wrapping_add(y);
+                self.write_to_register(reg_ref, TypedValue::Half(ans))
+            },
+            TypedValue::Word(x) => {
+                let y = Into::<Option<u32>>::into(value).unwrap();
+                let ans = x.wrapping_add(y);
+                self.write_to_register(reg_ref, TypedValue::Word(ans))
+            },
+            TypedValue::Float(x) => {
+                let y = Into::<Option<f32>>::into(value).unwrap();
+                let ans = x + y;
+                self.write_to_register(reg_ref, TypedValue::Float(ans))
+            },
+        }
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -1987,5 +2029,39 @@ mod tests {
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[0], -0x12345678_i32 as u32);
         assert_eq!(internal!(cpu).r[4], (-0x10_i32 as u8) as u32);
+    }
+
+    #[test]
+    fn test_add() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x05;  // some number.
+
+        rom[3] = 0x0A;  // Copy literal
+        rom[4] = 0x11;  // into r1b
+        rom[5] = 0x06;  // some number.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x12;  // into r2b
+        rom[8] = 0xFF;  // max number.
+
+        rom[9] = 0x22;  // Add register
+        rom[10] = 0x10; // into r0b
+        rom[11] = 0x11; // r1b.
+
+        rom[12] = 0x22; // Add register
+        rom[13] = 0x11; // into r1b
+        rom[14] = 0x11; // r1b.
+
+        rom[15] = 0x21; // Add literal
+        rom[16] = 0x12; // into r2b
+        rom[17] = 0x01; // 1.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x0B);
+        assert_eq!(internal!(cpu).r[1], 0x0C);
+        assert_eq!(internal!(cpu).r[2], 0x00);
     }
 }
