@@ -629,7 +629,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_blockset(length, dest_address, value)?;
             }
             0x19 => {  // BLOCKSET literal literal ref
-            debug!("BLOCKSET literal literal ref");
+                debug!("BLOCKSET literal literal ref");
                 let length = fetch!(Word);
                 let dest_address = fetch!(Word);
                 let value_ref = fetch!(Byte);
@@ -638,7 +638,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_blockset(length, dest_address, value)?;
             }
             0x1A => {  // BLOCKSET literal ref literal
-            debug!("BLOCKSET literal ref literal");
+                debug!("BLOCKSET literal ref literal");
                 let length = fetch!(Word);
                 let dest_address_ref = fetch!(Byte);
                 let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
@@ -647,7 +647,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_blockset(length, dest_address, value)?;
             }
             0x1B => {  // BLOCKSET literal ref ref
-            debug!("BLOCKSET literal ref ref");
+                debug!("BLOCKSET literal ref ref");
                 let length = fetch!(Word);
                 let dest_address_ref = fetch!(Byte);
                 let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
@@ -657,7 +657,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_blockset(length, dest_address, value)?;
             }
             0x1C => {  // BLOCKSET ref literal literal
-            debug!("BLOCKSET ref literal literal");
+                debug!("BLOCKSET ref literal literal");
                 let length_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let dest_address = fetch!(Word);
@@ -666,7 +666,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_blockset(length, dest_address, value)?;
             }
             0x1D => {  // BLOCKSET ref literal ref
-            debug!("BLOCKSET ref literal ref");
+                debug!("BLOCKSET ref literal ref");
                 let length_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let dest_address = fetch!(Word);
@@ -676,7 +676,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_blockset(length, dest_address, value)?;
             }
             0x1E => {  // BLOCKSET ref ref literal
-            debug!("BLOCKSET ref ref literal");
+                debug!("BLOCKSET ref ref literal");
                 let length_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let dest_address_ref = fetch!(Byte);
@@ -686,7 +686,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_blockset(length, dest_address, value)?;
             }
             0x1F => {  // BLOCKSET ref ref ref
-            debug!("BLOCKSET ref ref ref");
+                debug!("BLOCKSET ref ref ref");
                 let length_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let dest_address_ref = fetch!(Byte);
@@ -695,6 +695,12 @@ impl<D: DiskController> CPUInternal<D> {
                 let value = try_tv_into_v!(self.read_from_register(value_ref)?);
                 debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
+            }
+            0x20 => {  // NEGATE
+                debug!("NEGATE");
+                let reg_ref = fetch!(Byte);
+                debug!("Negating register {:#x}", reg_ref);
+                self.instruction_negate(reg_ref)?;
             }
             _ => {  // Unrecognised
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
@@ -749,6 +755,17 @@ impl<D: DiskController> CPUInternal<D> {
             }
         }
         Ok(())
+    }
+
+    fn instruction_negate(&mut self, reg_ref: u8) -> CPUResult<()> {
+        let value = self.read_from_register(reg_ref)?;
+        let negated = match value {
+            TypedValue::Byte(b) => TypedValue::Byte(-(b as i8) as u8),
+            TypedValue::Half(h) => TypedValue::Half(-(h as i16) as u16),
+            TypedValue::Word(w) => TypedValue::Word(-(w as i32) as u32),
+            TypedValue::Float(f) => TypedValue::Float(-f),
+        };
+        self.write_to_register(reg_ref, negated)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -1944,5 +1961,31 @@ mod tests {
         assert_eq!(internal!(cpu).mmu.load_physical_8(0x801E), Ok(0x42));
         assert_eq!(internal!(cpu).mmu.load_physical_8(0x801F), Ok(0x42));
         assert_eq!(internal!(cpu).mmu.load_physical_8(0x8020), Ok(0x00));
+    }
+
+    #[test]
+    fn test_negate() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x00;  // into r0
+        rom[2] = 0x12;
+        rom[3] = 0x34;
+        rom[4] = 0x56;
+        rom[5] = 0x78;  // random number.
+
+        rom[6] = 0x20;  // Negate
+        rom[7] = 0x00;  // r0.
+
+        rom[8] = 0x0A;  // Copy literal
+        rom[9] = 0x14;  // into r4b
+        rom[10] = 0x10; // random number.
+
+        rom[11] = 0x20; // Negate
+        rom[12] = 0x14; // r4b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], -0x12345678_i32 as u32);
+        assert_eq!(internal!(cpu).r[4], (-0x10_i32 as u8) as u32);
     }
 }
