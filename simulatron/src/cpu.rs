@@ -622,6 +622,79 @@ impl<D: DiskController> CPUInternal<D> {
             }
             0x18 => {  // BLOCKSET literal literal literal
                 debug!("BLOCKSET literal literal literal");
+                let length = fetch!(Word);
+                let dest_address = fetch!(Word);
+                let value = fetch!(Byte);
+                debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
+                self.instruction_blockset(length, dest_address, value)?;
+            }
+            0x19 => {  // BLOCKSET literal literal ref
+            debug!("BLOCKSET literal literal ref");
+                let length = fetch!(Word);
+                let dest_address = fetch!(Word);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
+                self.instruction_blockset(length, dest_address, value)?;
+            }
+            0x1A => {  // BLOCKSET literal ref literal
+            debug!("BLOCKSET literal ref literal");
+                let length = fetch!(Word);
+                let dest_address_ref = fetch!(Byte);
+                let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
+                let value = fetch!(Byte);
+                debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
+                self.instruction_blockset(length, dest_address, value)?;
+            }
+            0x1B => {  // BLOCKSET literal ref ref
+            debug!("BLOCKSET literal ref ref");
+                let length = fetch!(Word);
+                let dest_address_ref = fetch!(Byte);
+                let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
+                self.instruction_blockset(length, dest_address, value)?;
+            }
+            0x1C => {  // BLOCKSET ref literal literal
+            debug!("BLOCKSET ref literal literal");
+                let length_ref = fetch!(Byte);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let dest_address = fetch!(Word);
+                let value = fetch!(Byte);
+                debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
+                self.instruction_blockset(length, dest_address, value)?;
+            }
+            0x1D => {  // BLOCKSET ref literal ref
+            debug!("BLOCKSET ref literal ref");
+                let length_ref = fetch!(Byte);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let dest_address = fetch!(Word);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
+                self.instruction_blockset(length, dest_address, value)?;
+            }
+            0x1E => {  // BLOCKSET ref ref literal
+            debug!("BLOCKSET ref ref literal");
+                let length_ref = fetch!(Byte);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let dest_address_ref = fetch!(Byte);
+                let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
+                let value = fetch!(Byte);
+                debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
+                self.instruction_blockset(length, dest_address, value)?;
+            }
+            0x1F => {  // BLOCKSET ref ref ref
+            debug!("BLOCKSET ref ref ref");
+                let length_ref = fetch!(Byte);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let dest_address_ref = fetch!(Byte);
+                let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
+                self.instruction_blockset(length, dest_address, value)?;
             }
             _ => {  // Unrecognised
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
@@ -651,10 +724,31 @@ impl<D: DiskController> CPUInternal<D> {
     fn instruction_blockcopy(&mut self, length: u32, dest_address: u32,
                              source_address: u32) -> CPUResult<()> {
         if self.kernel_mode {
-            self.mmu.blockcopy_physical(length, source_address, dest_address)
+            for i in 0..length {
+                let val = self.mmu.load_physical_8(source_address + i)?;
+                self.mmu.store_physical_8(dest_address + i, val)?;
+            }
         } else {
-            self.mmu.blockcopy_virtual(length, source_address, dest_address, self.pdpr)
+            for i in 0..length {
+                let val = self.mmu.load_virtual_8(self.pdpr, source_address + i, false)?;
+                self.mmu.store_virtual_8(self.pdpr, dest_address + i, val)?;
+            }
         }
+        Ok(())
+    }
+
+    fn instruction_blockset(&mut self, length: u32, dest_address: u32,
+                            value: u8) -> CPUResult<()> {
+        if self.kernel_mode {
+            for i in 0..length {
+                self.mmu.store_physical_8(dest_address + i, value)?;
+            }
+        } else {
+            for i in 0..length {
+                self.mmu.store_virtual_8(self.pdpr, dest_address + i, value)?;
+            }
+        }
+        Ok(())
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -1791,5 +1885,64 @@ mod tests {
         assert_eq!(internal!(cpu).mmu.load_physical_8(0x403E), Ok(0xEE));
         assert_eq!(internal!(cpu).mmu.load_physical_8(0x403F), Ok(0xFF));
         assert_eq!(internal!(cpu).mmu.load_physical_8(0x4040), Ok(0x00));
+    }
+
+    #[test]
+    fn test_blockset() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x00;  // into r0
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x00;
+        rom[5] = 0x20;  // 32 bytes.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x11;  // into r1b
+        rom[8] = 0x42;  // some value.
+
+        rom[9] = 0x1D;  // Blockset ref length, literal dest, ref value
+        rom[10] = 0x00; // length in r0
+        rom[11] = 0x00;
+        rom[12] = 0x00;
+        rom[13] = 0x80;
+        rom[14] = 0x00; // destination address 0x00008000
+        rom[15] = 0x11; // value in r1b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8000), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8001), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8002), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8003), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8004), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8005), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8006), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8007), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8008), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8009), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x800A), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x800B), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x800C), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x800D), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x800E), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x800F), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8010), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8011), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8012), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8013), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8014), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8015), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8016), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8017), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8018), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8019), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x801A), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x801B), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x801C), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x801D), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x801E), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x801F), Ok(0x42));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x8020), Ok(0x00));
     }
 }

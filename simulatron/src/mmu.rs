@@ -260,24 +260,6 @@ impl<D: DiskController> MMU<D> {
         let frame_offset = virtual_address & 0xFFF;
         Ok(frame | frame_offset)
     }
-
-    pub fn blockcopy_virtual(&mut self, length: u32, source_address: u32,
-                             dest_address: u32, pdpr: u32) -> CPUResult<()> {
-        for i in 0..length {
-            let val = self.load_virtual_8(pdpr, source_address + i, false)?;
-            self.store_virtual_8(pdpr, dest_address + i, val)?;
-        }
-        Ok(())
-    }
-
-    pub fn blockcopy_physical(&mut self, length: u32, source_address: u32,
-                             dest_address: u32) -> CPUResult<()> {
-        for i in 0..length {
-            let val = self.load_physical_8(source_address + i)?;
-            self.store_physical_8(dest_address + i, val)?;
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
