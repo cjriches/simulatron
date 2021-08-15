@@ -6,30 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
-// Register addresses
-pub const ADDRESS_STATUS: u32 = 0;
-pub const ADDRESS_NBA_1: u32 = 1;
-pub const ADDRESS_NBA_2: u32 = 2;
-pub const ADDRESS_NBA_3: u32 = 3;
-pub const ADDRESS_NBA_4: u32 = 4;
-pub const ADDRESS_DA_1: u32 = 5;
-pub const ADDRESS_DA_2: u32 = 6;
-pub const ADDRESS_DA_3: u32 = 7;
-pub const ADDRESS_DA_4: u32 = 8;
-pub const ADDRESS_CMD: u32 = 9;
-
-
-// Possible values for the status register.
-pub const STATUS_DISCONNECTED: u8 = 0;
-pub const STATUS_SUCCESS: u8 = 1;
-pub const STATUS_BAD_COMMAND: u8 = 2;
-pub const STATUS_ERROR: u8 = 3;
-
-// Allowed commands.
-pub const COMMAND_READ: u8 = 1;
-pub const COMMAND_WRITE: u8 = 2;
-pub const COMMAND_SUSTAINED_READ: u8 = 3;
-pub const COMMAND_SUSTAINED_WRITE: u8 = 4;
+use super::disk_interface::*;
 
 enum DiskCommand {
     Read(bool),
@@ -44,7 +21,7 @@ struct SharedData {
     buffer: Box<[u8; 4096]>,
 }
 
-pub struct DiskController {
+pub struct RealDiskController {
     dir_path: Arc<PathBuf>,
     interrupt_tx: mpsc::Sender<u32>,
     interrupt_num: u32,
@@ -54,10 +31,11 @@ pub struct DiskController {
     shared_data: Arc<Mutex<SharedData>>,
 }
 
-impl DiskController {
+impl RealDiskController {
     pub fn new(dir_path: impl Into<PathBuf>,
-               interrupt_tx: mpsc::Sender<u32>, interrupt_num: u32) -> Self {
-        DiskController {
+               interrupt_tx: mpsc::Sender<u32>,
+               interrupt_num: u32) -> Self {
+        RealDiskController {
             dir_path: Arc::new(dir_path.into()),
             interrupt_tx,
             interrupt_num,
@@ -72,8 +50,10 @@ impl DiskController {
             }))
         }
     }
+}
 
-    pub fn start(&mut self) {
+impl DiskController for RealDiskController {
+    fn start(&mut self) {
         if self.worker_thread.is_some() {
             panic!("DiskController was already running.");
         }
@@ -92,7 +72,7 @@ impl DiskController {
             if let DiskCommand::JoinThread = cmd {
                 return;
             }
-            DiskController::worker_iteration(
+            worker_iteration(
                 &worker_interrupt_tx, interrupt_num, &worker_dir_name, &worker_shared_data, &cmd);
         });
         self.worker_thread = Some(worker_thread);
@@ -102,7 +82,7 @@ impl DiskController {
         let watcher_dir_name = Arc::clone(&self.dir_path);
         let watcher_shared_data = Arc::clone(&self.shared_data);
         let mut watcher = notify::immediate_watcher(move |event: notify::Result<notify::Event>| {
-            DiskController::watcher_iteration(
+            watcher_iteration(
                 &watcher_interrupt_tx, interrupt_num,
                 &watcher_dir_name, &watcher_shared_data, &event.unwrap());
         }).unwrap();
@@ -111,7 +91,7 @@ impl DiskController {
         self.watcher = Some(watcher);
     }
 
-    pub fn stop(&mut self) {
+    fn stop(&mut self) {
         // Join the worker thread.
         let worker_thread = self.worker_thread.take()
             .expect("DiskController was already stopped.");
@@ -124,147 +104,7 @@ impl DiskController {
         watcher.unwatch(self.dir_path.as_ref()).unwrap();
     }
 
-    fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32, dir_path: &Path,
-                        shared_data: &Arc<Mutex<SharedData>>, cmd: &DiskCommand) {
-        // Acquire the shared data.
-        let mut sd = shared_data.lock().unwrap();
-
-        // Create a macro for simple code reuse.
-        macro_rules! return_with_status {
-            ($x:expr) => {
-                {
-                    sd.status = $x;
-                    interrupt_tx.send(interrupt_num).unwrap();
-                    return;
-                }
-            };
-        }
-
-        // If we are not connected to a disk or the address is out of
-        // range, reject the command.
-        if sd.status == STATUS_DISCONNECTED {
-            return_with_status!(STATUS_DISCONNECTED);
-        }
-        if sd.block_to_access >= sd.blocks_available {
-            return_with_status!(STATUS_BAD_COMMAND);
-        }
-
-        let offset = (sd.block_to_access * 4096) as u64;
-        match *cmd {
-            DiskCommand::Read(sustained) => {
-                // Find the file.
-                let result = DiskController::get_file_name(dir_path).and_then(|file_path| {
-                    // Open the file.
-                    fs::File::open(file_path).ok()
-                }).and_then(|mut file| {
-                    // Seek to the correct position. Note we are using 'and' to return the
-                    // file rather than the new seek offset.
-                    file.seek(SeekFrom::Start(offset)).ok().and(Some(file))
-                }).and_then(|mut file| {
-                    // Read into the buffer.
-                    file.read_exact(&mut *sd.buffer).ok()
-                });
-                match result {
-                    Some(_) => {
-                        if sustained {  // Advance to next block automatically.
-                            sd.block_to_access += 1;
-                        }
-                        return_with_status!(STATUS_SUCCESS)
-                    }
-                    None => return_with_status!(STATUS_ERROR)
-                }
-            }
-            DiskCommand::Write(sustained) => {
-                // Find the file.
-                let result = DiskController::get_file_name(dir_path).and_then(|file_path| {
-                    // Open the file for editing.
-                    fs::OpenOptions::new().write(true).open(file_path).ok()
-                }).and_then(|mut file| {
-                    // Seek to the correct position. Note we are using 'and' to return the
-                    // file rather than the new seek offset.
-                    file.seek(SeekFrom::Start(offset)).ok().and(Some(file))
-                }).and_then(|mut file| {
-                    // Write from the buffer.
-                    file.write_all(&*sd.buffer).ok()
-                });
-                match result {
-                    Some(_) => {
-                        if sustained {  // Advance to next block automatically.
-                            sd.block_to_access += 1;
-                        }
-                        return_with_status!(STATUS_SUCCESS)
-                    }
-                    None => return_with_status!(STATUS_ERROR)
-                }
-            }
-            DiskCommand::JoinThread => unreachable!()  // Already checked earlier.
-        }
-    }
-
-    fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32,
-                         dir_path: &Path, watcher_shared_data: &Arc<Mutex<SharedData>>,
-                         event: &notify::Event) {
-        // We only care about files being created or removed. Therefore we
-        // need Create, Remove, and Modify(Name(From)) events.
-        if let notify::EventKind::Create(_) | notify::EventKind::Remove(_)
-                | notify::EventKind::Modify(
-                    notify::event::ModifyKind::Name(
-                        notify::event::RenameMode::From)) = event.kind {
-            // Check the filesystem to see the new state.
-            match DiskController::get_file_name(dir_path) {
-                None => {
-                    // Set status to disconnected.
-                    let mut sd = watcher_shared_data.lock().unwrap();
-                    sd.status = STATUS_DISCONNECTED;
-                    sd.blocks_available = 0;
-                    // Send interrupt.
-                    watcher_interrupt_tx.send(interrupt_num).unwrap();
-                }
-                Some(file_path) => {
-                    // Query the file.
-                    let size = fs::metadata(file_path).ok().and_then(|metadata| {
-                        // Ensure it really is a file.
-                        if metadata.is_file() {Some(metadata)} else {None}
-                    }).and_then(|metadata| {
-                        // Get the size in blocks.
-                        let bytes = metadata.len();
-                        if bytes % 4096 == 0 {
-                            u32::try_from(bytes / 4096).ok()
-                        } else {None}
-                    });
-                    let mut sd = watcher_shared_data.lock().unwrap();
-                    match size {
-                        Some(num_blocks) => {
-                            // Set the status to connected.
-                            sd.status = STATUS_SUCCESS;
-                            sd.blocks_available = num_blocks;
-                        }
-                        None => {
-                            // Set status to disconnected.
-                            sd.status = STATUS_DISCONNECTED;
-                            sd.blocks_available = 0;
-                        }
-                    }
-                    // Send interrupt.
-                    watcher_interrupt_tx.send(interrupt_num).unwrap();
-                }
-            }
-        }
-    }
-
-    fn get_file_name(dir_path: &Path) -> Option<PathBuf> {
-        let mut dir_contents = fs::read_dir(dir_path).unwrap()
-            .map(|res| res.unwrap().path())
-            .collect::<Vec<_>>();
-
-        match dir_contents.len() {
-            0 => None,
-            1 => Some(dir_contents.remove(0)),
-            _ => panic!("There were multiple files in '{:?}'.", dir_path)
-        }
-    }
-
-    pub fn store_control(&mut self, address: u32, value: u8) {
+    fn store_control(&mut self, address: u32, value: u8) {
         match address {
             ADDRESS_DA_1 => {
                 let block_to_access = &mut self.shared_data.lock().unwrap().block_to_access;
@@ -318,7 +158,7 @@ impl DiskController {
         }
     }
 
-    pub fn load_status(&self, address: u32) -> u8 {
+    fn load_status(&self, address: u32) -> u8 {
         match address {
             ADDRESS_STATUS => self.shared_data.lock().unwrap().status,
             ADDRESS_NBA_1 =>
@@ -333,7 +173,7 @@ impl DiskController {
         }
     }
 
-    pub fn store_data(&mut self, address: u32, value: u8) {
+    fn store_data(&mut self, address: u32, value: u8) {
         let index = usize::try_from(address).unwrap();
         let buffer = &mut self.shared_data.lock().unwrap().buffer;
         if index >= buffer.len() {
@@ -342,13 +182,156 @@ impl DiskController {
         buffer[index] = value;
     }
 
-    pub fn load_data(&self, address: u32) -> u8 {
+    fn load_data(&self, address: u32) -> u8 {
         let index = usize::try_from(address).unwrap();
         let buffer = &self.shared_data.lock().unwrap().buffer;
         if index >= buffer.len() {
             panic!("Invalid address in disk::load_data.");
         }
         buffer[index]
+    }
+}
+
+// The return_with_status macro hides the use of interrupt_tx and interrupt_num, so silence the
+// warnings from the IDE.
+//noinspection RsLiveness
+fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32, dir_path: &Path,
+                    shared_data: &Arc<Mutex<SharedData>>, cmd: &DiskCommand) {
+    // Acquire the shared data.
+    let mut sd = shared_data.lock().unwrap();
+
+    // Create a macro for simple code reuse.
+    macro_rules! return_with_status {
+            ($x:expr) => {
+                {
+                    sd.status = $x;
+                    interrupt_tx.send(interrupt_num).unwrap();
+                    return;
+                }
+            };
+        }
+
+    // If we are not connected to a disk or the address is out of
+    // range, reject the command.
+    if sd.status == STATUS_DISCONNECTED {
+        return_with_status!(STATUS_DISCONNECTED);
+    }
+    if sd.block_to_access >= sd.blocks_available {
+        return_with_status!(STATUS_BAD_COMMAND);
+    }
+
+    let offset = (sd.block_to_access * 4096) as u64;
+    match *cmd {
+        DiskCommand::Read(sustained) => {
+            // Find the file.
+            let result = get_file_name(dir_path).and_then(|file_path| {
+                // Open the file.
+                fs::File::open(file_path).ok()
+            }).and_then(|mut file| {
+                // Seek to the correct position. Note we are using 'and' to return the
+                // file rather than the new seek offset.
+                file.seek(SeekFrom::Start(offset)).ok().and(Some(file))
+            }).and_then(|mut file| {
+                // Read into the buffer.
+                file.read_exact(&mut *sd.buffer).ok()
+            });
+            match result {
+                Some(_) => {
+                    if sustained {  // Advance to next block automatically.
+                        sd.block_to_access += 1;
+                    }
+                    return_with_status!(STATUS_SUCCESS)
+                }
+                None => return_with_status!(STATUS_ERROR)
+            }
+        }
+        DiskCommand::Write(sustained) => {
+            // Find the file.
+            let result = get_file_name(dir_path).and_then(|file_path| {
+                // Open the file for editing.
+                fs::OpenOptions::new().write(true).open(file_path).ok()
+            }).and_then(|mut file| {
+                // Seek to the correct position. Note we are using 'and' to return the
+                // file rather than the new seek offset.
+                file.seek(SeekFrom::Start(offset)).ok().and(Some(file))
+            }).and_then(|mut file| {
+                // Write from the buffer.
+                file.write_all(&*sd.buffer).ok()
+            });
+            match result {
+                Some(_) => {
+                    if sustained {  // Advance to next block automatically.
+                        sd.block_to_access += 1;
+                    }
+                    return_with_status!(STATUS_SUCCESS)
+                }
+                None => return_with_status!(STATUS_ERROR)
+            }
+        }
+        DiskCommand::JoinThread => unreachable!()  // Already checked earlier.
+    }
+}
+
+fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32,
+                     dir_path: &Path, watcher_shared_data: &Arc<Mutex<SharedData>>,
+                     event: &notify::Event) {
+    // We only care about files being created or removed. Therefore we
+    // need Create, Remove, and Modify(Name(From)) events.
+    if let notify::EventKind::Create(_) | notify::EventKind::Remove(_)
+    | notify::EventKind::Modify(
+        notify::event::ModifyKind::Name(
+            notify::event::RenameMode::From)) = event.kind {
+        // Check the filesystem to see the new state.
+        match get_file_name(dir_path) {
+            None => {
+                // Set status to disconnected.
+                let mut sd = watcher_shared_data.lock().unwrap();
+                sd.status = STATUS_DISCONNECTED;
+                sd.blocks_available = 0;
+                // Send interrupt.
+                watcher_interrupt_tx.send(interrupt_num).unwrap();
+            }
+            Some(file_path) => {
+                // Query the file.
+                let size = fs::metadata(file_path).ok().and_then(|metadata| {
+                    // Ensure it really is a file.
+                    if metadata.is_file() {Some(metadata)} else {None}
+                }).and_then(|metadata| {
+                    // Get the size in blocks.
+                    let bytes = metadata.len();
+                    if bytes % 4096 == 0 {
+                        u32::try_from(bytes / 4096).ok()
+                    } else {None}
+                });
+                let mut sd = watcher_shared_data.lock().unwrap();
+                match size {
+                    Some(num_blocks) => {
+                        // Set the status to connected.
+                        sd.status = STATUS_SUCCESS;
+                        sd.blocks_available = num_blocks;
+                    }
+                    None => {
+                        // Set status to disconnected.
+                        sd.status = STATUS_DISCONNECTED;
+                        sd.blocks_available = 0;
+                    }
+                }
+                // Send interrupt.
+                watcher_interrupt_tx.send(interrupt_num).unwrap();
+            }
+        }
+    }
+}
+
+fn get_file_name(dir_path: &Path) -> Option<PathBuf> {
+    let mut dir_contents = fs::read_dir(dir_path).unwrap()
+        .map(|res| res.unwrap().path())
+        .collect::<Vec<_>>();
+
+    match dir_contents.len() {
+        0 => None,
+        1 => Some(dir_contents.remove(0)),
+        _ => panic!("There were multiple files in '{:?}'.", dir_path)
     }
 }
 
@@ -365,7 +348,7 @@ mod tests {
 
     // A test fixture with an auto-started-stopped disk controller and a temp dir.
     struct DiskControllerFixture {
-        disk: DiskController,
+        disk: RealDiskController,
         temp_dir: tempfile::TempDir,
         disk_dir: PathBuf,
         interrupt_rx: mpsc::Receiver<u32>,
@@ -377,7 +360,7 @@ mod tests {
             let disk_dir = temp_dir.path().join("disk");
             fs::create_dir(&disk_dir)?;
             let (tx, rx) = mpsc::channel();
-            let mut disk = DiskController::new(&disk_dir, tx, INTERRUPT_NUM);
+            let mut disk = RealDiskController::new(&disk_dir, tx, INTERRUPT_NUM);
             disk.start();
             Ok(DiskControllerFixture {
                 disk,
@@ -407,7 +390,7 @@ mod tests {
 
         // Assert that commands don't work.
         for cmd in [COMMAND_READ, COMMAND_WRITE,
-                    COMMAND_SUSTAINED_READ, COMMAND_SUSTAINED_WRITE].iter() {
+            COMMAND_SUSTAINED_READ, COMMAND_SUSTAINED_WRITE].iter() {
             fixture.disk.store_control(ADDRESS_CMD, *cmd);
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
             assert_eq!(int, INTERRUPT_NUM);
@@ -548,7 +531,7 @@ mod tests {
 
     // A test fixture containing a connected disk of the given size.
     struct ConnectedDiskControllerFixture {
-        disk: DiskController,
+        disk: RealDiskController,
         _temp_dir: tempfile::TempDir,
         interrupt_rx: mpsc::Receiver<u32>,
     }
@@ -561,7 +544,7 @@ mod tests {
             fs::create_dir(&disk_dir)?;
             // Create disk controller.
             let (tx, rx) = mpsc::channel();
-            let mut disk = DiskController::new(&disk_dir, tx, INTERRUPT_NUM);
+            let mut disk = RealDiskController::new(&disk_dir, tx, INTERRUPT_NUM);
             disk.start();
             // Create disk.
             const FILE_NAME: &str = "x.simdisk";

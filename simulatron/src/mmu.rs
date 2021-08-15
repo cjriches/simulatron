@@ -18,11 +18,11 @@ enum Intent {
     Execute,
 }
 
-pub struct MMU {
+pub struct MMU<D: DiskController> {
     interrupt_channel: Sender<u32>,
     interrupt_vector: [u8; 32],
-    disk_a: DiskController,
-    disk_b: DiskController,
+    disk_a: D,
+    disk_b: D,
     display: DisplayController,
     keyboard: KeyboardController,
     ram: RAM,
@@ -30,10 +30,10 @@ pub struct MMU {
     pfsr: u32,  // Page Fault Status Register
 }
 
-impl MMU {
+impl<D: DiskController> MMU<D> {
     pub fn new(interrupt_channel: Sender<u32>,
-               disk_a: DiskController,
-               disk_b: DiskController,
+               disk_a: D,
+               disk_b: D,
                display: DisplayController,
                keyboard: KeyboardController,
                ram: RAM,
@@ -287,20 +287,20 @@ mod tests {
     use std::sync::mpsc::{self, Receiver};
     use std::time::Duration;
 
+    use crate::disk::MockDiskController;
+
     const RAM_BASE: u32 = 0x4000;
 
     struct MMUFixture {
-        mmu: MMU,
+        mmu: MMU<MockDiskController>,
         interrupt_rx: Receiver<u32>,
     }
 
     impl MMUFixture {
         fn new() -> Self {
             let (interrupt_tx, interrupt_rx) = mpsc::channel();
-            let disk_a = DiskController::new(
-                "UNUSED", interrupt_tx.clone(), 0);
-            let disk_b = DiskController::new(
-                "UNUSED", interrupt_tx.clone(), 0);
+            let disk_a = MockDiskController;
+            let disk_b = MockDiskController;
             let (display_tx, _) = mpsc::channel();
             let display = DisplayController::new(display_tx);
             let (keyboard_tx, keyboard_rx) = mpsc::channel();

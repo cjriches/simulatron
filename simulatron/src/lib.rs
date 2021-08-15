@@ -9,8 +9,10 @@ mod ui;
 
 use std::sync::mpsc;
 
+use crate::disk::RealDiskController;
+
 pub struct Simulatron {
-    cpu: cpu::CPU,
+    cpu: cpu::CPU<RealDiskController>,
     ui: ui::UI,
 }
 
@@ -94,11 +96,11 @@ impl Simulatron {
         test_rom[50] = 0x01; // Pause.
 
         // Create components.
-        let disk_a = disk::DiskController::new(
+        let disk_a = RealDiskController::new(
             String::from("DiskA"),
             interrupt_tx_disk_a,
             cpu::INTERRUPT_DISK_A);
-        let disk_b = disk::DiskController::new(
+        let disk_b = RealDiskController::new(
             String::from("DiskB"),
             interrupt_tx_disk_b,
             cpu::INTERRUPT_DISK_B);

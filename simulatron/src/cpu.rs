@@ -2,6 +2,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use crate::disk::DiskController;
 use crate::mmu::MMU;
 use crate::ui::UICommand;
 
@@ -171,12 +172,12 @@ enum PostCycleAction {
     None,
 }
 
-struct CPUInternal {
+struct CPUInternal<D: DiskController> {
     ui_tx: mpsc::Sender<UICommand>,
     interrupt_tx: mpsc::Sender<u32>,
     timer_tx: Option<mpsc::Sender<TimerCommand>>,
     timer_thread: Option<thread::JoinHandle<()>>,
-    mmu: MMU,
+    mmu: MMU<D>,
     interrupts: InterruptLatch,
     r: [u32; 8],  // r0-r7 registers
     f: [f32; 8],  // f0-f7 registers
@@ -189,14 +190,14 @@ struct CPUInternal {
     kernel_mode: bool,
 }
 
-pub struct CPU {
+pub struct CPU<D: DiskController> {
     interrupt_tx: mpsc::Sender<u32>,
-    thread_handle: Option<thread::JoinHandle<CPUInternal>>,
-    internal: Option<CPUInternal>,
+    thread_handle: Option<thread::JoinHandle<CPUInternal<D>>>,
+    internal: Option<CPUInternal<D>>,
 }
 
-impl CPU {
-    pub fn new(ui_tx: mpsc::Sender<UICommand>, mmu: MMU,
+impl<D: DiskController + 'static> CPU<D> {
+    pub fn new(ui_tx: mpsc::Sender<UICommand>, mmu: MMU<D>,
                interrupt_tx: mpsc::Sender<u32>, interrupt_rx: mpsc::Receiver<u32>) -> Self {
         CPU {
             interrupt_tx: interrupt_tx.clone(),
@@ -246,8 +247,11 @@ impl CPU {
     }
 
     pub fn stop(&mut self) {
-        // Join the thread.
         self.interrupt_tx.send(JOIN_THREAD).unwrap();
+        self.wait_for_halt();
+    }
+
+    fn wait_for_halt(&mut self) {
         let thread_data = self.thread_handle
             .take()
             .expect("CPU was already stopped.")
@@ -277,7 +281,7 @@ macro_rules! debug {
     }}
 }
 
-impl CPUInternal {
+impl<D: DiskController> CPUInternal<D> {
     fn start_timer(&mut self) {
         let (timer_tx, timer_rx) = mpsc::channel();
         let timer_interrupt_tx = self.interrupt_tx.clone();
@@ -834,31 +838,26 @@ impl CPUInternal {
 }
 
 #[cfg(test)]
-#[cfg(disabled)]
 mod tests {
     use super::*;
 
-    use crate::{disk::DiskController, display::DisplayController,
+    use crate::{disk::MockDiskController, display::DisplayController,
                 keyboard::{KeyboardController, KeyMessage, key_str_to_u8},
                 ram::RAM, rom::ROM, ui::UICommand};
 
-    fn run(rom_data: [u8; 512], keypress: Option<KeyMessage>) -> (CPU, Vec<UICommand>) {
+    fn run(rom_data: [u8; 512], keypress: Option<KeyMessage>) -> (CPU<MockDiskController>, Vec<UICommand>) {
         // Create communication channels.
         let (interrupt_tx, interrupt_rx) = mpsc::channel();
         let interrupt_tx_keyboard = interrupt_tx.clone();
         let interrupt_tx_mmu = interrupt_tx.clone();
-        let interrupt_tx_disk_a = interrupt_tx.clone();
-        let interrupt_tx_disk_b = interrupt_tx.clone();
         let (ui_tx, ui_rx) = mpsc::channel();
         let ui_tx_display = ui_tx.clone();
         let (keyboard_tx, keyboard_rx) = mpsc::channel();
         let keyboard_tx_manual = keyboard_tx.clone();
 
         // Create components.
-        let disk_a = DiskController::new(
-            "UNUSED", interrupt_tx_disk_a, INTERRUPT_DISK_A);
-        let disk_b = DiskController::new(
-            "UNUSED", interrupt_tx_disk_b, INTERRUPT_DISK_B);
+        let disk_a = MockDiskController;
+        let disk_b = MockDiskController;
         let display = DisplayController::new(ui_tx_display);
         let keyboard = KeyboardController::new(
             keyboard_tx, keyboard_rx, interrupt_tx_keyboard);
@@ -866,19 +865,21 @@ mod tests {
         let rom = ROM::new(rom_data);
         let mmu = MMU::new(interrupt_tx_mmu, disk_a, disk_b,
                            display, keyboard, ram, rom);
-        let cpu = CPU::new(ui_tx, mmu, interrupt_tx, interrupt_rx);
+        let mut cpu = CPU::new(ui_tx, mmu, interrupt_tx, interrupt_rx);
 
         // Run the CPU till halt.
-        keyboard.lock().unwrap().start();
-        let cpu_thread = cpu.start();
+        cpu.start();
         if let Some(message) = keypress {
             keyboard_tx_manual.send(message).unwrap();
         }
-        let resulting_cpu = cpu_thread.join().unwrap();
-        keyboard.lock().unwrap().stop();
+        cpu.wait_for_halt();
         // Collect any resulting UI commands.
         let ui_commands = ui_rx.try_iter().collect();
-        (resulting_cpu, ui_commands)
+        return (cpu, ui_commands);
+    }
+
+    macro_rules! internal {
+        ($cpu:ident) => { $cpu.internal.as_ref().unwrap() }
     }
 
     #[test]
@@ -898,10 +899,9 @@ mod tests {
         rom[4] = 0x96;
         rom[5] = 0x96;  // some random number.
 
-
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.r[3], 0x42069696);
+        assert_eq!(internal!(cpu).r[3], 0x42069696);
     }
 
     #[test]
@@ -925,10 +925,10 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.r[3], 0x13579BDF);
-        assert_eq!(cpu.r[0], 0x00009BDF);
-        assert_eq!(cpu.r[1], 0x00000000);
-        assert!(cpu.interrupts.latched[INTERRUPT_ILLEGAL_OPERATION as usize]);
+        assert_eq!(internal!(cpu).r[3], 0x13579BDF);
+        assert_eq!(internal!(cpu).r[0], 0x00009BDF);
+        assert_eq!(internal!(cpu).r[1], 0x00000000);
+        assert!(internal!(cpu).interrupts.latched[INTERRUPT_ILLEGAL_OPERATION as usize]);
     }
 
     #[test]
@@ -950,7 +950,7 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.mmu.load_physical_32(0x00004ABC), Ok(0x12345678));
+        assert_eq!(internal!(cpu).mmu.load_physical_32(0x00004ABC), Ok(0x12345678));
     }
 
     #[test]
@@ -976,7 +976,7 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.mmu.load_physical_32(0x00004ABC), Ok(0xABCDEF00));
+        assert_eq!(internal!(cpu).mmu.load_physical_32(0x00004ABC), Ok(0xABCDEF00));
     }
 
     #[test]
@@ -1000,7 +1000,7 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.r[7], 0xFFFFFF55);
+        assert_eq!(internal!(cpu).r[7], 0xFFFFFF55);
     }
 
     #[test]
@@ -1026,7 +1026,7 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.r[6], 0x0000FF34);
+        assert_eq!(internal!(cpu).r[6], 0x0000FF34);
     }
 
     #[test]
@@ -1045,8 +1045,8 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.r[0], 0x00000000);
-        assert_eq!(cpu.mmu.load_physical_8(0x00004000), Ok(0x66));
+        assert_eq!(internal!(cpu).r[0], 0x00000000);
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004000), Ok(0x66));
     }
 
     #[test]
@@ -1069,8 +1069,8 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.r[0], 0x00000000);
-        assert_eq!(cpu.mmu.load_physical_8(0x00005000), Ok(0x77));
+        assert_eq!(internal!(cpu).r[0], 0x00000000);
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x00005000), Ok(0x77));
     }
 
     #[test]
@@ -1103,9 +1103,9 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.r[1], 0x0000AAFF);
-        assert_eq!(cpu.kspr, 0x00007FFF);
-        assert_eq!(cpu.mmu.load_physical_32(0x00007FFC), Ok(0x00AAFFFF));
+        assert_eq!(internal!(cpu).r[1], 0x0000AAFF);
+        assert_eq!(internal!(cpu).kspr, 0x00007FFF);
+        assert_eq!(internal!(cpu).mmu.load_physical_32(0x00007FFC), Ok(0x00AAFFFF));
     }
 
     #[test]
@@ -1253,8 +1253,8 @@ mod tests {
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         // Assert the user mode process stored in its stack correctly.
-        assert_eq!(cpu.uspr, 0x00000063);
-        assert_eq!(cpu.mmu.load_physical_8(0x00004063), Ok(0x99));
+        assert_eq!(internal!(cpu).uspr, 0x00000063);
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004063), Ok(0x99));
     }
 
     #[test]
@@ -1297,8 +1297,8 @@ mod tests {
         assert_eq!(ui_commands.len(), 2);
 
         // Assert that the key was correctly detected.
-        assert_eq!(cpu.mmu.load_physical_8(0x19B0), Ok(key_str_to_u8(KEY).unwrap()));
-        assert_eq!(cpu.mmu.load_physical_8(0x19B1), Ok(0));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x19B0), Ok(key_str_to_u8(KEY).unwrap()));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x19B1), Ok(0));
     }
 
     #[test]
@@ -1382,6 +1382,9 @@ mod tests {
         rom[23] = 0x16; // into r6b
         rom[24] = 0x11; // some random number.
 
+        // TODO This test has a race condition and is flaky, but it can't be fixed
+        // TODO until I have instruction support for busy-wait polling.
+
         // Interrupt handler.
         rom[128] = 0x0A; // Copy literal
         rom[129] = 0x0D; // into r5h
@@ -1396,8 +1399,8 @@ mod tests {
         assert_eq!(ui_commands.len(), 2);
 
         // Assert that the interrupt handler ran and returned.
-        assert_eq!(cpu.r[5], 0x00005566);
-        assert_eq!(cpu.r[6], 0x00000011);
+        assert_eq!(internal!(cpu).r[5], 0x00005566);
+        assert_eq!(internal!(cpu).r[6], 0x00000011);
     }
 
     #[test]
@@ -1554,39 +1557,39 @@ mod tests {
 
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-        assert_eq!(cpu.mmu.load_physical_8(0x4000), Ok(0x11));
-        assert_eq!(cpu.mmu.load_physical_8(0x4001), Ok(0x22));
-        assert_eq!(cpu.mmu.load_physical_8(0x4002), Ok(0x33));
-        assert_eq!(cpu.mmu.load_physical_8(0x4003), Ok(0x44));
-        assert_eq!(cpu.mmu.load_physical_8(0x4004), Ok(0x55));
-        assert_eq!(cpu.mmu.load_physical_8(0x4005), Ok(0x66));
-        assert_eq!(cpu.mmu.load_physical_8(0x4006), Ok(0x77));
-        assert_eq!(cpu.mmu.load_physical_8(0x4007), Ok(0x88));
-        assert_eq!(cpu.mmu.load_physical_8(0x4008), Ok(0x99));
-        assert_eq!(cpu.mmu.load_physical_8(0x4009), Ok(0xAA));
-        assert_eq!(cpu.mmu.load_physical_8(0x400A), Ok(0xBB));
-        assert_eq!(cpu.mmu.load_physical_8(0x400B), Ok(0xCC));
-        assert_eq!(cpu.mmu.load_physical_8(0x400C), Ok(0xDD));
-        assert_eq!(cpu.mmu.load_physical_8(0x400D), Ok(0xEE));
-        assert_eq!(cpu.mmu.load_physical_8(0x400E), Ok(0xFF));
-        assert_eq!(cpu.mmu.load_physical_8(0x400F), Ok(0x00));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4000), Ok(0x11));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4001), Ok(0x22));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4002), Ok(0x33));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4003), Ok(0x44));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4004), Ok(0x55));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4005), Ok(0x66));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4006), Ok(0x77));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4007), Ok(0x88));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4008), Ok(0x99));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4009), Ok(0xAA));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x400A), Ok(0xBB));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x400B), Ok(0xCC));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x400C), Ok(0xDD));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x400D), Ok(0xEE));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x400E), Ok(0xFF));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x400F), Ok(0x00));
 
-        assert_eq!(cpu.mmu.load_physical_8(0x4030), Ok(0x00));
-        assert_eq!(cpu.mmu.load_physical_8(0x4031), Ok(0x11));
-        assert_eq!(cpu.mmu.load_physical_8(0x4032), Ok(0x22));
-        assert_eq!(cpu.mmu.load_physical_8(0x4033), Ok(0x33));
-        assert_eq!(cpu.mmu.load_physical_8(0x4034), Ok(0x44));
-        assert_eq!(cpu.mmu.load_physical_8(0x4035), Ok(0x55));
-        assert_eq!(cpu.mmu.load_physical_8(0x4036), Ok(0x66));
-        assert_eq!(cpu.mmu.load_physical_8(0x4037), Ok(0x77));
-        assert_eq!(cpu.mmu.load_physical_8(0x4038), Ok(0x88));
-        assert_eq!(cpu.mmu.load_physical_8(0x4039), Ok(0x99));
-        assert_eq!(cpu.mmu.load_physical_8(0x403A), Ok(0xAA));
-        assert_eq!(cpu.mmu.load_physical_8(0x403B), Ok(0xBB));
-        assert_eq!(cpu.mmu.load_physical_8(0x403C), Ok(0xCC));
-        assert_eq!(cpu.mmu.load_physical_8(0x403D), Ok(0xDD));
-        assert_eq!(cpu.mmu.load_physical_8(0x403E), Ok(0xEE));
-        assert_eq!(cpu.mmu.load_physical_8(0x403F), Ok(0xFF));
-        assert_eq!(cpu.mmu.load_physical_8(0x4040), Ok(0x00));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4030), Ok(0x00));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4031), Ok(0x11));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4032), Ok(0x22));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4033), Ok(0x33));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4034), Ok(0x44));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4035), Ok(0x55));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4036), Ok(0x66));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4037), Ok(0x77));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4038), Ok(0x88));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4039), Ok(0x99));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x403A), Ok(0xAA));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x403B), Ok(0xBB));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x403C), Ok(0xCC));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x403D), Ok(0xDD));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x403E), Ok(0xEE));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x403F), Ok(0xFF));
+        assert_eq!(internal!(cpu).mmu.load_physical_8(0x4040), Ok(0x00));
     }
 }
