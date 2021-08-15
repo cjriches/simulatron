@@ -16,6 +16,11 @@ pub const INTERRUPT_ILLEGAL_OPERATION: u32 = 6;
 pub const INTERRUPT_TIMER: u32 = 7;
 const JOIN_THREAD: u32 = 4294967295;  // Not a real interrupt, just a thread join command.
 
+const FLAG_ZERO: u16 = 0x01;
+const FLAG_NEGATIVE: u16 = 0x02;
+const FLAG_CARRY: u16 = 0x04;
+const FLAG_OVERFLOW: u16 = 0x08;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct CPUError;
 pub type CPUResult<T> = Result<T, CPUError>;
@@ -281,6 +286,26 @@ macro_rules! debug {
     }}
 }
 
+// A macro for making flags out of an arithmetic operation.
+macro_rules! make_flags {
+    ($x:expr, $y:expr, $ans:expr, $left_bit:expr, $carry:expr) => {{
+        let mut flags: u16 = 0;
+        if $ans == 0 {
+            flags |= FLAG_ZERO;
+        } else if $ans & $left_bit != 0 {
+            flags |= FLAG_NEGATIVE;
+        }
+        if $carry {
+            flags |= FLAG_CARRY;
+        }
+        if (($x & $left_bit == 0) && ($y & $left_bit == 0) && ($ans & $left_bit != 0))
+          || (($x & $left_bit != 0) && ($y & $left_bit != 0) && ($ans & $left_bit == 0)) {
+            flags |= FLAG_OVERFLOW;
+        }
+        flags
+    }}
+}
+
 impl<D: DiskController> CPUInternal<D> {
     fn start_timer(&mut self) {
         let (timer_tx, timer_rx) = mpsc::channel();
@@ -375,6 +400,26 @@ impl<D: DiskController> CPUInternal<D> {
             ($e:expr) => {Into::<Option<_>>::into($e).unwrap()}
         }
 
+        // Ensure that two register references are of the same type.
+        macro_rules! check_same_type {
+            ($r1:expr, $r2:expr) => {{
+                if self.reg_ref_type($r1)? != self.reg_ref_type($r2)? {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    return Err(CPUError);
+                }
+            }}
+        }
+
+        // Disallow float registers.
+        macro_rules! reject_float {
+            ($r:expr) => {{
+                if self.reg_ref_type($r)? == ValueType::Float {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    return Err(CPUError);
+                }
+            }}
+        }
+
         // Check for interrupts.
         let possible_interrupt = if pausing {
             Some(self.interrupts.wait_for_next(self.imr))
@@ -386,6 +431,7 @@ impl<D: DiskController> CPUInternal<D> {
             if interrupt == JOIN_THREAD {
                 return Ok(PostCycleAction::Halt);
             }
+            debug!("Interrupt: {:#x}", interrupt);
             // Remember mode and switch to kernel mode.
             let old_mode = if self.kernel_mode {
                 0b1000000000000000
@@ -506,11 +552,7 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("COPY register");
                 let reg_ref_dest = fetch!(Byte);
                 let reg_ref_source = fetch!(Byte);
-                // Ensure source and dest types are the same.
-                if self.reg_ref_type(reg_ref_dest)? != self.reg_ref_type(reg_ref_source)? {
-                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                    return Err(CPUError);
-                }
+                check_same_type!(reg_ref_dest, reg_ref_source);
                 debug!("from {:#x} to {:#x}", reg_ref_source, reg_ref_dest);
                 let value = self.read_from_register(reg_ref_source)?;
                 self.write_to_register(reg_ref_dest, value)?;
@@ -720,14 +762,30 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("ADD ref");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
-                // Ensure source and dest types are the same.
-                if self.reg_ref_type(dest)? != self.reg_ref_type(src)? {
-                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                    return Err(CPUError);
-                }
+                check_same_type!(dest, src);
                 let value = self.read_from_register(src)?;
                 debug!("Adding {:?} to register {:#x}", value, dest);
                 self.instruction_add(dest, value)?;
+            }
+            0x23 => {  // ADDCARRY literal
+            debug!("ADDCARRY literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                let carry = self.flags & FLAG_CARRY > 0;
+                debug!("Adding {:?} to register {:#x} with carry={}", value, reg_ref, carry);
+                self.instruction_addcarry(reg_ref, value)?;
+            }
+            0x24 => {  // ADDCARRY ref
+            debug!("ADDCARRY ref");
+                let dest = fetch!(Byte);
+                reject_float!(dest);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                let carry = self.flags & FLAG_CARRY > 0;
+                debug!("Adding {:?} to register {:#x} with carry={}", value, dest, carry);
+                self.instruction_addcarry(dest, value)?;
             }
             _ => {  // Unrecognised
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
@@ -786,28 +844,69 @@ impl<D: DiskController> CPUInternal<D> {
 
     fn instruction_add(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
+        let flags: u16;
         match self.read_from_register(reg_ref)? {
             TypedValue::Byte(x) => {
                 let y = Into::<Option<u8>>::into(value).unwrap();
-                let ans = x.wrapping_add(y);
-                self.write_to_register(reg_ref, TypedValue::Byte(ans))
+                let ans= x.overflowing_add(y);
+                self.write_to_register(reg_ref, TypedValue::Byte(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x80, ans.1);
             },
             TypedValue::Half(x) => {
                 let y = Into::<Option<u16>>::into(value).unwrap();
-                let ans = x.wrapping_add(y);
-                self.write_to_register(reg_ref, TypedValue::Half(ans))
+                let ans = x.overflowing_add(y);
+                self.write_to_register(reg_ref, TypedValue::Half(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x8000, ans.1);
             },
             TypedValue::Word(x) => {
                 let y = Into::<Option<u32>>::into(value).unwrap();
-                let ans = x.wrapping_add(y);
-                self.write_to_register(reg_ref, TypedValue::Word(ans))
+                let ans= x.overflowing_add(y);
+                self.write_to_register(reg_ref, TypedValue::Word(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x80000000, ans.1);
             },
             TypedValue::Float(x) => {
                 let y = Into::<Option<f32>>::into(value).unwrap();
                 let ans = x + y;
-                self.write_to_register(reg_ref, TypedValue::Float(ans))
+                self.write_to_register(reg_ref, TypedValue::Float(ans))?;
+                flags = if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0};
             },
         }
+        self.flags = flags;
+        Ok(())
+    }
+
+    fn instruction_addcarry(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        let carry: u32 = if self.flags & FLAG_CARRY != 0 {1} else {0};
+        let flags: u16;
+        match self.read_from_register(reg_ref)? {
+            TypedValue::Byte(x) => {
+                let y = Into::<Option<u8>>::into(value).unwrap();
+                let (ans, c1) = x.overflowing_add(y);
+                let (ans, c2) = ans.overflowing_add(carry as u8);
+                self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
+                flags = make_flags!(x, y, ans, 0x80, c1 || c2);
+            },
+            TypedValue::Half(x) => {
+                let y = Into::<Option<u16>>::into(value).unwrap();
+                let (ans, c1) = x.overflowing_add(y);
+                let (ans, c2) = ans.overflowing_add(carry as u16);
+                self.write_to_register(reg_ref, TypedValue::Half(ans))?;
+                flags = make_flags!(x, y, ans, 0x8000, c1 || c2);
+            },
+            TypedValue::Word(x) => {
+                let y = Into::<Option<u32>>::into(value).unwrap();
+                let (ans, c1) = x.overflowing_add(y);
+                let (ans, c2) = ans.overflowing_add(carry);
+                self.write_to_register(reg_ref, TypedValue::Word(ans))?;
+                flags = make_flags!(x, y, ans, 0x80000000, c1 || c2);
+            },
+            TypedValue::Float(_) => {
+                panic!("BUG: instruction_addcarry was called with a float.");
+            },
+        }
+        self.flags = flags;
+        Ok(())
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -2063,5 +2162,84 @@ mod tests {
         assert_eq!(internal!(cpu).r[0], 0x0B);
         assert_eq!(internal!(cpu).r[1], 0x0C);
         assert_eq!(internal!(cpu).r[2], 0x00);
+    }
+
+    #[test]
+    fn test_flags() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0xFF;  // max number.
+
+        rom[3] = 0x21;  // Add literal
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x01;  // 1.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x00);
+        assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_CARRY);
+
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x7F;  // max signed number.
+
+        rom[3] = 0x21;  // Add literal
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x01;  // 1.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x80);
+        assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_OVERFLOW);
+
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0xFF;  // -1.
+
+        rom[3] = 0x22;  // Add register
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x10;  // r0b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0xFE);
+        assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
+
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x01;  // 1.
+
+        rom[3] = 0x22;  // Add register
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x10;  // r0b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x02);
+        assert_eq!(internal!(cpu).flags, 0);
+    }
+
+    #[test]
+    fn test_addcarry() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0xFF;  // max number.
+
+        rom[3] = 0x21;  // Add literal
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x01;  // 1.
+
+        rom[6] = 0x23;  // Add literal with carry
+        rom[7] = 0x10;  // into r0b
+        rom[8] = 0x01;  // 1.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x02);
     }
 }
