@@ -13,8 +13,9 @@
 |                       22 | KSPR       | Kernel Stack Pointer Register   | Points to the current top of the kernel stack.   |
 |                       23 | PDPR       | Page Directory Pointer Register | Points to the current page directory.            |
 |                       24 | IMR        | Interrupt Mask Register         | Enables/disables specific interrupts. 16 bits.   |
+|                       25 | PFSR       | Page Fault Status Register      | Describes the most recent page fault. 32 bits.   |
 
-KSPR, PDPR, and IMR are privileged registers; they can only be accessed in kernel mode.
+KSPR, PDPR, IMR, and PFSR are privileged registers; they can only be accessed in kernel mode.
 
 To move values between integer and floating-point registers, the COPY instruction should be used. This automatically performs the required conversions. Storing a float to memory and then loading it as an integer (or vice versa) will NOT perform any conversion.
 

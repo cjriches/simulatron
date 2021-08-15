@@ -658,20 +658,22 @@ impl<D: DiskController> CPUInternal<D> {
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
-        if reg_ref < 0x08 {
+        if reg_ref < 0x08 {          // r0-7
             Ok(ValueType::Word)
-        } else if reg_ref < 0x10 {
+        } else if reg_ref < 0x10 {   // r0h-r7h
             Ok(ValueType::Half)
-        } else if reg_ref < 0x18 {
+        } else if reg_ref < 0x18 {   // r0b-r7b
             Ok(ValueType::Byte)
-        } else if reg_ref < 0x20 {
+        } else if reg_ref < 0x20 {   // f0-f7
             Ok(ValueType::Float)
-        } else if reg_ref == 0x20 {
+        } else if reg_ref == 0x20 {  // FLAGS
             Ok(ValueType::Half)
-        } else if reg_ref < 0x24 {
+        } else if reg_ref < 0x24 {   // USPR, KSPR, PDPR
             Ok(ValueType::Word)
-        } else if reg_ref == 0x24 {
+        } else if reg_ref == 0x24 {  // IMR
             Ok(ValueType::Half)
+        } else if reg_ref == 0x25 {  // PFSR
+            Ok(ValueType::Word)
         } else {
             self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
             Err(CPUError)
@@ -679,44 +681,71 @@ impl<D: DiskController> CPUInternal<D> {
     }
 
     fn write_to_register(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
-        match value {
-            TypedValue::Byte(b) => {
+        if reg_ref < 0x08 {
+            if let TypedValue::Word(w) = value {
+                self.r[reg_ref as usize] = w;
+                return Ok(());
+            }
+        } else if reg_ref < 0x10 {
+            if let TypedValue::Half(h) = value {
+                let index = (reg_ref - 0x08) as usize;
+                let masked = self.r[index] & 0xFFFF0000;
+                self.r[index] = masked | (h as u32);
+                return Ok(());
+            }
+        } else if reg_ref < 0x18 {
+            if let TypedValue::Byte(b) = value {
                 let index = (reg_ref - 0x10) as usize;
-                let masked = self.r[index] & 0xFFFFFF00;  // Will panic if out of bounds.
+                let masked = self.r[index] & 0xFFFFFF00;
                 self.r[index] = masked | (b as u32);
+                return Ok(());
             }
-            TypedValue::Half(h) => {
-                if reg_ref == 0x20 {
-                    let masked = h & 0b0111111111111111;  // Ignore bit 15.
-                    self.flags = masked;
-                } else if reg_ref == 0x24 {
-                    privileged!(self)?;
-                    self.imr = h;
-                } else {
-                    let index = (reg_ref - 0x08) as usize;
-                    let masked = self.r[index] & 0xFFFF0000;  // Will panic if out of bounds.
-                    self.r[index] = masked | (h as u32);
-                }
-            }
-            TypedValue::Word(w) => {
-                if reg_ref == 0x21 {
-                    self.uspr = w;
-                } else if reg_ref == 0x22 {
-                    privileged!(self)?;
-                    self.kspr = w;
-                } else if reg_ref == 0x23 {
-                    privileged!(self)?;
-                    self.pdpr = w;
-                } else {
-                    self.r[reg_ref as usize] = w;  // Will panic if out of bounds.
-                }
-            }
-            TypedValue::Float(f) => {
+        } else if reg_ref < 0x20 {
+            if let TypedValue::Float(f) = value {
                 let index = (reg_ref - 0x18) as usize;
-                self.f[index] = f;  // Will panic if out of bounds.
+                self.f[index] = f;
             }
-        }
-        Ok(())
+        } else if reg_ref == 0x20 {
+            if let TypedValue::Half(h) = value {
+                let masked = h & 0b0111111111111111;  // Ignore bit 15.
+                self.flags = masked;
+                return Ok(());
+            }
+        } else if reg_ref == 0x21 {
+            if let TypedValue::Word(w) = value {
+                self.uspr = w;
+                return Ok(());
+            }
+        } else if reg_ref == 0x22 {
+            if let TypedValue::Word(w) = value {
+                privileged!(self)?;
+                self.kspr = w;
+                return Ok(());
+            }
+        } else if reg_ref == 0x23 {
+            if let TypedValue::Word(w) = value {
+                privileged!(self)?;
+                self.pdpr = w;
+                return Ok(());
+            }
+        } else if reg_ref == 0x24 {
+            if let TypedValue::Half(h) = value {
+                privileged!(self)?;
+                self.imr = h;
+                return Ok(());
+            }
+        } else if reg_ref == 0x25 {
+            debug!("Illegal write to PFSR.");
+            self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+            return Err(CPUError);
+        } else {
+            debug!("Invalid register reference: {:#x}", reg_ref);
+            self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+            return Err(CPUError);
+        };
+        debug!("Register size mismatch: register {:#x} with size {}", reg_ref, value.size_in_bytes());
+        self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+        return Err(CPUError);
     }
 
     fn read_from_register(&mut self, reg_ref: u8) -> CPUResult<TypedValue> {
@@ -741,8 +770,13 @@ impl<D: DiskController> CPUInternal<D> {
         } else if reg_ref == 0x24 {
             privileged!(self)?;
             Ok(TypedValue::Half(self.imr))
+        } else if reg_ref == 0x25 {
+            privileged!(self)?;
+            Ok(TypedValue::Word(self.mmu.page_fault_status_register()))
         } else {
-            panic!("Invalid register reference: {:#x}", reg_ref);
+            debug!("Invalid register reference: {:#x}", reg_ref);
+            self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+            Err(CPUError)
         }
     }
 
@@ -1434,6 +1468,137 @@ mod tests {
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[1], 0x00000000);
+    }
+
+    #[test]
+    #[timeout(1000)]
+    fn test_pfsr() {
+        let mut rom = [0; 512];
+        // Set the page directory pointer.
+        rom[0] = 0x0A; // Copy literal
+        rom[1] = 0x23; // into pdpr
+        rom[2] = 0x00;
+        rom[3] = 0x00;
+        rom[4] = 0x00;
+        rom[5] = 0xC0; // ROM byte 0x80 (128).
+
+        // Write the page table entry.
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x00;  // into r0
+        rom[8] = 0x00;
+        rom[9] = 0x00;
+        rom[10] = 0x50;
+        rom[11] = 0x13; // Valid, Present, Execute entry at 0x00005000.
+
+        rom[12] = 0x08; // Store into
+        rom[13] = 0x00;
+        rom[14] = 0x00;
+        rom[15] = 0xB0;
+        rom[16] = 0x00; // address 0x0000B000
+        rom[17] = 0x00; // r0.
+
+        // Write the user mode instructions to RAM.
+
+        // (Load an execute-only address, which is not allowed).
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x08; // into r0h
+        rom[20] = 0x06; // LOAD instruction
+        rom[21] = 0x17; // into r7b.
+
+        rom[22] = 0x08; // Store into
+        rom[23] = 0x00;
+        rom[24] = 0x00;
+        rom[25] = 0x50;
+        rom[26] = 0x00; // address 0x00005000
+        rom[27] = 0x08; // r0h.
+
+        rom[28] = 0x0A; // Copy literal
+        rom[29] = 0x00; // into r0
+        rom[30] = 0x00;
+        rom[31] = 0x00;
+        rom[32] = 0x00;
+        rom[33] = 0x04; // virtual address 0x00000004.
+
+        rom[34] = 0x08; // Store into
+        rom[35] = 0x00;
+        rom[36] = 0x00;
+        rom[37] = 0x50;
+        rom[38] = 0x02; // address 0x00005002
+        rom[39] = 0x00; // r0.
+
+        // (Pause, which should never be hit).
+        rom[40] = 0x0A; // Copy literal
+        rom[41] = 0x10; // into r0b
+        rom[42] = 0x01; // PAUSE instruction.
+
+        rom[43] = 0x08; // Store into
+        rom[44] = 0x00;
+        rom[45] = 0x00;
+        rom[46] = 0x50;
+        rom[47] = 0x06; // address 0x00005006.
+        rom[48] = 0x10; // r0b.
+
+        // Set the kernel stack pointer.
+        rom[49] = 0x0A; // Copy literal
+        rom[50] = 0x22; // into kspr
+        rom[51] = 0x00;
+        rom[52] = 0x00;
+        rom[53] = 0xA0;
+        rom[54] = 0x00; // address 0x0000A000.
+
+        // Enable page fault interrupts.
+        rom[55] = 0x0A; // Copy literal
+        rom[56] = 0x24; // into imr
+        rom[57] = 0x00;
+        rom[58] = 0x10; // page fault interrupt only.
+
+        // Set page fault interrupt handler
+        rom[59] = 0x0A; // Copy literal
+        rom[60] = 0x00; // into r0
+        rom[61] = 0x00;
+        rom[62] = 0x00;
+        rom[63] = 0x01;
+        rom[64] = 0x40; // ROM byte 0x100 (256).
+
+        rom[65] = 0x08; // Store into
+        rom[66] = 0x00;
+        rom[67] = 0x00;
+        rom[68] = 0x00;
+        rom[69] = 0x10; // address 0x00000010 (page fault handler).
+        rom[70] = 0x00; // r0.
+
+        // Push the user mode address to the stack.
+        rom[71] = 0x0A; // Copy literal
+        rom[72] = 0x00; // into r0
+        rom[73] = 0x00;
+        rom[74] = 0x00;
+        rom[75] = 0x00;
+        rom[76] = 0x00; // virtual address 0x0.
+
+        rom[77] = 0x0E; // Push to the stack
+        rom[78] = 0x00; // r0.
+
+        // Enter user mode!
+        rom[79] = 0x04;
+
+        // Page directory entry.
+        rom[128] = 0x00;
+        rom[129] = 0x00;
+        rom[130] = 0xB0;
+        rom[131] = 0x01; // Valid entry at 0x0000B000.
+
+        // Page fault handler.
+        rom[256] = 0x0B; // Copy between registers
+        rom[257] = 0x05; // into r5
+        rom[258] = 0x25; // from pfsr.
+
+        rom[259] = 0x00; // Halt.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        // Assert the user mode process stored in its stack correctly.
+        assert_eq!(internal!(cpu).r[5], internal!(cpu).mmu.page_fault_status_register());
+        assert_eq!(internal!(cpu).r[5], crate::mmu::PAGE_FAULT_ILLEGAL_ACCESS);
     }
 
     #[test]
