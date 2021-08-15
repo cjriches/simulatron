@@ -310,17 +310,15 @@ mod tests {
             let rom = ROM::new([0; 512]);
 
             MMUFixture {
-                mmu: MMU {
-                    interrupt_channel: interrupt_tx,
-                    interrupt_vector: [0; 32],
+                mmu: MMU::new(
+                    interrupt_tx,
                     disk_a,
                     disk_b,
                     display,
                     keyboard,
                     ram,
                     rom,
-                    pfsr: 0
-                },
+                ),
                 interrupt_rx,
             }
         }
