@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, mpsc::Sender};
+use std::sync::mpsc::Sender;
 
 use crate::cpu::{CPUError, CPUResult, INTERRUPT_ILLEGAL_OPERATION, INTERRUPT_PAGE_FAULT};
 use crate::disk::DiskController;
@@ -21,10 +21,10 @@ enum Intent {
 pub struct MMU {
     interrupt_channel: Sender<u32>,
     interrupt_vector: [u8; 32],
-    disk_a: Arc<Mutex<DiskController>>,
-    disk_b: Arc<Mutex<DiskController>>,
+    disk_a: DiskController,
+    disk_b: DiskController,
     display: DisplayController,
-    keyboard: Arc<Mutex<KeyboardController>>,
+    keyboard: KeyboardController,
     ram: RAM,
     rom: ROM,
     pfsr: u32,  // Page Fault Status Register
@@ -32,10 +32,10 @@ pub struct MMU {
 
 impl MMU {
     pub fn new(interrupt_channel: Sender<u32>,
-               disk_a: Arc<Mutex<DiskController>>,
-               disk_b: Arc<Mutex<DiskController>>,
+               disk_a: DiskController,
+               disk_b: DiskController,
                display: DisplayController,
-               keyboard: Arc<Mutex<KeyboardController>>,
+               keyboard: KeyboardController,
                ram: RAM,
                rom: ROM) -> Self {
         MMU {
@@ -49,6 +49,18 @@ impl MMU {
             rom,
             pfsr: 0,
         }
+    }
+
+    pub fn start(&mut self) {
+        self.disk_a.start();
+        self.disk_b.start();
+        self.keyboard.start();
+    }
+
+    pub fn stop(&mut self) {
+        self.disk_a.stop();
+        self.disk_b.stop();
+        self.keyboard.stop();
     }
 
     pub fn page_fault_status_register(&self) -> u32 {
@@ -113,18 +125,18 @@ impl MMU {
         } else if address < 8177 {   // Keyboard, Reserved, Disk A read-only
             reject!()
         } else if address < 8182 {   // Disk A control
-            self.disk_a.lock().unwrap().store_control(address - 8177, value);
+            self.disk_a.store_control(address - 8177, value);
             Ok(())
         } else if address < 8187 {   // Disk B read-only
             reject!()
         } else if address < 8192 {   // Disk B control
-            self.disk_b.lock().unwrap().store_control(address - 8187, value);
+            self.disk_b.store_control(address - 8187, value);
             Ok(())
         } else if address < 12288 {  // Disk A data
-            self.disk_a.lock().unwrap().store_data(address - 8192, value);
+            self.disk_a.store_data(address - 8192, value);
             Ok(())
         } else if address < 16384 {  // Disk B data
-            self.disk_b.lock().unwrap().store_data(address - 12288, value);
+            self.disk_b.store_data(address - 12288, value);
             Ok(())
         } else {                     // RAM
             self.ram.store(address - 16384, value);
@@ -163,21 +175,21 @@ impl MMU {
         } else if address < 6576 {   // Memory-mapped display
             reject!()
         } else if address < 6578 {   // Keyboard buffers
-            Ok(self.keyboard.lock().unwrap().load(address - 6576))
+            Ok(self.keyboard.load(address - 6576))
         } else if address < 8172 {   // Reserved
             reject!()
         } else if address < 8177 {   // Disk A read-only
-            Ok(self.disk_a.lock().unwrap().load_status(address - 8172))
+            Ok(self.disk_a.load_status(address - 8172))
         } else if address < 8182 {   // Disk A control
             reject!()
         } else if address < 8187 {   // Disk B read-only
-            Ok(self.disk_b.lock().unwrap().load_status(address - 8182))
+            Ok(self.disk_b.load_status(address - 8182))
         } else if address < 8192 {   // Disk B control
             reject!()
         } else if address < 12288 {  // Disk A data
-            Ok(self.disk_a.lock().unwrap().load_data(address - 8192))
+            Ok(self.disk_a.load_data(address - 8192))
         } else if address < 16384 {  // Disk B data
-            Ok(self.disk_b.lock().unwrap().load_data(address - 12288))
+            Ok(self.disk_b.load_data(address - 12288))
         } else {                     // RAM
             Ok(self.ram.load(address - 16384))
         }
@@ -285,15 +297,15 @@ mod tests {
     impl MMUFixture {
         fn new() -> Self {
             let (interrupt_tx, interrupt_rx) = mpsc::channel();
-            let disk_a = Arc::new(Mutex::new(DiskController::new(
-                "UNUSED", interrupt_tx.clone(), 0)));
-            let disk_b = Arc::new(Mutex::new(DiskController::new(
-                "UNUSED", interrupt_tx.clone(), 0)));
+            let disk_a = DiskController::new(
+                "UNUSED", interrupt_tx.clone(), 0);
+            let disk_b = DiskController::new(
+                "UNUSED", interrupt_tx.clone(), 0);
             let (display_tx, _) = mpsc::channel();
             let display = DisplayController::new(display_tx);
             let (keyboard_tx, keyboard_rx) = mpsc::channel();
-            let keyboard = Arc::new(Mutex::new(KeyboardController::new(
-                keyboard_tx, keyboard_rx, interrupt_tx.clone())));
+            let keyboard = KeyboardController::new(
+                keyboard_tx, keyboard_rx, interrupt_tx.clone());
             let ram = RAM::new();
             let rom = ROM::new([0; 512]);
 

@@ -7,14 +7,10 @@ mod ram;
 mod rom;
 mod ui;
 
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::mpsc;
 
 pub struct Simulatron {
-    interrupt_tx: mpsc::Sender<u32>,
-    cpu: Option<cpu::CPU>,
-    disk_a: Arc<Mutex<disk::DiskController>>,
-    disk_b: Arc<Mutex<disk::DiskController>>,
-    keyboard: Arc<Mutex<keyboard::KeyboardController>>,
+    cpu: cpu::CPU,
     ui: ui::UI,
 }
 
@@ -26,7 +22,6 @@ impl Simulatron {
         let interrupt_tx_mmu = interrupt_tx.clone();
         let interrupt_tx_disk_a = interrupt_tx.clone();
         let interrupt_tx_disk_b = interrupt_tx.clone();
-        let interrupt_tx_cpu = interrupt_tx.clone();
         let (ui_tx, ui_rx) = mpsc::channel();
         let ui_tx_display = ui_tx.clone();
         let ui_tx_cpu = ui_tx.clone();
@@ -99,42 +94,35 @@ impl Simulatron {
         test_rom[50] = 0x01; // Pause.
 
         // Create components.
-        let disk_a = Arc::new(Mutex::new(disk::DiskController::new(
-            String::from("DiskA"), interrupt_tx_disk_a, cpu::INTERRUPT_DISK_A)));
-        let disk_b = Arc::new(Mutex::new(disk::DiskController::new(
-            String::from("DiskB"), interrupt_tx_disk_b, cpu::INTERRUPT_DISK_B)));
+        let disk_a = disk::DiskController::new(
+            String::from("DiskA"),
+            interrupt_tx_disk_a,
+            cpu::INTERRUPT_DISK_A);
+        let disk_b = disk::DiskController::new(
+            String::from("DiskB"),
+            interrupt_tx_disk_b,
+            cpu::INTERRUPT_DISK_B);
         let display = display::DisplayController::new(ui_tx_display);
-        let keyboard = Arc::new(Mutex::new(keyboard::KeyboardController::new(
-            keyboard_tx, keyboard_rx, interrupt_tx_keyboard)));
+        let keyboard = keyboard::KeyboardController::new(
+            keyboard_tx,
+            keyboard_rx,
+            interrupt_tx_keyboard);
         let ram = ram::RAM::new();
         let rom = rom::ROM::new(test_rom);
-        let mmu = mmu::MMU::new(interrupt_tx_mmu, Arc::clone(&disk_a), Arc::clone(&disk_b),
-                                display, Arc::clone(&keyboard), ram, rom);
-        let cpu = Some(cpu::CPU::new(ui_tx_cpu, mmu, interrupt_tx_cpu, interrupt_rx));
+        let mmu = mmu::MMU::new(interrupt_tx_mmu, disk_a, disk_b,
+                                display, keyboard, ram, rom);
+        let cpu = cpu::CPU::new(ui_tx_cpu, mmu, interrupt_tx, interrupt_rx);
         let ui = ui::UI::new(ui_tx, ui_rx, keyboard_tx_ui);
 
         Simulatron {
-            interrupt_tx,
             cpu,
-            disk_a,
-            disk_b,
-            keyboard,
             ui,
         }
     }
 
     pub fn run(&mut self) {
-        self.keyboard.lock().unwrap().start();
-        self.disk_a.lock().unwrap().start();
-        self.disk_b.lock().unwrap().start();
-        let cpu_thread = self.cpu.take().unwrap().start();
-
+        self.cpu.start();
         self.ui.run();
-
-        self.interrupt_tx.send(cpu::JOIN_THREAD).unwrap();
-        self.cpu = Some(cpu_thread.join().unwrap());
-        self.disk_b.lock().unwrap().stop();
-        self.disk_a.lock().unwrap().stop();
-        self.keyboard.lock().unwrap().stop();
+        self.cpu.stop();
     }
 }
