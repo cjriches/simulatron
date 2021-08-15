@@ -325,7 +325,7 @@ impl<D: DiskController> CPUInternal<D> {
                 Ok(PostCycleAction::Pause) => pausing = true,
                 Ok(PostCycleAction::None) => pausing = false,
                 Err(_) => {
-                    self.program_counter -= rewind;
+                    self.program_counter = self.program_counter.wrapping_sub(rewind);
                     pausing = false;
                 },
             }
@@ -338,7 +338,7 @@ impl<D: DiskController> CPUInternal<D> {
             ($type:ident) => {{
                 let value = self.load(self.program_counter, true, ValueType::$type)?;
                 let size = value.size_in_bytes();
-                self.program_counter += size;
+                self.program_counter = self.program_counter.wrapping_add(size);
                 *rewind += size;
                 Into::<Option<_>>::into(value).unwrap()
             }}
@@ -349,7 +349,7 @@ impl<D: DiskController> CPUInternal<D> {
             ($value_type:expr) => {{
                 let value = self.load(self.program_counter, true, $value_type)?;
                 let size = value.size_in_bytes();
-                self.program_counter += size;
+                self.program_counter = self.program_counter.wrapping_add(size);
                 *rewind += size;
                 value
             }}
@@ -859,10 +859,10 @@ impl<D: DiskController> CPUInternal<D> {
 
     fn push(&mut self, value: TypedValue) -> CPUResult<()> {
         if self.kernel_mode {
-            self.kspr -= value.size_in_bytes();
+            self.kspr = self.kspr.wrapping_sub(value.size_in_bytes());
             self.store(self.kspr, value)
         } else {
-            self.uspr -= value.size_in_bytes();
+            self.uspr = self.uspr.wrapping_sub(value.size_in_bytes());
             self.store(self.uspr, value)
         }
     }
@@ -870,11 +870,11 @@ impl<D: DiskController> CPUInternal<D> {
     fn pop(&mut self, value_type: ValueType) -> CPUResult<TypedValue> {
         if self.kernel_mode {
             let value = self.load(self.kspr, false, value_type)?;
-            self.kspr += value.size_in_bytes();
+            self.kspr = self.kspr.wrapping_add(value.size_in_bytes());
             Ok(value)
         } else {
             let value = self.load(self.uspr, false, value_type)?;
-            self.uspr += value.size_in_bytes();
+            self.uspr = self.uspr.wrapping_add(value.size_in_bytes());
             Ok(value)
         }
     }
