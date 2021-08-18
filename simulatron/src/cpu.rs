@@ -839,6 +839,26 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Subtracting {:?} from register {:#x}", value, dest);
                 self.instruction_sub(dest, value)?;
             }
+            0x27 => {  // SUBBORROW literal
+            debug!("SUBBORROW literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                let carry = self.flags & FLAG_CARRY > 0;
+                debug!("Subtracting {:?} from register {:#x} with carry={}", value, reg_ref, carry);
+                self.instruction_subborrow(reg_ref, value)?;
+            }
+            0x28 => {  // SUBBORROW ref
+            debug!("SUBBORROW ref");
+                let dest = fetch!(Byte);
+                reject_float!(dest);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                let carry = self.flags & FLAG_CARRY > 0;
+                debug!("Subtracting {:?} from register {:#x} with carry={}", value, dest, carry);
+                self.instruction_subborrow(dest, value)?;
+            }
             0x70 => {  // SCONVERT
                 debug!("SCONVERT");
                 let dest = fetch!(Byte);
@@ -982,6 +1002,40 @@ impl<D: DiskController> CPUInternal<D> {
     fn instruction_sub(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
         bin_op!(self, reg_ref, value, overflowing_sub, sub)
+    }
+
+    fn instruction_subborrow(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        let carry: u32 = if self.flags & FLAG_CARRY != 0 {1} else {0};
+        let flags: u16;
+        match self.read_from_register(reg_ref)? {
+            TypedValue::Byte(x) => {
+                let y = Into::<Option<u8>>::into(value).unwrap();
+                let (ans, c1) = x.overflowing_sub(y);
+                let (ans, c2) = ans.overflowing_sub(carry as u8);
+                self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
+                flags = make_flags!(x, y, ans, 0x80, c1 || c2);
+            },
+            TypedValue::Half(x) => {
+                let y = Into::<Option<u16>>::into(value).unwrap();
+                let (ans, c1) = x.overflowing_sub(y);
+                let (ans, c2) = ans.overflowing_sub(carry as u16);
+                self.write_to_register(reg_ref, TypedValue::Half(ans))?;
+                flags = make_flags!(x, y, ans, 0x8000, c1 || c2);
+            },
+            TypedValue::Word(x) => {
+                let y = Into::<Option<u32>>::into(value).unwrap();
+                let (ans, c1) = x.overflowing_sub(y);
+                let (ans, c2) = ans.overflowing_sub(carry);
+                self.write_to_register(reg_ref, TypedValue::Word(ans))?;
+                flags = make_flags!(x, y, ans, 0x80000000, c1 || c2);
+            },
+            TypedValue::Float(_) => {
+                panic!("BUG: instruction_subborrow was called with a float.");
+            },
+        }
+        self.flags = flags;
+        Ok(())
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -2432,5 +2486,26 @@ mod tests {
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[0], 0xFE);
         assert_about_eq!(internal!(cpu).f[0], 0.0);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_subborrow() {
+        let mut rom = [0; 512];
+        rom[0] = 0x21;  // Add literal
+        rom[1] = 0x11;  // into r1b
+        rom[2] = 0x01;  // 1.
+
+        rom[3] = 0x25;  // Subtract literal
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x05;  // 5.
+
+        rom[6] = 0x28;  // Subtract register with borrow
+        rom[7] = 0x10;  // into r0b
+        rom[8] = 0x11;  // r1b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0xF9);
     }
 }
