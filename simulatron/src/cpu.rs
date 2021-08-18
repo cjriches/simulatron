@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::{Add, BitAnd, Div, Mul, Rem, Sub};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -325,6 +325,19 @@ macro_rules! make_flags {
     }}
 }
 
+// A macro for making flags out of an operation that can't overflow.
+macro_rules! make_flags_no_overflow {
+    ($ans:expr, $left_bit:expr) => {{
+        if $ans == 0 {
+            FLAG_ZERO
+        } else if $ans & $left_bit != 0 {
+            FLAG_NEGATIVE
+        } else {
+            0
+        }
+    }}
+}
+
 // A macro for simple unsigned binary operations.
 macro_rules! bin_op {
     ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
@@ -423,6 +436,38 @@ macro_rules! bin_op_signed {
                 let ans = x.$float_op(y);
                 $self.write_to_register($reg_ref, TypedValue::Float(ans))?;
                 flags = if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0};
+            },
+        }
+        $self.flags = flags;
+        Ok(())
+    }}
+}
+
+// A macro for simple bitwise binary operations.
+macro_rules! bin_op_bitwise {
+    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
+        let flags: u16;
+        match $self.read_from_register($reg_ref)? {
+            TypedValue::Byte(x) => {
+                let y = Into::<Option<u8>>::into($value).unwrap();
+                let ans = x.$op(y);
+                $self.write_to_register($reg_ref, TypedValue::Byte(ans))?;
+                flags = make_flags_no_overflow!(ans, 0x80);
+            },
+            TypedValue::Half(x) => {
+                let y = Into::<Option<u16>>::into($value).unwrap();
+                let ans = x.$op(y);
+                $self.write_to_register($reg_ref, TypedValue::Half(ans))?;
+                flags = make_flags_no_overflow!(ans, 0x8000);
+            },
+            TypedValue::Word(x) => {
+                let y = Into::<Option<u32>>::into($value).unwrap();
+                let ans = x.$op(y);
+                $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
+                flags = make_flags_no_overflow!(ans, 0x80000000);
+            },
+            TypedValue::Float(_) => {
+                panic!("Cannot apply this operation to floats!");
             },
         }
         $self.flags = flags;
@@ -1032,18 +1077,6 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_urem(dest, value)?;
             }
             0x33 => {  // NOT
-                // Code de-duplication.
-                macro_rules! make_flags_not {
-                    ($not_x:ident, $left_bit:expr) => {{
-                        if $not_x == 0 {
-                            FLAG_ZERO
-                        } else if $not_x & $left_bit != 0 {
-                            FLAG_NEGATIVE
-                        } else {
-                            0
-                        }
-                    }}
-                }
                 debug!("NOT");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1053,23 +1086,41 @@ impl<D: DiskController> CPUInternal<D> {
                 let negated = match value {
                     TypedValue::Byte(x) => {
                         let not_x = !x;
-                        flags = make_flags_not!(not_x, 0x80);
+                        flags = make_flags_no_overflow!(not_x, 0x80);
                         TypedValue::Byte(not_x)
                     },
                     TypedValue::Half(x) => {
                         let not_x = !x;
-                        flags = make_flags_not!(not_x, 0x8000);
+                        flags = make_flags_no_overflow!(not_x, 0x8000);
                         TypedValue::Half(!x)
                     },
                     TypedValue::Word(x) => {
                         let not_x = !x;
-                        flags = make_flags_not!(not_x, 0x80000000);
+                        flags = make_flags_no_overflow!(not_x, 0x80000000);
                         TypedValue::Word(!x)
                     },
                     TypedValue::Float(_) => unreachable!(),
                 };
                 self.write_to_register(reg_ref, negated)?;
                 self.flags = flags;
+            }
+            0x34 => {  // AND literal
+                debug!("AND literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                debug!("Bitwise AND register {:#x} by {:?}", reg_ref, value);
+                self.instruction_and(reg_ref, value)?;
+            }
+            0x35 => {  // AND ref
+                debug!("AND ref");
+                let dest = fetch!(Byte);
+                reject_float!(dest);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                debug!("Bitwise AND register {:#x} by {:?}", dest, value);
+                self.instruction_and(dest, value)?;
             }
             0x70 => {  // SCONVERT
                 debug!("SCONVERT");
@@ -1237,6 +1288,11 @@ impl<D: DiskController> CPUInternal<D> {
             return Err(CPUError);
         }
         bin_op_int!(self, reg_ref, value, overflowing_rem)
+    }
+
+    fn instruction_and(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        bin_op_bitwise!(self, reg_ref, value, bitand)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -3051,5 +3107,45 @@ mod tests {
         assert_eq!(internal!(cpu).r[2], 0xFF);
         assert_eq!(internal!(cpu).r[3], 0x0);
         assert_eq!(internal!(cpu).flags, FLAG_ZERO);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_and() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x03;  // 3.
+
+        rom[3] = 0x34;  // Logical AND literal
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x02;  // 2.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x11;  // into r1b
+        rom[8] = 0x0F;  // 15.
+
+        rom[9] = 0x34;  // Logical AND literal
+        rom[10] = 0x11; // into r1b
+        rom[11] = 0x10; // 16.
+
+        rom[12] = 0x0A; // Copy literal
+        rom[13] = 0x12; // into r2b
+        rom[14] = 0xFE; // 254.
+
+        rom[15] = 0x0A; // Copy literal
+        rom[16] = 0x13; // into r3b
+        rom[17] = 0x81; // 129.
+
+        rom[18] = 0x35; // Logical AND register
+        rom[19] = 0x12; // into r2b
+        rom[20] = 0x13; // by r3b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x02);
+        assert_eq!(internal!(cpu).r[1], 0x0);
+        assert_eq!(internal!(cpu).r[2], 0x80);
+        assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE);
     }
 }
