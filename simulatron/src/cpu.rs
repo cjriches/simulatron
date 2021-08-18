@@ -982,6 +982,7 @@ impl<D: DiskController> CPUInternal<D> {
             0x2D => {  // UDIV literal
                 debug!("UDIV literal");
                 let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
                 debug!("Unsigned dividing register {:#x} by {:?}", reg_ref, value);
                 self.instruction_udiv(reg_ref, value)?;
@@ -989,6 +990,7 @@ impl<D: DiskController> CPUInternal<D> {
             0x2E => {  // UDIV ref
                 debug!("UDIV ref");
                 let dest = fetch!(Byte);
+                reject_float!(dest);
                 let src = fetch!(Byte);
                 check_same_type!(dest, src);
                 let value = self.read_from_register(src)?;
@@ -1012,20 +1014,62 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_srem(dest, value)?;
             }
             0x31 => {  // UREM literal
-            debug!("UREM literal");
+                debug!("UREM literal");
                 let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
                 debug!("Unsigned remainder register {:#x} by {:?}", reg_ref, value);
                 self.instruction_urem(reg_ref, value)?;
             }
             0x32 => {  // UREM ref
-            debug!("UREM ref");
+                debug!("UREM ref");
                 let dest = fetch!(Byte);
+                reject_float!(dest);
                 let src = fetch!(Byte);
                 check_same_type!(dest, src);
                 let value = self.read_from_register(src)?;
                 debug!("Unsigned remainder register {:#x} by {:?}", dest, value);
                 self.instruction_urem(dest, value)?;
+            }
+            0x33 => {  // NOT
+                // Code de-duplication.
+                macro_rules! make_flags_not {
+                    ($not_x:ident, $left_bit:expr) => {{
+                        if $not_x == 0 {
+                            FLAG_ZERO
+                        } else if $not_x & $left_bit != 0 {
+                            FLAG_NEGATIVE
+                        } else {
+                            0
+                        }
+                    }}
+                }
+                debug!("NOT");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                debug!("Negating register {:#x}", reg_ref);
+                let value = self.read_from_register(reg_ref)?;
+                let flags: u16;
+                let negated = match value {
+                    TypedValue::Byte(x) => {
+                        let not_x = !x;
+                        flags = make_flags_not!(not_x, 0x80);
+                        TypedValue::Byte(not_x)
+                    },
+                    TypedValue::Half(x) => {
+                        let not_x = !x;
+                        flags = make_flags_not!(not_x, 0x8000);
+                        TypedValue::Half(!x)
+                    },
+                    TypedValue::Word(x) => {
+                        let not_x = !x;
+                        flags = make_flags_not!(not_x, 0x80000000);
+                        TypedValue::Word(!x)
+                    },
+                    TypedValue::Float(_) => unreachable!(),
+                };
+                self.write_to_register(reg_ref, negated)?;
+                self.flags = flags;
             }
             0x70 => {  // SCONVERT
                 debug!("SCONVERT");
@@ -2968,5 +3012,44 @@ mod tests {
         assert_eq!(internal!(cpu).r[1], 0x00);
         assert_eq!(internal!(cpu).r[2], 0x02);
         assert_eq!(internal!(cpu).r[3], 0xE2);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_not() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x03;  // 3.
+
+        rom[3] = 0x33;  // Logical NOT
+        rom[4] = 0x08;  // r0h.
+
+        rom[5] = 0x33;  // Logical NOT
+        rom[6] = 0x01;  // r1.
+
+        rom[7] = 0x0B;  // Copy register
+        rom[8] = 0x02;  // into r2
+        rom[9] = 0x01;  // r1.
+
+        rom[10] = 0x33; // Logical NOT
+        rom[11] = 0x12; // r2b.
+
+        rom[12] = 0x33; // Logical NOT
+        rom[13] = 0x02; // r2.
+
+        rom[14] = 0x33; // Logical NOT
+        rom[15] = 0x03; // r3.
+
+        rom[16] = 0x33; // Logical NOT
+        rom[17] = 0x03; // r3.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0xFFFC);
+        assert_eq!(internal!(cpu).r[1], 0xFFFFFFFF);
+        assert_eq!(internal!(cpu).r[2], 0xFF);
+        assert_eq!(internal!(cpu).r[3], 0x0);
+        assert_eq!(internal!(cpu).flags, FLAG_ZERO);
     }
 }
