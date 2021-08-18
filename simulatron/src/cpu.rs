@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, Div, Mul, Sub};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -118,11 +118,20 @@ enum TypedValue {
 
 impl TypedValue {
     pub fn size_in_bytes(&self) -> u32 {
-        match self {
+        match *self {
             TypedValue::Byte(_) => 1,
             TypedValue::Half(_) => 2,
             TypedValue::Word(_) => 4,
             TypedValue::Float(_) => 4,
+        }
+    }
+
+    pub fn is_integer_zero(&self) -> bool {
+        match *self {
+            TypedValue::Byte(x) => x == 0,
+            TypedValue::Half(x) => x == 0,
+            TypedValue::Word(x) => x == 0,
+            TypedValue::Float(_) => false,
         }
     }
 }
@@ -307,7 +316,7 @@ macro_rules! make_flags {
     }}
 }
 
-// A macro for simple binary operations.
+// A macro for simple unsigned binary operations.
 macro_rules! bin_op {
     ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
         let flags: u16;
@@ -329,6 +338,44 @@ macro_rules! bin_op {
                 let ans = x.$int_op(y);
                 $self.write_to_register($reg_ref, TypedValue::Word(ans.0))?;
                 flags = make_flags!(x, y, ans.0, 0x80000000, ans.1);
+            },
+            TypedValue::Float(x) => {
+                let y = Into::<Option<f32>>::into($value).unwrap();
+                let ans = x.$float_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Float(ans))?;
+                flags = if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0};
+            },
+        }
+        $self.flags = flags;
+        Ok(())
+    }}
+}
+
+// A macro for simple signed binary operations.
+macro_rules! bin_op_signed {
+    ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
+        let flags: u16;
+        match $self.read_from_register($reg_ref)? {
+            TypedValue::Byte(x) => {
+                let x = x as i8;
+                let y = Into::<Option<u8>>::into($value).unwrap() as i8;
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Byte(ans.0 as u8))?;
+                flags = make_flags!(x as u8, y as u8, ans.0 as u8, 0x80, ans.1);
+            },
+            TypedValue::Half(x) => {
+                let x = x as i16;
+                let y = Into::<Option<u16>>::into($value).unwrap() as i16;
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Half(ans.0 as u16))?;
+                flags = make_flags!(x as u16, y as u16, ans.0 as u16, 0x8000, ans.1);
+            },
+            TypedValue::Word(x) => {
+                let x = x as i32;
+                let y = Into::<Option<u32>>::into($value).unwrap() as i32;
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Word(ans.0 as u32))?;
+                flags = make_flags!(x as u32, y as u32, ans.0 as u32, 0x80000000, ans.1);
             },
             TypedValue::Float(x) => {
                 let y = Into::<Option<f32>>::into($value).unwrap();
@@ -875,6 +922,22 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Multiplying register {:#x} by {:?}", dest, value);
                 self.instruction_mult(dest, value)?;
             }
+            0x2B => {  // SDIV literal
+            debug!("SDIV literal");
+                let reg_ref = fetch!(Byte);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                debug!("Signed dividing register {:#x} by {:?}", reg_ref, value);
+                self.instruction_sdiv(reg_ref, value)?;
+            }
+            0x2C => {  // SDIV ref
+            debug!("SDIV ref");
+                let dest = fetch!(Byte);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                debug!("Signed dividing register {:#x} by {:?}", dest, value);
+                self.instruction_sdiv(dest, value)?;
+            }
             0x70 => {  // SCONVERT
                 debug!("SCONVERT");
                 let dest = fetch!(Byte);
@@ -1057,6 +1120,15 @@ impl<D: DiskController> CPUInternal<D> {
     fn instruction_mult(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
         bin_op!(self, reg_ref, value, overflowing_mul, mul)
+    }
+
+    fn instruction_sdiv(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        if value.is_integer_zero() {
+            self.interrupt_tx.send(INTERRUPT_DIV_BY_0).unwrap();
+            return Err(CPUError);
+        }
+        bin_op_signed!(self, reg_ref, value, overflowing_div, div)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -2564,5 +2636,95 @@ mod tests {
         assert_eq!(internal!(cpu).r[0], 0x0F);
         assert_eq!(internal!(cpu).r[1], 0x1400);
         assert_about_eq!(internal!(cpu).f[0], 26214400.0);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_sdiv() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x0F;  // 15.
+
+        rom[3] = 0x0A;  // Copy literal
+        rom[4] = 0x11;  // into r1b
+        rom[5] = 0x08;  // 8.
+
+        rom[6] = 0x2C;  // Divide register
+        rom[7] = 0x10;  // into r0b
+        rom[8] = 0x11;  // r1b.
+
+        rom[9] = 0x2B;  // Divide literal
+        rom[10] = 0x11; // into r1b
+        rom[11] = 0x04; // 4.
+
+        rom[12] = 0x0A; // Copy literal
+        rom[13] = 0x12; // into r2b.
+        rom[14] = 0xE2; // -30.
+
+        rom[15] = 0x2B; // Divide literal
+        rom[16] = 0x12; // into r2b
+        rom[17] = 0x05; // 5.
+
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x13; // into r3b
+        rom[20] = 0xE2; // -30.
+
+        rom[21] = 0x2B; // Divide literal
+        rom[22] = 0x13; // into r3b
+        rom[23] = 0xFB; // -5.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x01);
+        assert_eq!(internal!(cpu).r[1], 0x02);
+        assert_eq!(internal!(cpu).r[2], 0xFA);
+        assert_eq!(internal!(cpu).r[3], 0x06);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_div_by_zero() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0xC0;  // ROM address 128.
+
+        rom[3] = 0x08;  // Store literal address
+        rom[4] = 0x00;
+        rom[5] = 0x00;
+        rom[6] = 0x00;
+        rom[7] = 0x14;  // div by zero interrupt handler
+        rom[8] = 0x00;  // r0.
+
+        rom[9] = 0x0A;  // Copy literal
+        rom[10] = 0x22; // into kspr
+        rom[11] = 0x00;
+        rom[12] = 0x00;
+        rom[13] = 0x50;
+        rom[14] = 0x00; // address 0x00005000.
+
+        rom[15] = 0x0A; // Copy literal
+        rom[16] = 0x24; // into imr
+        rom[17] = 0x00;
+        rom[18] = 0x20; // div by zero interrupt only.
+
+        rom[19] = 0x2B; // Divide literal
+        rom[20] = 0x10; // into r0b
+        rom[21] = 0x00; // 0.
+
+        rom[22] = 0x01; // Pause (fail condition).
+
+        // Interrupt handler.
+        rom[128] = 0x21;  // Add literal
+        rom[129] = 0x17;  // into r7b
+        rom[130] = 0x01;  // 1.
+
+        rom[131] = 0x00;  // HALT.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0xC0);
+        assert_eq!(internal!(cpu).r[7], 0x01);
     }
 }
