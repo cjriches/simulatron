@@ -132,7 +132,7 @@ These are only executable in kernel mode. If the CPU is in user mode, an illegal
 
 `STORE address register`: Store the given register into the given memory address.
 
-`COPY destination source`: Either load a register with a constant value, or copy one register into another. This can copy between integer and floating-point registers, and automatically converts the values into the destination representation. Note that converting a float to an integer will truncate towards zero.
+`COPY destination source`: Either load a register with a constant value, or copy one register into another. The source and destination register types must match.
 
 `SWAP register address`: Atomically exchange the values of a memory location and a register.
 
@@ -147,6 +147,10 @@ Note that PUSH and POP will use KSPR if in kernel mode, and USPR if in user mode
 `BLOCKSET length destination value`: Set `length` bytes to the given value, starting at the destination memory address.
 
 Note that `BLOCK*` operations are not atomic and will restart from the beginning if interrupted by a page fault, so usermode operations that cross multiple page boundaries may be quite inefficient. In this case it is probably better to break the operation up into multiple smaller instructions.
+
+`SCONVERT destination source`: Signed conversion of values between integer and floating point representations. If `source` is a 32-bit integer register, `destination` must be one of f0-7, and vice versa. Conversion to/from smaller integer registers is not allowed. Conversion will produce the closest value possible, truncating towards zero in the case of float->integer conversion.
+
+`UCONVERT destination source`: Unsigned conversion of values between integer and floating point representations. Otherwise identical to `SCONVERT`.
 
 ### Arithmetic instructions
 Operand types must match, i.e. `ADD r0 f0` would be illegal.
@@ -256,6 +260,8 @@ Note that if an opcode takes multiple register references to registers with unsp
 `Literal word`: A 4-byte literal integer.
 
 `Register ref word`: A 1-byte register reference to any 32-bit integer register, the contents of which will be interpreted to contain a 4-byte integer. This is equivalent in all but name to `Register ref address`.
+
+`Register ref i/f`: A 1-byte register reference to either a 32-bit integer register or a float register.
 
 `Register ref`: A 1-byte reference to any register.
 
@@ -378,8 +384,8 @@ Note that if an opcode takes multiple register references to registers with unsp
 |  0x6D|CALL        |Register ref address|                        |                    |
 |  0x6E|RETURN      |                    |                        |                    |
 |  0x6F|SYSCALL     |                    |                        |                    |
-|  0x70|            |                    |                        |                    |
-|  0x71|            |                    |                        |                    |
+|  0x70|SCONVERT    |Register ref i/f    |Register ref i/f        |                    |
+|  0x71|UCONVERT    |Register ref i/f    |Register ref i/f        |                    |
 |  0x72|            |                    |                        |                    |
 |  0x73|            |                    |                        |                    |
 |  0x74|            |                    |                        |                    |

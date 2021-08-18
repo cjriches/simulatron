@@ -768,7 +768,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_add(dest, value)?;
             }
             0x23 => {  // ADDCARRY literal
-            debug!("ADDCARRY literal");
+                debug!("ADDCARRY literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
@@ -777,7 +777,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.instruction_addcarry(reg_ref, value)?;
             }
             0x24 => {  // ADDCARRY ref
-            debug!("ADDCARRY ref");
+                debug!("ADDCARRY ref");
                 let dest = fetch!(Byte);
                 reject_float!(dest);
                 let src = fetch!(Byte);
@@ -786,6 +786,52 @@ impl<D: DiskController> CPUInternal<D> {
                 let carry = self.flags & FLAG_CARRY > 0;
                 debug!("Adding {:?} to register {:#x} with carry={}", value, dest, carry);
                 self.instruction_addcarry(dest, value)?;
+            }
+            0x70 => {  // SCONVERT
+                debug!("SCONVERT");
+                let dest = fetch!(Byte);
+                let src = fetch!(Byte);
+                let dest_type = self.reg_ref_type(dest)?;
+                let src_type = self.reg_ref_type(src)?;
+                debug!("Signed conversion from {:#x} to {:#x}", src, dest);
+                if src_type == ValueType::Word && dest_type == ValueType::Float {
+                    // Signed integer to float.
+                    let u: u32 = tv_into_v!(self.read_from_register(src)?);
+                    let i: i32 = u as i32;
+                    let f: f32 = i as f32;
+                    self.write_to_register(dest, TypedValue::Float(f))?;
+                } else if src_type == ValueType::Float && dest_type == ValueType::Word {
+                    // Float to signed integer.
+                    let f: f32 = tv_into_v!(self.read_from_register(src)?);
+                    let i: i32 = f as i32;
+                    let u: u32 = i as u32;
+                    self.write_to_register(dest, TypedValue::Word(u))?;
+                } else {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    return Err(CPUError);
+                }
+            }
+            0x71 => {  // UCONVERT
+            debug!("UCONVERT");
+                let dest = fetch!(Byte);
+                let src = fetch!(Byte);
+                let dest_type = self.reg_ref_type(dest)?;
+                let src_type = self.reg_ref_type(src)?;
+                debug!("Unsigned conversion from {:#x} to {:#x}", src, dest);
+                if src_type == ValueType::Word && dest_type == ValueType::Float {
+                    // Unsigned integer to float.
+                    let u: u32 = tv_into_v!(self.read_from_register(src)?);
+                    let f: f32 = u as f32;
+                    self.write_to_register(dest, TypedValue::Float(f))?;
+                } else if src_type == ValueType::Float && dest_type == ValueType::Word {
+                    // Float to unsigned integer.
+                    let f: f32 = tv_into_v!(self.read_from_register(src)?);
+                    let u: u32 = f as u32;
+                    self.write_to_register(dest, TypedValue::Word(u))?;
+                } else {
+                    self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                    return Err(CPUError);
+                }
             }
             _ => {  // Unrecognised
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
@@ -956,6 +1002,7 @@ impl<D: DiskController> CPUInternal<D> {
             if let TypedValue::Float(f) = value {
                 let index = (reg_ref - 0x18) as usize;
                 self.f[index] = f;
+                return Ok(());
             }
         } else if reg_ref == 0x20 {
             if let TypedValue::Half(h) = value {
@@ -1136,7 +1183,7 @@ impl<D: DiskController> CPUInternal<D> {
 mod tests {
     use super::*;
 
-    use ntest::timeout;
+    use ntest::{assert_about_eq, timeout};
 
     use crate::{disk::MockDiskController, display::DisplayController,
                 keyboard::{KeyboardController, KeyMessage, key_str_to_u8},
@@ -2221,6 +2268,76 @@ mod tests {
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[0], 0x02);
         assert_eq!(internal!(cpu).flags, 0);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_float_add() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x42;  // some number.
+
+        rom[3] = 0x70;  // Convert register
+        rom[4] = 0x18;  // into f0
+        rom[5] = 0x00;  // from r0.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x10;  // into r0b
+        rom[8] = 0x56;  // some number.
+
+        rom[9] = 0x70;  // Convert register
+        rom[10] = 0x19; // into f1
+        rom[11] = 0x00; // from r0.
+
+        rom[12] = 0x22; // Add register
+        rom[13] = 0x18; // into f0
+        rom[14] = 0x19; // from f1.
+
+        rom[15] = 0x70; // Convert register
+        rom[16] = 0x01; // into r1
+        rom[17] = 0x18; // from f0.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_about_eq!(internal!(cpu).f[0], (0x42 + 0x56) as f32);
+        assert_eq!(internal!(cpu).r[1], 0x42 + 0x56);
+        assert_eq!(internal!(cpu).flags, 0);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_float_convert() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x00;  // into r0
+        rom[2] = 0xFF;
+        rom[3] = 0xFF;
+        rom[4] = 0xFF;
+        rom[5] = 0xFF;  // -1.
+
+        rom[6] = 0x70;  // Signed convert register
+        rom[7] = 0x18;  // into f0
+        rom[8] = 0x00;  // from r0.
+
+        rom[9] = 0x71;  // Unsigned convert register
+        rom[10] = 0x19; // into f1
+        rom[11] = 0x00; // from r0.
+
+        rom[12] = 0x71; // Unsigned convert register
+        rom[13] = 0x00; // into r0
+        rom[14] = 0x18; // from f0.
+
+        rom[15] = 0x70; // Signed convert register
+        rom[16] = 0x01; // into r1
+        rom[17] = 0x18; // from f0.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_about_eq!(internal!(cpu).f[0], -1.0);
+        assert_about_eq!(internal!(cpu).f[1], u32::MAX as f32);
+        assert_eq!(internal!(cpu).r[0], 0);
+        assert_eq!(internal!(cpu).r[1], u32::MAX);
     }
 
     #[test]
