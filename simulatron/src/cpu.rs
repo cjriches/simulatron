@@ -1,3 +1,4 @@
+use std::ops::{Add, Sub};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -303,6 +304,41 @@ macro_rules! make_flags {
             flags |= FLAG_OVERFLOW;
         }
         flags
+    }}
+}
+
+// A macro for simple binary operations.
+macro_rules! bin_op {
+    ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
+        let flags: u16;
+        match $self.read_from_register($reg_ref)? {
+            TypedValue::Byte(x) => {
+                let y = Into::<Option<u8>>::into($value).unwrap();
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Byte(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x80, ans.1);
+            },
+            TypedValue::Half(x) => {
+                let y = Into::<Option<u16>>::into($value).unwrap();
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Half(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x8000, ans.1);
+            },
+            TypedValue::Word(x) => {
+                let y = Into::<Option<u32>>::into($value).unwrap();
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Word(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x80000000, ans.1);
+            },
+            TypedValue::Float(x) => {
+                let y = Into::<Option<f32>>::into($value).unwrap();
+                let ans = x.$float_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Float(ans))?;
+                flags = if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0};
+            },
+        }
+        $self.flags = flags;
+        Ok(())
     }}
 }
 
@@ -787,6 +823,22 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Adding {:?} to register {:#x} with carry={}", value, dest, carry);
                 self.instruction_addcarry(dest, value)?;
             }
+            0x25 => {  // SUB literal
+                debug!("SUB literal");
+                let reg_ref = fetch!(Byte);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                debug!("Subtracting {:?} from register {:#x}", value, reg_ref);
+                self.instruction_sub(reg_ref, value)?;
+            }
+            0x26 => {  // SUB ref
+            debug!("SUB ref");
+                let dest = fetch!(Byte);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                debug!("Subtracting {:?} from register {:#x}", value, dest);
+                self.instruction_sub(dest, value)?;
+            }
             0x70 => {  // SCONVERT
                 debug!("SCONVERT");
                 let dest = fetch!(Byte);
@@ -890,35 +942,7 @@ impl<D: DiskController> CPUInternal<D> {
 
     fn instruction_add(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
-        let flags: u16;
-        match self.read_from_register(reg_ref)? {
-            TypedValue::Byte(x) => {
-                let y = Into::<Option<u8>>::into(value).unwrap();
-                let ans= x.overflowing_add(y);
-                self.write_to_register(reg_ref, TypedValue::Byte(ans.0))?;
-                flags = make_flags!(x, y, ans.0, 0x80, ans.1);
-            },
-            TypedValue::Half(x) => {
-                let y = Into::<Option<u16>>::into(value).unwrap();
-                let ans = x.overflowing_add(y);
-                self.write_to_register(reg_ref, TypedValue::Half(ans.0))?;
-                flags = make_flags!(x, y, ans.0, 0x8000, ans.1);
-            },
-            TypedValue::Word(x) => {
-                let y = Into::<Option<u32>>::into(value).unwrap();
-                let ans= x.overflowing_add(y);
-                self.write_to_register(reg_ref, TypedValue::Word(ans.0))?;
-                flags = make_flags!(x, y, ans.0, 0x80000000, ans.1);
-            },
-            TypedValue::Float(x) => {
-                let y = Into::<Option<f32>>::into(value).unwrap();
-                let ans = x + y;
-                self.write_to_register(reg_ref, TypedValue::Float(ans))?;
-                flags = if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0};
-            },
-        }
-        self.flags = flags;
-        Ok(())
+        bin_op!(self, reg_ref, value, overflowing_add, add)
     }
 
     fn instruction_addcarry(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
@@ -953,6 +977,11 @@ impl<D: DiskController> CPUInternal<D> {
         }
         self.flags = flags;
         Ok(())
+    }
+
+    fn instruction_sub(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        bin_op!(self, reg_ref, value, overflowing_sub, sub)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -2377,5 +2406,31 @@ mod tests {
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[0], 0x02);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_sub() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x05;  // some number.
+
+        rom[3] = 0x70;  // Convert literal
+        rom[4] = 0x18;  // into f0
+        rom[5] = 0x00;  // r0.
+
+        rom[6] = 0x25;  // Sub literal
+        rom[7] = 0x10;  // into r0b
+        rom[8] = 0x07;  // 7.
+
+        rom[9] = 0x26;  // Sub register
+        rom[10] = 0x18; // into f0
+        rom[11] = 0x18; // f0.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0xFE);
+        assert_about_eq!(internal!(cpu).f[0], 0.0);
     }
 }
