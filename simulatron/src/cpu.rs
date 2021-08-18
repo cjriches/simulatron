@@ -134,6 +134,15 @@ impl TypedValue {
             TypedValue::Float(_) => false,
         }
     }
+
+    pub fn integer_add_one(&mut self) {
+        match self {
+            TypedValue::Byte(x) => *x += 1,
+            TypedValue::Half(x) => *x += 1,
+            TypedValue::Word(x) => *x += 1,
+            TypedValue::Float(_) => (),
+        };
+    }
 }
 
 impl From<TypedValue> for Option<u8> {
@@ -344,6 +353,38 @@ macro_rules! bin_op {
                 let ans = x.$float_op(y);
                 $self.write_to_register($reg_ref, TypedValue::Float(ans))?;
                 flags = if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0};
+            },
+        }
+        $self.flags = flags;
+        Ok(())
+    }}
+}
+
+// A macro for simple unsigned binary operations that don't apply to floats.
+macro_rules! bin_op_int {
+    ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
+        let flags: u16;
+        match $self.read_from_register($reg_ref)? {
+            TypedValue::Byte(x) => {
+                let y = Into::<Option<u8>>::into($value).unwrap();
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Byte(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x80, ans.1);
+            },
+            TypedValue::Half(x) => {
+                let y = Into::<Option<u16>>::into($value).unwrap();
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Half(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x8000, ans.1);
+            },
+            TypedValue::Word(x) => {
+                let y = Into::<Option<u32>>::into($value).unwrap();
+                let ans = x.$int_op(y);
+                $self.write_to_register($reg_ref, TypedValue::Word(ans.0))?;
+                flags = make_flags!(x, y, ans.0, 0x80000000, ans.1);
+            },
+            TypedValue::Float(_) => {
+                panic!("Cannot apply this operation to floats!");
             },
         }
         $self.flags = flags;
@@ -938,6 +979,22 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Signed dividing register {:#x} by {:?}", dest, value);
                 self.instruction_sdiv(dest, value)?;
             }
+            0x2D => {  // UDIV literal
+            debug!("UDIV literal");
+                let reg_ref = fetch!(Byte);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                debug!("Unsigned dividing register {:#x} by {:?}", reg_ref, value);
+                self.instruction_udiv(reg_ref, value)?;
+            }
+            0x2E => {  // UDIV ref
+            debug!("UDIV ref");
+                let dest = fetch!(Byte);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                debug!("Unsigned dividing register {:#x} by {:?}", dest, value);
+                self.instruction_udiv(dest, value)?;
+            }
             0x70 => {  // SCONVERT
                 debug!("SCONVERT");
                 let dest = fetch!(Byte);
@@ -1044,38 +1101,12 @@ impl<D: DiskController> CPUInternal<D> {
         bin_op!(self, reg_ref, value, overflowing_add, add)
     }
 
-    fn instruction_addcarry(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+    fn instruction_addcarry(&mut self, reg_ref: u8, mut value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
-        let carry: u32 = if self.flags & FLAG_CARRY != 0 {1} else {0};
-        let flags: u16;
-        match self.read_from_register(reg_ref)? {
-            TypedValue::Byte(x) => {
-                let y = Into::<Option<u8>>::into(value).unwrap();
-                let (ans, c1) = x.overflowing_add(y);
-                let (ans, c2) = ans.overflowing_add(carry as u8);
-                self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
-                flags = make_flags!(x, y, ans, 0x80, c1 || c2);
-            },
-            TypedValue::Half(x) => {
-                let y = Into::<Option<u16>>::into(value).unwrap();
-                let (ans, c1) = x.overflowing_add(y);
-                let (ans, c2) = ans.overflowing_add(carry as u16);
-                self.write_to_register(reg_ref, TypedValue::Half(ans))?;
-                flags = make_flags!(x, y, ans, 0x8000, c1 || c2);
-            },
-            TypedValue::Word(x) => {
-                let y = Into::<Option<u32>>::into(value).unwrap();
-                let (ans, c1) = x.overflowing_add(y);
-                let (ans, c2) = ans.overflowing_add(carry);
-                self.write_to_register(reg_ref, TypedValue::Word(ans))?;
-                flags = make_flags!(x, y, ans, 0x80000000, c1 || c2);
-            },
-            TypedValue::Float(_) => {
-                panic!("BUG: instruction_addcarry was called with a float.");
-            },
+        if self.flags & FLAG_CARRY != 0 {
+            value.integer_add_one();
         }
-        self.flags = flags;
-        Ok(())
+        bin_op_int!(self, reg_ref, value, overflowing_add, add)
     }
 
     fn instruction_sub(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
@@ -1083,38 +1114,12 @@ impl<D: DiskController> CPUInternal<D> {
         bin_op!(self, reg_ref, value, overflowing_sub, sub)
     }
 
-    fn instruction_subborrow(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+    fn instruction_subborrow(&mut self, reg_ref: u8, mut value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
-        let carry: u32 = if self.flags & FLAG_CARRY != 0 {1} else {0};
-        let flags: u16;
-        match self.read_from_register(reg_ref)? {
-            TypedValue::Byte(x) => {
-                let y = Into::<Option<u8>>::into(value).unwrap();
-                let (ans, c1) = x.overflowing_sub(y);
-                let (ans, c2) = ans.overflowing_sub(carry as u8);
-                self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
-                flags = make_flags!(x, y, ans, 0x80, c1 || c2);
-            },
-            TypedValue::Half(x) => {
-                let y = Into::<Option<u16>>::into(value).unwrap();
-                let (ans, c1) = x.overflowing_sub(y);
-                let (ans, c2) = ans.overflowing_sub(carry as u16);
-                self.write_to_register(reg_ref, TypedValue::Half(ans))?;
-                flags = make_flags!(x, y, ans, 0x8000, c1 || c2);
-            },
-            TypedValue::Word(x) => {
-                let y = Into::<Option<u32>>::into(value).unwrap();
-                let (ans, c1) = x.overflowing_sub(y);
-                let (ans, c2) = ans.overflowing_sub(carry);
-                self.write_to_register(reg_ref, TypedValue::Word(ans))?;
-                flags = make_flags!(x, y, ans, 0x80000000, c1 || c2);
-            },
-            TypedValue::Float(_) => {
-                panic!("BUG: instruction_subborrow was called with a float.");
-            },
+        if self.flags & FLAG_CARRY != 0 {
+            value.integer_add_one();
         }
-        self.flags = flags;
-        Ok(())
+        bin_op_int!(self, reg_ref, value, overflowing_sub, sub)
     }
 
     fn instruction_mult(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
@@ -1129,6 +1134,15 @@ impl<D: DiskController> CPUInternal<D> {
             return Err(CPUError);
         }
         bin_op_signed!(self, reg_ref, value, overflowing_div, div)
+    }
+
+    fn instruction_udiv(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        if value.is_integer_zero() {
+            self.interrupt_tx.send(INTERRUPT_DIV_BY_0).unwrap();
+            return Err(CPUError);
+        }
+        bin_op_int!(self, reg_ref, value, overflowing_div, div)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -2652,7 +2666,7 @@ mod tests {
 
         rom[6] = 0x2C;  // Divide register
         rom[7] = 0x10;  // into r0b
-        rom[8] = 0x11;  // r1b.
+        rom[8] = 0x11;  // by r1b.
 
         rom[9] = 0x2B;  // Divide literal
         rom[10] = 0x11; // into r1b
@@ -2674,12 +2688,34 @@ mod tests {
         rom[22] = 0x13; // into r3b
         rom[23] = 0xFB; // -5.
 
+        rom[24] = 0x0A; // Copy literal
+        rom[25] = 0x14; // into r4b
+        rom[26] = 0xFF; // 255.
+
+        rom[27] = 0x70; // Convert
+        rom[28] = 0x18; // into f0
+        rom[29] = 0x04; // r4.
+
+        rom[30] = 0x0A; // Copy literal
+        rom[31] = 0x14; // into r4b
+        rom[32] = 0x64; // 100.
+
+        rom[33] = 0x70; // Convert
+        rom[34] = 0x19; // into f1
+        rom[35] = 0x04; // r4.
+
+        rom[36] = 0x2C; // Divide register
+        rom[37] = 0x18; // into f0
+        rom[38] = 0x19; // by f1.
+
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[0], 0x01);
         assert_eq!(internal!(cpu).r[1], 0x02);
         assert_eq!(internal!(cpu).r[2], 0xFA);
         assert_eq!(internal!(cpu).r[3], 0x06);
+        assert_about_eq!(internal!(cpu).f[0], 2.55);
+        assert_about_eq!(internal!(cpu).f[1], 100.0);
     }
 
     #[test]
@@ -2726,5 +2762,50 @@ mod tests {
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[0], 0xC0);
         assert_eq!(internal!(cpu).r[7], 0x01);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_udiv() {
+        let mut rom = [0; 512];
+        // These use the same values as test_sdiv, but interpret them as unsigned instead.
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x0F;  // 15.
+
+        rom[3] = 0x0A;  // Copy literal
+        rom[4] = 0x11;  // into r1b
+        rom[5] = 0x08;  // 8.
+
+        rom[6] = 0x2E;  // Divide register
+        rom[7] = 0x10;  // into r0b
+        rom[8] = 0x11;  // r1b.
+
+        rom[9] = 0x2D;  // Divide literal
+        rom[10] = 0x11; // into r1b
+        rom[11] = 0x04; // 4.
+
+        rom[12] = 0x0A; // Copy literal
+        rom[13] = 0x12; // into r2b.
+        rom[14] = 0xE2; // 226.
+
+        rom[15] = 0x2D; // Divide literal
+        rom[16] = 0x12; // into r2b
+        rom[17] = 0x05; // 5.
+
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x13; // into r3b
+        rom[20] = 0xE2; // 226.
+
+        rom[21] = 0x2D; // Divide literal
+        rom[22] = 0x13; // into r3b
+        rom[23] = 0xFB; // 251.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x01);
+        assert_eq!(internal!(cpu).r[1], 0x02);
+        assert_eq!(internal!(cpu).r[2], 0x2D);
+        assert_eq!(internal!(cpu).r[3], 0x00);
     }
 }
