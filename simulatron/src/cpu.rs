@@ -1140,6 +1140,10 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Bitwise OR register {:#x} by {:?}", dest, value);
                 self.instruction_or(dest, value)?;
             }
+            0x6F => {  // SYSCALL
+                debug!("SYSCALL");
+                self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
+            }
             0x70 => {  // SCONVERT
                 debug!("SCONVERT");
                 let dest = fetch!(Byte);
@@ -2064,7 +2068,7 @@ mod tests {
 
     #[test]
     #[timeout(100)]
-    fn test_interrupt_handle_kernel_mode() {
+    fn test_syscall() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
         rom[1] = 0x22;  // into kspr
@@ -2084,37 +2088,28 @@ mod tests {
         rom[13] = 0x00;
         rom[14] = 0x00;
         rom[15] = 0x00;
-        rom[16] = 0x04; // keyboard interrupt handler
+        rom[16] = 0x00; // syscall interrupt handler
         rom[17] = 0x00; // r0.
 
         rom[18] = 0x0A; // Copy literal
         rom[19] = 0x24; // into imr
         rom[20] = 0x00;
-        rom[21] = 0x02; // keyboard interrupt only.
+        rom[21] = 0x01; // syscall only.
 
-        rom[22] = 0x0A; // Copy literal
-        rom[23] = 0x16; // into r6b
-        rom[24] = 0x11; // some random number.
+        rom[22] = 0x6F; // SYSCALL.
 
-        // TODO This test has a race condition and is flaky, but it can't be fixed
-        // TODO until I have instruction support for busy-wait polling.
+        rom[23] = 0x01; // Pause (fail condition).
 
         // Interrupt handler.
         rom[128] = 0x0A; // Copy literal
-        rom[129] = 0x0D; // into r5h
-        rom[130] = 0x55;
-        rom[131] = 0x66; // some random number.
+        rom[129] = 0x17; // into r7b
+        rom[130] = 0x42; // some number.
 
-        rom[132] = 0x05; // IRETURN.
+        rom[131] = 0x00; // HALT.
 
-        const KEY: &str = "Escape";
-        let (cpu, ui_commands) = run(rom,
-                                     Some(KeyMessage::Key(KEY, false, false).unwrap()));
+        let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
-
-        // Assert that the interrupt handler ran and returned.
-        assert_eq!(internal!(cpu).r[5], 0x00005566);
-        assert_eq!(internal!(cpu).r[6], 0x00000011);
+        assert_eq!(internal!(cpu).r[7], 0x42);
     }
 
     #[test]
