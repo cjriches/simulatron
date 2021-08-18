@@ -1,4 +1,4 @@
-use std::ops::{Add, BitAnd, BitOr, Div, Mul, Rem, Sub};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Sub};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -1140,6 +1140,24 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Bitwise OR register {:#x} by {:?}", dest, value);
                 self.instruction_or(dest, value)?;
             }
+            0x38 => {  // XOR literal
+            debug!("XOR literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                debug!("Bitwise XOR register {:#x} by {:?}", reg_ref, value);
+                self.instruction_xor(reg_ref, value)?;
+            }
+            0x39 => {  // XOR ref
+            debug!("XOR ref");
+                let dest = fetch!(Byte);
+                reject_float!(dest);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                debug!("Bitwise XOR register {:#x} by {:?}", dest, value);
+                self.instruction_xor(dest, value)?;
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
@@ -1320,6 +1338,11 @@ impl<D: DiskController> CPUInternal<D> {
     fn instruction_or(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
         bin_op_bitwise!(self, reg_ref, value, bitor)
+    }
+
+    fn instruction_xor(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        bin_op_bitwise!(self, reg_ref, value, bitxor)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -3205,5 +3228,45 @@ mod tests {
         assert_eq!(internal!(cpu).r[1], 0x1F);
         assert_eq!(internal!(cpu).r[2], 0xFF);
         assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_xor() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x03;  // 3.
+
+        rom[3] = 0x38;  // Logical XOR literal
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x02;  // 2.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x11;  // into r1b
+        rom[8] = 0x0F;  // 15.
+
+        rom[9] = 0x38;  // Logical XOR literal
+        rom[10] = 0x11; // into r1b
+        rom[11] = 0x10; // 16.
+
+        rom[12] = 0x0A; // Copy literal
+        rom[13] = 0x12; // into r2b
+        rom[14] = 0xFE; // 254.
+
+        rom[15] = 0x0A; // Copy literal
+        rom[16] = 0x13; // into r3b
+        rom[17] = 0x81; // 129.
+
+        rom[18] = 0x39; // Logical XOR register
+        rom[19] = 0x12; // into r2b
+        rom[20] = 0x13; // by r3b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x01);
+        assert_eq!(internal!(cpu).r[1], 0x1F);
+        assert_eq!(internal!(cpu).r[2], 0x7F);
+        assert_eq!(internal!(cpu).flags, 0);
     }
 }
