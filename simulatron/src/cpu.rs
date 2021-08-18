@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub};
+use std::ops::{Add, Mul, Sub};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -859,6 +859,22 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Subtracting {:?} from register {:#x} with carry={}", value, dest, carry);
                 self.instruction_subborrow(dest, value)?;
             }
+            0x29 => {  // MULT literal
+            debug!("MULT literal");
+                let reg_ref = fetch!(Byte);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                debug!("Multiplying register {:#x} by {:?}", reg_ref, value);
+                self.instruction_mult(reg_ref, value)?;
+            }
+            0x2A => {  // MULT ref
+            debug!("MULT ref");
+                let dest = fetch!(Byte);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                debug!("Multiplying register {:#x} by {:?}", dest, value);
+                self.instruction_mult(dest, value)?;
+            }
             0x70 => {  // SCONVERT
                 debug!("SCONVERT");
                 let dest = fetch!(Byte);
@@ -1036,6 +1052,11 @@ impl<D: DiskController> CPUInternal<D> {
         }
         self.flags = flags;
         Ok(())
+    }
+
+    fn instruction_mult(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        bin_op!(self, reg_ref, value, overflowing_mul, mul)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -2470,7 +2491,7 @@ mod tests {
         rom[1] = 0x10;  // into r0b
         rom[2] = 0x05;  // some number.
 
-        rom[3] = 0x70;  // Convert literal
+        rom[3] = 0x70;  // Convert
         rom[4] = 0x18;  // into f0
         rom[5] = 0x00;  // r0.
 
@@ -2507,5 +2528,41 @@ mod tests {
         let (cpu, ui_commands) = run(rom, None);
         assert_eq!(ui_commands.len(), 2);
         assert_eq!(internal!(cpu).r[0], 0xF9);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_mult() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x03;  // 3.
+
+        rom[3] = 0x0A;  // Copy literal
+        rom[4] = 0x11;  // into r1b
+        rom[5] = 0x05;  // 5.
+
+        rom[6] = 0x2A;  // Multiply register
+        rom[7] = 0x10;  // into r0b
+        rom[8] = 0x11;  // r1b.
+
+        rom[9] = 0x29;  // Multiply literal
+        rom[10] = 0x09; // into r1h
+        rom[11] = 0x04;
+        rom[12] = 0x00; // 1024.
+
+        rom[13] = 0x70; // Convert
+        rom[14] = 0x18; // into f0
+        rom[15] = 0x01; // from r1.
+
+        rom[16] = 0x2A; // Multiply register
+        rom[17] = 0x18; // into f0
+        rom[18] = 0x18; // f0.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x0F);
+        assert_eq!(internal!(cpu).r[1], 0x1400);
+        assert_about_eq!(internal!(cpu).f[0], 26214400.0);
     }
 }
