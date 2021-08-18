@@ -1227,6 +1227,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_halt() {
         // Simplest possible test; check the CPU halts immediately on opcode 0.
         let (_, ui_commands) = run([0; 512], None);
@@ -1234,6 +1235,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_copy_literal() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1249,6 +1251,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_copy_reg() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1269,6 +1272,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_store_literal_address() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1291,6 +1295,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_store_reg_address() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1317,6 +1322,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_load_literal_address() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1341,6 +1347,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_load_reg_address() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1367,6 +1374,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_swap_literal() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1387,6 +1395,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_swap_reg() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1411,6 +1420,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_kernel_stack() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1446,6 +1456,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_user_mode() {
         let mut rom = [0; 512];
         // Store a number for the user process to find.
@@ -1640,6 +1651,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_display() {
         let mut rom = [0; 512];
         // Set character 5,32 to '#'.
@@ -1688,6 +1700,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_interrupt_handle_kernel_mode() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1742,7 +1755,7 @@ mod tests {
     }
 
     #[test]
-    #[timeout(1000)]
+    #[timeout(100)]
     fn test_bad_reg_ref() {
         let mut rom = [0; 512];
         // Try a copy with unmatched sizes. Should raise an interrupt.
@@ -1770,7 +1783,7 @@ mod tests {
     }
 
     #[test]
-    #[timeout(1000)]
+    #[timeout(100)]
     fn test_pfsr() {
         let mut rom = [0; 512];
         // Set the page directory pointer.
@@ -1901,7 +1914,7 @@ mod tests {
     }
 
     #[test]
-    #[timeout(1000)]
+    #[timeout(200)]
     fn test_timer_literal_interval() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1946,7 +1959,7 @@ mod tests {
     }
 
     #[test]
-    #[timeout(1000)]
+    #[timeout(200)]
     fn test_timer_reg_interval() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -1995,6 +2008,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_blockcopy() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -2093,6 +2107,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_blockset() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -2152,6 +2167,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_negate() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -2178,6 +2194,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_add() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -2212,6 +2229,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_flags() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
@@ -2341,6 +2359,7 @@ mod tests {
     }
 
     #[test]
+    #[timeout(100)]
     fn test_addcarry() {
         let mut rom = [0; 512];
         rom[0] = 0x0A;  // Copy literal
