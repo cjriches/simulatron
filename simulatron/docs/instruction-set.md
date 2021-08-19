@@ -38,12 +38,14 @@ Operations on the lower bits of r0-r7 will consider the register to be of that s
 ## Flags
 There are several flags set by arithmetic or bitwise operations; these may be inspected by subsequent operations.
 
-| Flag | Meaning                                                                              |
-|:----:| ------------------------------------------------------------------------------------ |
-|   Z  | The last operation resulted in zero.                                                 |
-|   N  | The last operation resulted in a negative number.                                    |
-|   C  | The last operation either carried or borrowed a bit beyond the size of the register. |
-|   O  | The last operation resulted in a value too large for the register.                   |
+| Flag | Meaning                                                                                                         |
+|:----:| --------------------------------------------------------------------------------------------------------------- |
+|   Z  | The last operation resulted in zero.                                                                            |
+|   N  | The last operation resulted in a negative number.                                                               |
+|   C  | The last operation either carried or borrowed a bit beyond the size of the register.                            |
+|   O  | The last operation resulted in a value with a different sign bit to the operands (which had the same sign bit). |
+
+It follows that in unsigned arithmetic or bit shifts, overflow has occurred iff `C` is set. In signed arithmetic, overflow has occurred iff `C != O`. In signed bit shifts, overflow has occurred iff `O` is set.
 
 The register is 16 bits wide, but there are only 15 spaces for flags. Bit 15 is used during interrupt handling; it will always be zero when read, and writing it has no effect. The reserved bits should never be manually set to anything other than zero.
 
@@ -188,7 +190,7 @@ None of these instructions are applicable to floats.
 
 `LSHIFT register num_bits`: Shift the given register left by the given number of bits.
 
-`SRSHIFT register num_bits`: Signed/Arithmetic shift the given register right by the given number of bits; left-most bits will be filled with the sign bit.
+`SRSHIFT register num_bits`: Signed/Arithmetic shift the given register right by the given number of bits; left-most bits will be filled with the sign bit. Note that by definition, this cannot overflow and will never set the `O` flag.
 
 `URSHIFT register num_bits`: Unsigned/Logical shift the given register right by the given number of bits; left-most bits will be filled with zeroes.
 
