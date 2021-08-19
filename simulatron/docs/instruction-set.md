@@ -45,7 +45,7 @@ There are several flags set by arithmetic or bitwise operations; these may be in
 |   C  | The last operation either carried or borrowed a bit beyond the size of the register.                            |
 |   O  | The last operation resulted in a value with a different sign bit to the operands (which had the same sign bit). |
 
-It follows that in unsigned arithmetic or bit shifts, overflow has occurred iff `C` is set. In signed arithmetic, overflow has occurred iff `C != O`. In signed bit shifts, overflow has occurred iff `O` is set.
+It follows that in unsigned arithmetic or bit shifts, overflow has occurred iff `C` is set. In signed arithmetic, overflow has occurred iff `C != O`. In signed bit shifts, overflow has occurred iff `O` is set. Rotations work the same as shifts, but since rotations have no arithmetic meaning, the concept of overflow is also meaningless.
 
 The register is 16 bits wide, but there are only 15 spaces for flags. Bit 15 is used during interrupt handling; it will always be zero when read, and writing it has no effect. The reserved bits should never be manually set to anything other than zero.
 

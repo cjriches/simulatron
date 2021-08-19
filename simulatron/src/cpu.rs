@@ -479,6 +479,35 @@ macro_rules! bin_op_bitwise {
     }}
 }
 
+// A macro for bit rotation operations.
+macro_rules! bin_op_rotate {
+    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
+        let flags: u16;
+        match $self.read_from_register($reg_ref)? {
+            TypedValue::Byte(x) => {
+                let ans = x.$op($value);
+                $self.write_to_register($reg_ref, TypedValue::Byte(ans))?;
+                flags = make_flags!(x, x, ans, U8_LEFT_BIT, false);
+            },
+            TypedValue::Half(x) => {
+                let ans = x.$op($value);
+                $self.write_to_register($reg_ref, TypedValue::Half(ans))?;
+                flags = make_flags!(x, x, ans, U16_LEFT_BIT, false);
+            },
+            TypedValue::Word(x) => {
+                let ans = x.$op($value);
+                $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
+                flags = make_flags!(x, x, ans, U32_LEFT_BIT, false);
+            },
+            TypedValue::Float(_) => {
+                panic!("Cannot apply this operation to floats!");
+            },
+        }
+        $self.flags = flags;
+        Ok(())
+    }}
+}
+
 impl<D: DiskController> CPUInternal<D> {
     fn start_timer(&mut self) {
         let (timer_tx, timer_rx) = mpsc::channel();
@@ -1213,6 +1242,40 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Unsigned right shift register {:#x} by {}", reg_ref, value);
                 self.instruction_urshift(reg_ref, value)?;
             }
+            0x40 => {  // LROT literal
+                debug!("LROT literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch!(Byte);
+                debug!("Left rotate register {:#x} by {}", reg_ref, value);
+                self.instruction_lrot(reg_ref, value)?;
+            }
+            0x41 => {  // LROT ref
+                debug!("LROT ref");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("Left rotate register {:#x} by {}", reg_ref, value);
+                self.instruction_lrot(reg_ref, value)?;
+            }
+            0x42 => {  // RROT literal
+                debug!("RROT literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch!(Byte);
+                debug!("Right rotate register {:#x} by {}", reg_ref, value);
+                self.instruction_rrot(reg_ref, value)?;
+            }
+            0x43 => {  // RROT ref
+                debug!("RROT ref");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("Right rotate register {:#x} by {}", reg_ref, value);
+                self.instruction_rrot(reg_ref, value)?;
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
@@ -1527,6 +1590,16 @@ impl<D: DiskController> CPUInternal<D> {
         }
         self.flags = flags;
         Ok(())
+    }
+
+    fn instruction_lrot(&mut self, reg_ref: u8, value: u8) -> CPUResult<()> {
+        let value: u32 = value as u32;
+        bin_op_rotate!(self, reg_ref, value, rotate_left)
+    }
+
+    fn instruction_rrot(&mut self, reg_ref: u8, value: u8) -> CPUResult<()> {
+        let value: u32 = value as u32;
+        bin_op_rotate!(self, reg_ref, value, rotate_right)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -3584,5 +3657,95 @@ mod tests {
         assert_eq!(internal!(cpu).r[1], u32::MAX);
         assert_eq!(internal!(cpu).r[2], 0);
         assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_CARRY | FLAG_OVERFLOW);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_lrot() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x80;  // 128.
+
+        rom[3] = 0x0A;  // Copy literal
+        rom[4] = 0x11;  // into r1b
+        rom[5] = 0x01;  // 1.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x12;  // into r2b
+        rom[8] = 0xFF;  // 255.
+
+        rom[9] = 0x41;  // Left rotate register
+        rom[10] = 0x10; // into r0b
+        rom[11] = 0x11; // by r1b.
+
+        rom[12] = 0x40; // Left rotate literal
+        rom[13] = 0x11; // into r1b
+        rom[14] = 0x05; // by 5.
+
+        rom[15] = 0x40; // Left rotate literal
+        rom[16] = 0x12; // into r2b
+        rom[17] = 0x01; // by 1.
+
+        rom[18] = 0x40; // Left rotate literal
+        rom[19] = 0x13; // into r3b
+        rom[20] = 0x01; // by 1.
+
+        rom[21] = 0x40; // Left rotate literal
+        rom[22] = 0x00; // into r0
+        rom[23] = 0x20; // by 32.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x01);
+        assert_eq!(internal!(cpu).r[1], 0x20);
+        assert_eq!(internal!(cpu).r[2], 0xFF);
+        assert_eq!(internal!(cpu).r[3], 0x00);
+        assert_eq!(internal!(cpu).flags, 0);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_rrot() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x80;  // 128.
+
+        rom[3] = 0x0A;  // Copy literal
+        rom[4] = 0x11;  // into r1b
+        rom[5] = 0x01;  // 1.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x12;  // into r2b
+        rom[8] = 0xFF;  // 255.
+
+        rom[9] = 0x43;  // Right rotate register
+        rom[10] = 0x10; // into r0b
+        rom[11] = 0x11; // by r1b.
+
+        rom[12] = 0x42; // Right rotate literal
+        rom[13] = 0x11; // into r1b
+        rom[14] = 0x05; // by 5.
+
+        rom[15] = 0x42; // Right rotate literal
+        rom[16] = 0x12; // into r2b
+        rom[17] = 0x01; // by 1.
+
+        rom[18] = 0x42; // Right rotate literal
+        rom[19] = 0x13; // into r3b
+        rom[20] = 0x01; // by 1.
+
+        rom[21] = 0x42; // Right rotate literal
+        rom[22] = 0x08; // into r0h
+        rom[23] = 0x10; // by 16.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x40);
+        assert_eq!(internal!(cpu).r[1], 0x08);
+        assert_eq!(internal!(cpu).r[2], 0xFF);
+        assert_eq!(internal!(cpu).r[3], 0x00);
+        assert_eq!(internal!(cpu).flags, 0);
     }
 }
