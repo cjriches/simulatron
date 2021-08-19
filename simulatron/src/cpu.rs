@@ -1376,6 +1376,22 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Jumping to {:#x}", address);
                 self.program_counter = address;
             }
+            0x4A => {  // COMPARE literal
+                debug!("COMPARE literal");
+                let reg_ref = fetch!(Byte);
+                let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
+                debug!("Comparing register {:#x} with {:?}", reg_ref, value);
+                self.instruction_compare(reg_ref, value)?;
+            }
+            0x4B => {  // COMPARE ref
+                debug!("COMPARE ref");
+                let dest = fetch!(Byte);
+                let src = fetch!(Byte);
+                check_same_type!(dest, src);
+                let value = self.read_from_register(src)?;
+                debug!("Comparing register {:#x} with {:?}", dest, value);
+                self.instruction_compare(dest, value)?;
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
@@ -1708,6 +1724,33 @@ impl<D: DiskController> CPUInternal<D> {
 
     fn instruction_rrotcarry(&mut self, reg_ref: u8, value: u8) -> CPUResult<()> {
         bin_op_rotate_carry!(self, reg_ref, value, rcr)
+    }
+
+    fn instruction_compare(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
+        // We assume that the value has already been checked to match the register type.
+        self.flags = match self.read_from_register(reg_ref)? {
+            TypedValue::Byte(x) => {
+                let y = Into::<Option<u8>>::into(value).unwrap();
+                let ans = x.overflowing_sub(y);
+                make_flags!(x, y, ans.0, U8_LEFT_BIT, ans.1)
+            },
+            TypedValue::Half(x) => {
+                let y = Into::<Option<u16>>::into(value).unwrap();
+                let ans = x.overflowing_sub(y);
+                make_flags!(x, y, ans.0, U16_LEFT_BIT, ans.1)
+            },
+            TypedValue::Word(x) => {
+                let y = Into::<Option<u32>>::into(value).unwrap();
+                let ans = x.overflowing_sub(y);
+                make_flags!(x, y, ans.0, U32_LEFT_BIT, ans.1)
+            },
+            TypedValue::Float(x) => {
+                let y = Into::<Option<f32>>::into(value).unwrap();
+                let ans = x - y;
+                if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0}
+            },
+        };
+        Ok(())
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {

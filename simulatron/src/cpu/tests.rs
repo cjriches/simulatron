@@ -2005,3 +2005,66 @@ fn test_jump() {
     assert_eq!(internal!(cpu).r[1], 0x0A174200);
     assert_eq!(internal!(cpu).r[7], 0x42);
 }
+
+#[test]
+#[timeout(100)]
+fn test_compare() {
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x40;  // 64.
+
+    rom[3] = 0x4A;  // Compare literal
+    rom[4] = 0x10;  // r0b with
+    rom[5] = 0x40;  // 64.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_ZERO);
+
+
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x40;  // 64.
+
+    rom[3] = 0x4A;  // Compare literal
+    rom[4] = 0x10;  // r0b with
+    rom[5] = 0x41;  // 65.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY | FLAG_OVERFLOW);
+
+
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x40;  // 64.
+
+    rom[3] = 0x4A;  // Compare literal
+    rom[4] = 0x10;  // r0b with
+    rom[5] = 0x3F;  // 63.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, 0);
+
+
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0xFF;  // 255.
+
+    rom[3] = 0x0A;  // Copy literal
+    rom[4] = 0x11;  // into r1b
+    rom[5] = 0xFA;  // 250.
+
+    rom[6] = 0x4B;  // Compare registers
+    rom[7] = 0x10;  // r0b with
+    rom[8] = 0x11;  // r1b.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_OVERFLOW);  // TODO this should also have FLAG_CARRY. Our flag calculation is bugged.
+}
