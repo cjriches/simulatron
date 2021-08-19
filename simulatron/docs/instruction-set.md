@@ -233,10 +233,6 @@ Note that long `BLKCMP` operations may be inefficient in usermode; see `BLOCKCOP
 
 `JBELOWEQ address`: Like JLESSEREQ but unsigned, i.e. `C`=1 or `Z`=1.
 
-`JOVERFLOW address`: Jump to the given address if the last operation overflowed, i.e. `O`=1.
-
-`JNOTOVERFLOW address`: Jump to the given address if the last operation didn't overflow, i.e. `O`=0.
-
 `CALL address`: Push the address of the next instruction followed by the current flags to the stack, and unconditionally jump to the given address.
 
 `RETURN`: Pop flags from the stack, then pop the return address from the stack and unconditionally jump to it.
@@ -380,16 +376,16 @@ Note that if an opcode takes multiple register references to registers with unsp
 |  0x65|JBELOW      |Register ref address|                        |                    |
 |  0x66|JBELOWEQ    |Literal address     |                        |                    |
 |  0x67|JBELOWEQ    |Register ref address|                        |                    |
-|  0x68|JOVERFLOW   |Literal address     |                        |                    |
-|  0x69|JOVERFLOW   |Register ref address|                        |                    |
-|  0x6A|JNOTOVERFLOW|Literal address     |                        |                    |
-|  0x6B|JNOTOVERFLOW|Register ref address|                        |                    |
-|  0x6C|CALL        |Literal address     |                        |                    |
-|  0x6D|CALL        |Register ref address|                        |                    |
-|  0x6E|RETURN      |                    |                        |                    |
-|  0x6F|SYSCALL     |                    |                        |                    |
-|  0x70|SCONVERT    |Register ref i/f    |Register ref i/f        |                    |
-|  0x71|UCONVERT    |Register ref i/f    |Register ref i/f        |                    |
+|  0x68|CALL        |Literal address     |                        |                    |
+|  0x69|CALL        |Register ref address|                        |                    |
+|  0x6A|RETURN      |                    |                        |                    |
+|  0x6B|SYSCALL     |                    |                        |                    |
+|  0x6C|SCONVERT    |Register ref i/f    |Register ref i/f        |                    |
+|  0x6D|UCONVERT    |Register ref i/f    |Register ref i/f        |                    |
+|  0x6E|            |                    |                        |                    |
+|  0x6F|            |                    |                        |                    |
+|  0x70|            |                    |                        |                    |
+|  0x71|            |                    |                        |                    |
 |  0x72|            |                    |                        |                    |
 |  0x73|            |                    |                        |                    |
 |  0x74|            |                    |                        |                    |
