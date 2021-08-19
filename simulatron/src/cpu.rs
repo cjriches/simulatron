@@ -1362,6 +1362,20 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Right rotate register with carry {:#x} by {}", reg_ref, value);
                 self.instruction_rrotcarry(reg_ref, value)?;
             }
+            0x48 => {  // JUMP literal
+                debug!("JUMP literal");
+                let address = fetch!(Word);
+                debug!("Jumping to {:#x}", address);
+                self.program_counter = address;
+            }
+            0x49 => {  // JUMP ref
+                debug!("JUMP ref");
+                let reg_ref = fetch!(Byte);
+                debug!("Jumping to address in {:#x}", reg_ref);
+                let address = try_tv_into_v!(self.read_from_register(reg_ref)?);
+                debug!("Jumping to {:#x}", address);
+                self.program_counter = address;
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();

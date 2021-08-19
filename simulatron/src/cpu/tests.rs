@@ -1963,3 +1963,45 @@ fn test_rotcarry() {
     assert_eq!(internal!(cpu).r[3], 0x80);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY | FLAG_OVERFLOW);
 }
+
+#[test]
+#[timeout(100)]
+fn test_jump() {
+    let mut rom = [0; 512];
+    rom[0] = 0x48;   // Jump to literal address
+    rom[1] = 0x00;
+    rom[2] = 0x00;
+    rom[3] = 0x00;
+    rom[4] = 0xC0;   // 0x000000C0 (ROM byte 128).
+
+    rom[5] = 0x01;   // Pause (fail condition).
+
+    rom[128] = 0x0A; // Copy literal
+    rom[129] = 0x00; // into r0
+    rom[130] = 0x00;
+    rom[131] = 0x00;
+    rom[132] = 0x40;
+    rom[133] = 0x00; // address start of RAM.
+
+    rom[134] = 0x0A; // Copy literal
+    rom[135] = 0x01; // into r1
+    rom[136] = 0x0A; // opcode: copy literal
+    rom[137] = 0x17; // operand: into r7b
+    rom[138] = 0x42; // operand: some number
+    rom[139] = 0x00; // opcode: halt.
+
+    rom[140] = 0x09; // Store at
+    rom[141] = 0x00; // address in r0
+    rom[142] = 0x01; // contents of r1.
+
+    rom[143] = 0x49; // Jump to register address
+    rom[144] = 0x00; // r0.
+
+    rom[145] = 0x01; // Pause (fail condition).
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[0], 0x4000);
+    assert_eq!(internal!(cpu).r[1], 0x0A174200);
+    assert_eq!(internal!(cpu).r[7], 0x42);
+}
