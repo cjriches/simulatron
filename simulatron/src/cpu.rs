@@ -338,7 +338,7 @@ macro_rules! make_flags_no_overflow {
     }}
 }
 
-// A macro for simple unsigned binary operations.
+// A macro for unsigned binary operations.
 macro_rules! bin_op {
     ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
         let flags: u16;
@@ -373,26 +373,26 @@ macro_rules! bin_op {
     }}
 }
 
-// A macro for simple unsigned binary operations that don't apply to floats.
+// A macro for unsigned binary operations that don't apply to floats.
 macro_rules! bin_op_int {
-    ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident) => {{
+    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
         let flags: u16;
         match $self.read_from_register($reg_ref)? {
             TypedValue::Byte(x) => {
                 let y = Into::<Option<u8>>::into($value).unwrap();
-                let ans = x.$int_op(y);
+                let ans = x.$op(y);
                 $self.write_to_register($reg_ref, TypedValue::Byte(ans.0))?;
                 flags = make_flags!(x, y, ans.0, 0x80, ans.1);
             },
             TypedValue::Half(x) => {
                 let y = Into::<Option<u16>>::into($value).unwrap();
-                let ans = x.$int_op(y);
+                let ans = x.$op(y);
                 $self.write_to_register($reg_ref, TypedValue::Half(ans.0))?;
                 flags = make_flags!(x, y, ans.0, 0x8000, ans.1);
             },
             TypedValue::Word(x) => {
                 let y = Into::<Option<u32>>::into($value).unwrap();
-                let ans = x.$int_op(y);
+                let ans = x.$op(y);
                 $self.write_to_register($reg_ref, TypedValue::Word(ans.0))?;
                 flags = make_flags!(x, y, ans.0, 0x80000000, ans.1);
             },
@@ -405,7 +405,7 @@ macro_rules! bin_op_int {
     }}
 }
 
-// A macro for simple signed binary operations.
+// A macro for signed binary operations.
 macro_rules! bin_op_signed {
     ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
         let flags: u16;
@@ -443,7 +443,7 @@ macro_rules! bin_op_signed {
     }}
 }
 
-// A macro for simple bitwise binary operations.
+// A macro for bitwise binary operations.
 macro_rules! bin_op_bitwise {
     ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
         let flags: u16;
@@ -465,6 +465,50 @@ macro_rules! bin_op_bitwise {
                 let ans = x.$op(y);
                 $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
                 flags = make_flags_no_overflow!(ans, 0x80000000);
+            },
+            TypedValue::Float(_) => {
+                panic!("Cannot apply this operation to floats!");
+            },
+        }
+        $self.flags = flags;
+        Ok(())
+    }}
+}
+
+// A macro for bitwise shifting operations.
+macro_rules! bin_op_bitshift {
+    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
+        let flags: u16;
+        match $self.read_from_register($reg_ref)? {
+            TypedValue::Byte(x) => {
+                let (ans, carry) = if let Some(z) = x.$op($value as u32) {
+                    let c = x.leading_zeros() < ($value as u32);
+                    (z, c)
+                } else {
+                    (0, true)
+                };
+                $self.write_to_register($reg_ref, TypedValue::Byte(ans))?;
+                flags = make_flags!(x, $value, ans, 0x80, carry);
+            },
+            TypedValue::Half(x) => {
+                let (ans, carry) = if let Some(z) = x.$op($value as u32) {
+                    let c = x.leading_zeros() < ($value as u32);
+                    (z, c)
+                } else {
+                    (0, true)
+                };
+                $self.write_to_register($reg_ref, TypedValue::Half(ans))?;
+                flags = make_flags!(x, $value as u16, ans, 0x8000, carry);
+            },
+            TypedValue::Word(x) => {
+                let (ans, carry) = if let Some(z) = x.$op($value as u32) {
+                    let c = x.leading_zeros() < ($value as u32);
+                    (z, c)
+                } else {
+                    (0, true)
+                };
+                $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
+                flags = make_flags!(x, $value as u32, ans, 0x80000000, carry);
             },
             TypedValue::Float(_) => {
                 panic!("Cannot apply this operation to floats!");
@@ -1158,6 +1202,23 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Bitwise XOR register {:#x} by {:?}", dest, value);
                 self.instruction_xor(dest, value)?;
             }
+            0x3A => {  // LSHIFT literal
+            debug!("LSHIFT literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch!(Byte);
+                debug!("Left shift register {:#x} by {}", reg_ref, value);
+                self.instruction_lshift(reg_ref, value)?;
+            }
+            0x3B => {  // LSHIFT ref
+            debug!("LSHIFT ref");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("Left shift register {:#x} by {}", reg_ref, value);
+                self.instruction_lshift(reg_ref, value)?;
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
@@ -1343,6 +1404,10 @@ impl<D: DiskController> CPUInternal<D> {
     fn instruction_xor(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
         bin_op_bitwise!(self, reg_ref, value, bitxor)
+    }
+
+    fn instruction_lshift(&mut self, reg_ref: u8, value: u8) -> CPUResult<()> {
+        bin_op_bitshift!(self, reg_ref, value, checked_shl)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -3268,5 +3333,36 @@ mod tests {
         assert_eq!(internal!(cpu).r[1], 0x1F);
         assert_eq!(internal!(cpu).r[2], 0x7F);
         assert_eq!(internal!(cpu).flags, 0);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_lshift() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x03;  // 3.
+
+        rom[3] = 0x3A;  // Left shift literal
+        rom[4] = 0x10;  // into r0b
+        rom[5] = 0x02;  // 2.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x11;  // into r1b
+        rom[8] = 0xC0;  // 196.
+
+        rom[9] = 0x0A;  // Copy literal
+        rom[10] = 0x12; // into r2b
+        rom[11] = 0x01; // 1.
+
+        rom[12] = 0x3B; // Left shift literal
+        rom[13] = 0x11; // into r1b
+        rom[14] = 0x12; // r2b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x0C);
+        assert_eq!(internal!(cpu).r[1], 0x80);
+        assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
     }
 }
