@@ -1,3 +1,5 @@
+mod rotcarry;
+
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Sub};
 use std::sync::mpsc;
 use std::thread;
@@ -6,6 +8,7 @@ use std::time::Duration;
 use crate::disk::DiskController;
 use crate::mmu::MMU;
 use crate::ui::UICommand;
+use rotcarry::{Rcl, Rcr};
 
 pub const INTERRUPT_SYSCALL: u32 = 0;
 pub const INTERRUPT_KEYBOARD: u32 = 1;
@@ -498,6 +501,53 @@ macro_rules! bin_op_rotate {
                 let ans = x.$op($value);
                 $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
                 flags = make_flags!(x, x, ans, U32_LEFT_BIT, false);
+            },
+            TypedValue::Float(_) => {
+                panic!("Cannot apply this operation to floats!");
+            },
+        }
+        $self.flags = flags;
+        Ok(())
+    }}
+}
+
+// A macro for bit rotation operations with carry.
+macro_rules! bin_op_rotate_carry {
+    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
+        let flags: u16;
+        match $self.read_from_register($reg_ref)? {
+            TypedValue::Byte(x) => {
+                let mut ans = x;
+                let mut carry = $self.flags & FLAG_CARRY > 0;
+                for _ in 0..$value {
+                    let result = ans.$op(carry);
+                    ans = result.0;
+                    carry = result.1;
+                }
+                $self.write_to_register($reg_ref, TypedValue::Byte(ans))?;
+                flags = make_flags!(x, x, ans, U8_LEFT_BIT, carry);
+            },
+            TypedValue::Half(x) => {
+                let mut ans = x;
+                let mut carry = $self.flags & FLAG_CARRY > 0;
+                for _ in 0..$value {
+                    let result = ans.$op(carry);
+                    ans = result.0;
+                    carry = result.1;
+                }
+                $self.write_to_register($reg_ref, TypedValue::Half(ans))?;
+                flags = make_flags!(x, x, ans, U16_LEFT_BIT, carry);
+            },
+            TypedValue::Word(x) => {
+                let mut ans = x;
+                let mut carry = $self.flags & FLAG_CARRY > 0;
+                for _ in 0..$value {
+                    let result = ans.$op(carry);
+                    ans = result.0;
+                    carry = result.1;
+                }
+                $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
+                flags = make_flags!(x, x, ans, U32_LEFT_BIT, carry);
             },
             TypedValue::Float(_) => {
                 panic!("Cannot apply this operation to floats!");
@@ -1276,6 +1326,40 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Right rotate register {:#x} by {}", reg_ref, value);
                 self.instruction_rrot(reg_ref, value)?;
             }
+            0x44 => {  // LROTCARRY literal
+                debug!("LROTCARRY literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch!(Byte);
+                debug!("Left rotate register with carry {:#x} by {}", reg_ref, value);
+                self.instruction_lrotcarry(reg_ref, value)?;
+            }
+            0x45 => {  // LROTCARRY ref
+                debug!("LROTCARRY ref");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("Left rotate register with carry {:#x} by {}", reg_ref, value);
+                self.instruction_lrotcarry(reg_ref, value)?;
+            }
+            0x46 => {  // RROTCARRY literal
+                debug!("RROTCARRY literal");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value = fetch!(Byte);
+                debug!("Right rotate register with carry {:#x} by {}", reg_ref, value);
+                self.instruction_rrotcarry(reg_ref, value)?;
+            }
+            0x47 => {  // RROTCARRY ref
+                debug!("RROTCARRY ref");
+                let reg_ref = fetch!(Byte);
+                reject_float!(reg_ref);
+                let value_ref = fetch!(Byte);
+                let value = try_tv_into_v!(self.read_from_register(value_ref)?);
+                debug!("Right rotate register with carry {:#x} by {}", reg_ref, value);
+                self.instruction_rrotcarry(reg_ref, value)?;
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
@@ -1600,6 +1684,14 @@ impl<D: DiskController> CPUInternal<D> {
     fn instruction_rrot(&mut self, reg_ref: u8, value: u8) -> CPUResult<()> {
         let value: u32 = value as u32;
         bin_op_rotate!(self, reg_ref, value, rotate_right)
+    }
+
+    fn instruction_lrotcarry(&mut self, reg_ref: u8, value: u8) -> CPUResult<()> {
+        bin_op_rotate_carry!(self, reg_ref, value, rcl)
+    }
+
+    fn instruction_rrotcarry(&mut self, reg_ref: u8, value: u8) -> CPUResult<()> {
+        bin_op_rotate_carry!(self, reg_ref, value, rcr)
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
@@ -3747,5 +3839,50 @@ mod tests {
         assert_eq!(internal!(cpu).r[2], 0xFF);
         assert_eq!(internal!(cpu).r[3], 0x00);
         assert_eq!(internal!(cpu).flags, 0);
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_rotcarry() {
+        let mut rom = [0; 512];
+        rom[0] = 0x0A;  // Copy literal
+        rom[1] = 0x10;  // into r0b
+        rom[2] = 0x80;  // 128.
+
+        rom[3] = 0x0A;  // Copy literal
+        rom[4] = 0x11;  // into r1b
+        rom[5] = 0x01;  // 1.
+
+        rom[6] = 0x0A;  // Copy literal
+        rom[7] = 0x12;  // into r2b
+        rom[8] = 0xFF;  // 255.
+
+        rom[9] = 0x45;  // Left rotate carry register
+        rom[10] = 0x10; // into r0b
+        rom[11] = 0x11; // by r1b.
+
+        rom[12] = 0x44; // Left rotate carry literal
+        rom[13] = 0x11; // into r1b
+        rom[14] = 0x05; // by 5.
+
+        rom[15] = 0x46; // Right rotate carry literal
+        rom[16] = 0x12; // into r2b
+        rom[17] = 0x01; // by 1.
+
+        rom[18] = 0x0A; // Copy literal
+        rom[19] = 0x13; // into r3b
+        rom[20] = 0x01; // 1.
+
+        rom[21] = 0x47; // Right rotate carry register
+        rom[22] = 0x13; // into r3b
+        rom[23] = 0x13; // by r3b.
+
+        let (cpu, ui_commands) = run(rom, None);
+        assert_eq!(ui_commands.len(), 2);
+        assert_eq!(internal!(cpu).r[0], 0x00);
+        assert_eq!(internal!(cpu).r[1], 0x30);
+        assert_eq!(internal!(cpu).r[2], 0x7F);
+        assert_eq!(internal!(cpu).r[3], 0x80);
+        assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY | FLAG_OVERFLOW);
     }
 }
