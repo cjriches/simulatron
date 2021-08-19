@@ -188,9 +188,11 @@ None of these instructions are applicable to floats.
 
 `LSHIFT register num_bits`: Shift the given register left by the given number of bits.
 
-`RSHIFTL register num_bits`: Logical/Unsigned shift the given register right by the given number of bits; left-most bits will be filled with zeroes.
+`SRSHIFT register num_bits`: Signed/Arithmetic shift the given register right by the given number of bits; left-most bits will be filled with the sign bit.
 
-`RSHIFTA register num_bits`: Arithmetic/Signed shift the given register right by the given number of bits; left-most bits will be filled with the sign bit.
+`URSHIFT register num_bits`: Unsigned/Logical shift the given register right by the given number of bits; left-most bits will be filled with zeroes.
+
+Shifting by more than the width of the register will fill it with 1s or 0s as appropriate to the type of shift.
 
 `LROT register num_bits`: Rotate the given register left by the given number of bits.
 
@@ -332,10 +334,10 @@ Note that if an opcode takes multiple register references to registers with unsp
 |  0x39|XOR         |Register ref integer|Register ref integer    |                    |
 |  0x3A|LSHIFT      |Register ref integer|Literal byte            |                    |
 |  0x3B|LSHIFT      |Register ref integer|Register ref byte       |                    |
-|  0x3C|RSHIFTL     |Register ref integer|Literal byte            |                    |
-|  0x3D|RSHIFTL     |Register ref integer|Register ref byte       |                    |
-|  0x3E|RSHIFTA     |Register ref integer|Literal byte            |                    |
-|  0x3F|RSHIFTA     |Register ref integer|Register ref byte       |                    |
+|  0x3C|SRSHIFT     |Register ref integer|Literal byte            |                    |
+|  0x3D|SRSHIFT     |Register ref integer|Register ref byte       |                    |
+|  0x3E|URSHIFT     |Register ref integer|Literal byte            |                    |
+|  0x3F|URSHIFT     |Register ref integer|Register ref byte       |                    |
 |  0x40|LROT        |Register ref integer|Literal byte            |                    |
 |  0x41|LROT        |Register ref integer|Register ref byte       |                    |
 |  0x42|RROT        |Register ref integer|Literal byte            |                    |
