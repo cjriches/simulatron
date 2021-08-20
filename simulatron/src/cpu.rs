@@ -1238,6 +1238,30 @@ impl<D: DiskController> CPUInternal<D> {
             0x5F => {  // UJGREATEREQ ref
                 cond_jump_reference!(self, ujgreatereq!(self))
             }
+            0x60 => {  // SJLESSER literal
+                cond_jump_literal!(self, sjlesser!(self))
+            }
+            0x61 => {  // SJLESSER ref
+                cond_jump_reference!(self, sjlesser!(self))
+            }
+            0x62 => {  // SJLESSEREQ literal
+                cond_jump_literal!(self, sjlessereq!(self))
+            }
+            0x63 => {  // SJLESSEREQ ref
+                cond_jump_reference!(self, sjlessereq!(self))
+            }
+            0x64 => {  // UJLESSER literal
+                cond_jump_literal!(self, ujlesser!(self))
+            }
+            0x65 => {  // UJLESSER ref
+                cond_jump_reference!(self, ujlesser!(self))
+            }
+            0x66 => {  // UJLESSEREQ literal
+                cond_jump_literal!(self, ujlessereq!(self))
+            }
+            0x67 => {  // UJLESSEREQ ref
+                cond_jump_reference!(self, ujlessereq!(self))
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();

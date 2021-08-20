@@ -295,6 +295,25 @@ macro_rules! ujgreatereq {
         || ($self.flags & FLAG_ZERO != 0)) }
 }
 
+macro_rules! sjlesser {
+    ($self:ident) => { ("SJLESSER",
+        ($self.flags & FLAG_NEGATIVE != 0) != ($self.flags & FLAG_OVERFLOW != 0)) }
+}
+
+macro_rules! sjlessereq {
+    ($self:ident) => { ("SJLESSEREQ", ($self.flags & FLAG_ZERO != 0)
+        || ($self.flags & FLAG_NEGATIVE != 0) != ($self.flags & FLAG_OVERFLOW != 0)) }
+}
+
+macro_rules! ujlesser {
+    ($self:ident) => { ("UJLESSER", ($self.flags & FLAG_CARRY != 0)) }
+}
+
+macro_rules! ujlessereq {
+    ($self:ident) => { ("UJLESSEREQ", ($self.flags & FLAG_CARRY != 0)
+        || ($self.flags & FLAG_ZERO != 0)) }
+}
+
 // Create a conditional jump to literal opcode.
 macro_rules! cond_jump_literal {
     ($self:ident, $condition:expr) => {{

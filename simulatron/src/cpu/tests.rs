@@ -2500,3 +2500,155 @@ fn test_ujgreatereq() {
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
+
+#[test]
+#[timeout(100)]
+fn test_sjlesser() {
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0xFF;  // -1.
+
+    rom[3] = 0x4A;  // Compare literal
+    rom[4] = 0x10;  // r0b
+    rom[5] = 0xFE;  // with -2.
+
+    rom[6] = 0x60;  // Jump if lesser to literal address
+    rom[7] = 0x00;
+    rom[8] = 0x00;
+    rom[9] = 0x01;
+    rom[10] = 0x40; // ROM byte 256.
+
+    rom[11] = 0x4A; // Compare literal
+    rom[12] = 0x10; // r0b.
+    rom[13] = 0x0A; // with 10.
+
+    rom[14] = 0x60; // Jump if lesser to literal address
+    rom[15] = 0x00;
+    rom[16] = 0x00;
+    rom[17] = 0x00;
+    rom[18] = 0x80; // ROM byte 64.
+
+    rom[19] = 0x01; // Pause (fail condition).
+
+    rom[64] = 0x0A; // Copy literal
+    rom[65] = 0x17; // into r7b
+    rom[66] = 0x99; // some number.
+
+    rom[67] = 0x00; // HALT.
+
+    rom[256] = 0x01; // Pause (fail condition).
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[7], 0x99);
+}
+
+#[test]
+#[timeout(100)]
+fn test_sjlessereq() {
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x0A;  // 10.
+
+    rom[3] = 0x4A;  // Compare literal
+    rom[4] = 0x10;  // r0b
+    rom[5] = 0x00;  // with 0.
+
+    rom[6] = 0x62;  // Jump if lesser or equal to literal address
+    rom[7] = 0x00;
+    rom[8] = 0x00;
+    rom[9] = 0x01;
+    rom[10] = 0x40; // ROM byte 256.
+
+    rom[11] = 0x4A; // Compare literal
+    rom[12] = 0x10; // r0b.
+    rom[13] = 0x0A; // with 10.
+
+    rom[14] = 0x62; // Jump if lesser or equal to literal address
+    rom[15] = 0x00;
+    rom[16] = 0x00;
+    rom[17] = 0x00;
+    rom[18] = 0x80; // ROM byte 64.
+
+    rom[19] = 0x01; // Pause (fail condition).
+
+    rom[64] = 0x0A; // Copy literal
+    rom[65] = 0x17; // into r7b
+    rom[66] = 0x99; // some number.
+
+    rom[67] = 0x00; // HALT.
+
+    rom[256] = 0x01; // Pause (fail condition).
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[7], 0x99);
+}
+
+#[test]
+#[timeout(100)]
+fn test_ujlesser() {
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x42;  // 66.
+
+    rom[3] = 0x4A;  // Compare literal
+    rom[4] = 0x10;  // r0b
+    rom[5] = 0x80;  // with 128.
+
+    rom[6] = 0x64;  // Jump if unsigned lesser to literal address
+    rom[7] = 0x00;
+    rom[8] = 0x00;
+    rom[9] = 0x00;
+    rom[10] = 0x80; // ROM byte 64.
+
+    rom[11] = 0x01; // Pause (fail condition).
+
+    rom[64] = 0x0A; // Copy literal
+    rom[65] = 0x17; // into r7b
+    rom[66] = 0x99; // some number.
+
+    rom[67] = 0x00; // HALT.
+
+    rom[256] = 0x01; // Pause (fail condition).
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[7], 0x99);
+}
+
+#[test]
+#[timeout(100)]
+fn test_ujlessereq() {
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x01;  // 1.
+
+    rom[3] = 0x4A;  // Compare literal
+    rom[4] = 0x10;  // r0b
+    rom[5] = 0x01;  // with 1.
+
+    rom[6] = 0x66;  // Jump if unsigned lesser or equal to literal address
+    rom[7] = 0x00;
+    rom[8] = 0x00;
+    rom[9] = 0x00;
+    rom[10] = 0x80; // ROM byte 64.
+
+    rom[11] = 0x01; // Pause (fail condition).
+
+    rom[64] = 0x0A; // Copy literal
+    rom[65] = 0x17; // into r7b
+    rom[66] = 0x99; // some number.
+
+    rom[67] = 0x00; // HALT.
+
+    rom[256] = 0x01; // Pause (fail condition).
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[7], 0x99);
+}
