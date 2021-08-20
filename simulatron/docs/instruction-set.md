@@ -17,7 +17,7 @@
 
 KSPR, PDPR, IMR, and PFSR are privileged registers; they can only be accessed in kernel mode.
 
-To move values between integer and floating-point registers, the COPY instruction should be used. This automatically performs the required conversions. Storing a float to memory and then loading it as an integer (or vice versa) will NOT perform any conversion.
+To move values between integer and floating-point registers, the SCONVERT and UCONVERT instructions should be used. Storing a float to memory and then loading it as an integer (or vice versa) will NOT perform any conversion. Using the COPY instruction between integer and floating point registers is illegal.
 
 Integers are stored in big-endian 2's complement representation; floats are stored in the IEEE 754 binary32 representation.
 
@@ -47,7 +47,7 @@ There are several flags set by arithmetic or bitwise operations; these may be in
 
 Exclusively signed operations will clear `C`; exclusively unsigned operations will clear `O`. Floating point operations will clear both.
 
-The register is 16 bits wide, but there are only 15 spaces for flags. The most significant bit is used during interrupt handling; it will always be zero when read, and writing it has no effect. The reserved bits should never be manually set to anything other than zero.
+The register is 16 bits wide, but there are only 15 spaces for flags. The most significant bit is used during interrupt handling; it will always be zero when read, and writing it has no effect. The reserved bits should never be set to anything other than zero.
 
 ```
 ______________________________________________
@@ -114,9 +114,9 @@ UStack: 0xDEADBEEF    KStack: 0x007F                                            
 
 
 ## Instructions
-A full list of all instructions is given below. Some instructions are mapped to more than one opcode due to differing operand combinations.
+A full list of all instructions is given below. Most instructions are mapped to more than one opcode due to differing operand combinations.
 
-Operands are ordered such that data flows from right-to-left. This makes it possible for destination register references to be inspected before fetching the source operand, which in turn makes it possible for the source operand length to vary on the destination register. Of course, any assembly language implementations do not need to follow this pattern, and are free to switch operand orders in the source code if a left-to-right flow is deemed to be more intuitive.
+Operands are ordered such that data flows from right-to-left. This makes it possible for destination register references to be inspected before fetching the source operand, which in turn makes it possible for the source operand length to vary depending on the destination register type. Of course, any assembly language implementations do not need to follow this pattern, and are free to switch operand orders in the source code if a left-to-right flow is preferred.
 
 ### Privileged instructions
 These are only executable in kernel mode. If the CPU is in user mode, an illegal operation interrupt will be raised.
