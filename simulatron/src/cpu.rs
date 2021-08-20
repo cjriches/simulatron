@@ -1211,11 +1211,29 @@ impl<D: DiskController> CPUInternal<D> {
                 }
             }
             0x55 => {  // JEQUAL ref
-            debug!("JEQUAL ref");
+                debug!("JEQUAL ref");
                 let reg_ref = fetch!(Byte);
                 debug!("JEQUAL to address in {:#x}", reg_ref);
                 let address = try_tv_into_v!(self.read_from_register(reg_ref)?);
                 if jequal!(self) {
+                    debug!("Jumping to {:#x}", address);
+                    self.program_counter = address;
+                }
+            }
+            0x56 => {  // JNOTEQUAL literal
+                debug!("JNOTEQUAL literal");
+                let address = fetch!(Word);
+                if !jequal!(self) {
+                    debug!("Jumping to {:#x}", address);
+                    self.program_counter = address;
+                }
+            }
+            0x57 => {  // JNOTEQUAL ref
+                debug!("JNOTEQUAL ref");
+                let reg_ref = fetch!(Byte);
+                debug!("JNOTEQUAL to address in {:#x}", reg_ref);
+                let address = try_tv_into_v!(self.read_from_register(reg_ref)?);
+                if !jequal!(self) {
                     debug!("Jumping to {:#x}", address);
                     self.program_counter = address;
                 }
