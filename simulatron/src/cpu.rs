@@ -1,4 +1,8 @@
 mod rotcarry;
+
+#[macro_use]
+mod macros;   // Macros moved to separate file due to length.
+
 #[cfg(test)]  // Unit tests moved to separate file due to length.
 mod tests;
 
@@ -26,10 +30,6 @@ const FLAG_ZERO: u16 = 0x01;
 const FLAG_NEGATIVE: u16 = 0x02;
 const FLAG_CARRY: u16 = 0x04;
 const FLAG_OVERFLOW: u16 = 0x08;
-
-const U8_LEFT_BIT: u8 = 0x80;
-const U16_LEFT_BIT: u16 = 0x8000;
-const U32_LEFT_BIT: u32 = 0x80000000;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CPUError;
@@ -292,272 +292,6 @@ impl<D: DiskController + 'static> CPU<D> {
             .expect("CPU thread terminated with error.");
         self.internal = Some(thread_data);
     }
-}
-
-// A macro for performing a privilege check.
-macro_rules! privileged {
-    ($self:ident) => {{
-        if !$self.kernel_mode {
-            $self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-            Err(CPUError)
-        } else {
-            Ok(())
-        }
-    }}
-}
-
-// A macro for printing only in debug mode.
-macro_rules! debug {
-    ($($x:expr),*) => {{
-        #[cfg(debug_assertions)]
-        println!($($x),*);
-    }}
-}
-
-// A macro for making flags out of an arithmetic operation.
-macro_rules! make_flags {
-    ($x:expr, $y:expr, $ans:expr, $left_bit:expr, $carry:expr) => {{
-        let mut flags: u16 = 0;
-        if $ans == 0 {
-            flags |= FLAG_ZERO;
-        } else if $ans & $left_bit != 0 {
-            flags |= FLAG_NEGATIVE;
-        }
-        if $carry {
-            flags |= FLAG_CARRY;
-        }
-        if (($x & $left_bit == 0) && ($y & $left_bit == 0) && ($ans & $left_bit != 0))
-          || (($x & $left_bit != 0) && ($y & $left_bit != 0) && ($ans & $left_bit == 0)) {
-            flags |= FLAG_OVERFLOW;
-        }
-        flags
-    }}
-}
-
-// A macro for making flags out of an operation that can't overflow.
-macro_rules! make_flags_no_overflow {
-    ($ans:expr, $left_bit:expr) => {{
-        if $ans == 0 {
-            FLAG_ZERO
-        } else if $ans & $left_bit != 0 {
-            FLAG_NEGATIVE
-        } else {
-            0
-        }
-    }}
-}
-
-// A macro for unsigned binary operations.
-macro_rules! bin_op {
-    ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
-        let flags: u16;
-        match $self.read_from_register($reg_ref)? {
-            TypedValue::Byte(x) => {
-                let y = Into::<Option<u8>>::into($value).unwrap();
-                let ans = x.$int_op(y);
-                $self.write_to_register($reg_ref, TypedValue::Byte(ans.0))?;
-                flags = make_flags!(x, y, ans.0, U8_LEFT_BIT, ans.1);
-            },
-            TypedValue::Half(x) => {
-                let y = Into::<Option<u16>>::into($value).unwrap();
-                let ans = x.$int_op(y);
-                $self.write_to_register($reg_ref, TypedValue::Half(ans.0))?;
-                flags = make_flags!(x, y, ans.0, U16_LEFT_BIT, ans.1);
-            },
-            TypedValue::Word(x) => {
-                let y = Into::<Option<u32>>::into($value).unwrap();
-                let ans = x.$int_op(y);
-                $self.write_to_register($reg_ref, TypedValue::Word(ans.0))?;
-                flags = make_flags!(x, y, ans.0, U32_LEFT_BIT, ans.1);
-            },
-            TypedValue::Float(x) => {
-                let y = Into::<Option<f32>>::into($value).unwrap();
-                let ans = x.$float_op(y);
-                $self.write_to_register($reg_ref, TypedValue::Float(ans))?;
-                flags = if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0};
-            },
-        }
-        $self.flags = flags;
-        Ok(())
-    }}
-}
-
-// A macro for unsigned binary operations that don't apply to floats.
-macro_rules! bin_op_int {
-    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
-        let flags: u16;
-        match $self.read_from_register($reg_ref)? {
-            TypedValue::Byte(x) => {
-                let y = Into::<Option<u8>>::into($value).unwrap();
-                let ans = x.$op(y);
-                $self.write_to_register($reg_ref, TypedValue::Byte(ans.0))?;
-                flags = make_flags!(x, y, ans.0, U8_LEFT_BIT, ans.1);
-            },
-            TypedValue::Half(x) => {
-                let y = Into::<Option<u16>>::into($value).unwrap();
-                let ans = x.$op(y);
-                $self.write_to_register($reg_ref, TypedValue::Half(ans.0))?;
-                flags = make_flags!(x, y, ans.0, U16_LEFT_BIT, ans.1);
-            },
-            TypedValue::Word(x) => {
-                let y = Into::<Option<u32>>::into($value).unwrap();
-                let ans = x.$op(y);
-                $self.write_to_register($reg_ref, TypedValue::Word(ans.0))?;
-                flags = make_flags!(x, y, ans.0, U32_LEFT_BIT, ans.1);
-            },
-            TypedValue::Float(_) => {
-                panic!("Cannot apply this operation to floats!");
-            },
-        }
-        $self.flags = flags;
-        Ok(())
-    }}
-}
-
-// A macro for signed binary operations.
-macro_rules! bin_op_signed {
-    ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{
-        let flags: u16;
-        match $self.read_from_register($reg_ref)? {
-            TypedValue::Byte(x) => {
-                let x = x as i8;
-                let y = Into::<Option<u8>>::into($value).unwrap() as i8;
-                let ans = x.$int_op(y);
-                $self.write_to_register($reg_ref, TypedValue::Byte(ans.0 as u8))?;
-                flags = make_flags!(x as u8, y as u8, ans.0 as u8, U8_LEFT_BIT, ans.1);
-            },
-            TypedValue::Half(x) => {
-                let x = x as i16;
-                let y = Into::<Option<u16>>::into($value).unwrap() as i16;
-                let ans = x.$int_op(y);
-                $self.write_to_register($reg_ref, TypedValue::Half(ans.0 as u16))?;
-                flags = make_flags!(x as u16, y as u16, ans.0 as u16, U16_LEFT_BIT, ans.1);
-            },
-            TypedValue::Word(x) => {
-                let x = x as i32;
-                let y = Into::<Option<u32>>::into($value).unwrap() as i32;
-                let ans = x.$int_op(y);
-                $self.write_to_register($reg_ref, TypedValue::Word(ans.0 as u32))?;
-                flags = make_flags!(x as u32, y as u32, ans.0 as u32, U32_LEFT_BIT, ans.1);
-            },
-            TypedValue::Float(x) => {
-                let y = Into::<Option<f32>>::into($value).unwrap();
-                let ans = x.$float_op(y);
-                $self.write_to_register($reg_ref, TypedValue::Float(ans))?;
-                flags = if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0};
-            },
-        }
-        $self.flags = flags;
-        Ok(())
-    }}
-}
-
-// A macro for bitwise binary operations.
-macro_rules! bin_op_bitwise {
-    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
-        let flags: u16;
-        match $self.read_from_register($reg_ref)? {
-            TypedValue::Byte(x) => {
-                let y = Into::<Option<u8>>::into($value).unwrap();
-                let ans = x.$op(y);
-                $self.write_to_register($reg_ref, TypedValue::Byte(ans))?;
-                flags = make_flags_no_overflow!(ans, U8_LEFT_BIT);
-            },
-            TypedValue::Half(x) => {
-                let y = Into::<Option<u16>>::into($value).unwrap();
-                let ans = x.$op(y);
-                $self.write_to_register($reg_ref, TypedValue::Half(ans))?;
-                flags = make_flags_no_overflow!(ans, U16_LEFT_BIT);
-            },
-            TypedValue::Word(x) => {
-                let y = Into::<Option<u32>>::into($value).unwrap();
-                let ans = x.$op(y);
-                $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
-                flags = make_flags_no_overflow!(ans, U32_LEFT_BIT);
-            },
-            TypedValue::Float(_) => {
-                panic!("Cannot apply this operation to floats!");
-            },
-        }
-        $self.flags = flags;
-        Ok(())
-    }}
-}
-
-// A macro for bit rotation operations.
-macro_rules! bin_op_rotate {
-    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
-        let flags: u16;
-        match $self.read_from_register($reg_ref)? {
-            TypedValue::Byte(x) => {
-                let ans = x.$op($value);
-                $self.write_to_register($reg_ref, TypedValue::Byte(ans))?;
-                flags = make_flags!(x, x, ans, U8_LEFT_BIT, false);
-            },
-            TypedValue::Half(x) => {
-                let ans = x.$op($value);
-                $self.write_to_register($reg_ref, TypedValue::Half(ans))?;
-                flags = make_flags!(x, x, ans, U16_LEFT_BIT, false);
-            },
-            TypedValue::Word(x) => {
-                let ans = x.$op($value);
-                $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
-                flags = make_flags!(x, x, ans, U32_LEFT_BIT, false);
-            },
-            TypedValue::Float(_) => {
-                panic!("Cannot apply this operation to floats!");
-            },
-        }
-        $self.flags = flags;
-        Ok(())
-    }}
-}
-
-// A macro for bit rotation operations with carry.
-macro_rules! bin_op_rotate_carry {
-    ($self:expr, $reg_ref:expr, $value:expr, $op:ident) => {{
-        let flags: u16;
-        match $self.read_from_register($reg_ref)? {
-            TypedValue::Byte(x) => {
-                let mut ans = x;
-                let mut carry = $self.flags & FLAG_CARRY > 0;
-                for _ in 0..$value {
-                    let result = ans.$op(carry);
-                    ans = result.0;
-                    carry = result.1;
-                }
-                $self.write_to_register($reg_ref, TypedValue::Byte(ans))?;
-                flags = make_flags!(x, x, ans, U8_LEFT_BIT, carry);
-            },
-            TypedValue::Half(x) => {
-                let mut ans = x;
-                let mut carry = $self.flags & FLAG_CARRY > 0;
-                for _ in 0..$value {
-                    let result = ans.$op(carry);
-                    ans = result.0;
-                    carry = result.1;
-                }
-                $self.write_to_register($reg_ref, TypedValue::Half(ans))?;
-                flags = make_flags!(x, x, ans, U16_LEFT_BIT, carry);
-            },
-            TypedValue::Word(x) => {
-                let mut ans = x;
-                let mut carry = $self.flags & FLAG_CARRY > 0;
-                for _ in 0..$value {
-                    let result = ans.$op(carry);
-                    ans = result.0;
-                    carry = result.1;
-                }
-                $self.write_to_register($reg_ref, TypedValue::Word(ans))?;
-                flags = make_flags!(x, x, ans, U32_LEFT_BIT, carry);
-            },
-            TypedValue::Float(_) => {
-                panic!("Cannot apply this operation to floats!");
-            },
-        }
-        $self.flags = flags;
-        Ok(())
-    }}
 }
 
 impl<D: DiskController> CPUInternal<D> {
@@ -1171,17 +905,17 @@ impl<D: DiskController> CPUInternal<D> {
                 let negated = match value {
                     TypedValue::Byte(x) => {
                         let not_x = !x;
-                        flags = make_flags_no_overflow!(not_x, U8_LEFT_BIT);
+                        flags = make_flags_int!(not_x as i8, false, false);
                         TypedValue::Byte(not_x)
                     },
                     TypedValue::Half(x) => {
                         let not_x = !x;
-                        flags = make_flags_no_overflow!(not_x, U16_LEFT_BIT);
+                        flags = make_flags_int!(not_x as i16, false, false);
                         TypedValue::Half(!x)
                     },
                     TypedValue::Word(x) => {
                         let not_x = !x;
-                        flags = make_flags_no_overflow!(not_x, U32_LEFT_BIT);
+                        flags = make_flags_int!(not_x as i32, false, false);
                         TypedValue::Word(!x)
                     },
                     TypedValue::Float(_) => unreachable!(),
@@ -1499,7 +1233,7 @@ impl<D: DiskController> CPUInternal<D> {
 
     fn instruction_add(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
-        bin_op!(self, reg_ref, value, overflowing_add, add)
+        bin_op_multisigned!(self, reg_ref, value, overflowing_add, add)
     }
 
     fn instruction_addcarry(&mut self, reg_ref: u8, mut value: TypedValue) -> CPUResult<()> {
@@ -1507,12 +1241,12 @@ impl<D: DiskController> CPUInternal<D> {
         if self.flags & FLAG_CARRY != 0 {
             value.integer_add_one();
         }
-        bin_op_int!(self, reg_ref, value, overflowing_add)
+        bin_op_multisigned!(self, reg_ref, value, overflowing_add, add)  // The float op is unused in this case.
     }
 
     fn instruction_sub(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
-        bin_op!(self, reg_ref, value, overflowing_sub, sub)
+        bin_op_multisigned!(self, reg_ref, value, overflowing_sub, sub)
     }
 
     fn instruction_subborrow(&mut self, reg_ref: u8, mut value: TypedValue) -> CPUResult<()> {
@@ -1520,12 +1254,12 @@ impl<D: DiskController> CPUInternal<D> {
         if self.flags & FLAG_CARRY != 0 {
             value.integer_add_one();
         }
-        bin_op_int!(self, reg_ref, value, overflowing_sub)
+        bin_op_multisigned!(self, reg_ref, value, overflowing_sub, sub)  // The float op is unused in this case.
     }
 
     fn instruction_mult(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
         // We assume that the value has already been checked to match the register type.
-        bin_op!(self, reg_ref, value, overflowing_mul, mul)
+        bin_op_multisigned!(self, reg_ref, value, overflowing_mul, mul)
     }
 
     fn instruction_sdiv(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
@@ -1543,7 +1277,7 @@ impl<D: DiskController> CPUInternal<D> {
             self.interrupt_tx.send(INTERRUPT_DIV_BY_0).unwrap();
             return Err(CPUError);
         }
-        bin_op_int!(self, reg_ref, value, overflowing_div)
+        bin_op_unsigned!(self, reg_ref, value, overflowing_div)
     }
 
     fn instruction_srem(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
@@ -1561,7 +1295,7 @@ impl<D: DiskController> CPUInternal<D> {
             self.interrupt_tx.send(INTERRUPT_DIV_BY_0).unwrap();
             return Err(CPUError);
         }
-        bin_op_int!(self, reg_ref, value, overflowing_rem)
+        bin_op_unsigned!(self, reg_ref, value, overflowing_rem)
     }
 
     fn instruction_and(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
@@ -1591,7 +1325,7 @@ impl<D: DiskController> CPUInternal<D> {
                     (0, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
-                flags = make_flags!(x, x, ans, U8_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i8, carry, false);
             },
             TypedValue::Half(x) => {
                 let (ans, carry) = if let Some(z) = x.checked_shl(value) {
@@ -1601,7 +1335,7 @@ impl<D: DiskController> CPUInternal<D> {
                     (0, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Half(ans))?;
-                flags = make_flags!(x, x, ans, U16_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i16, carry, false);
             },
             TypedValue::Word(x) => {
                 let (ans, carry) = if let Some(z) = x.checked_shl(value) {
@@ -1611,10 +1345,10 @@ impl<D: DiskController> CPUInternal<D> {
                     (0, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Word(ans))?;
-                flags = make_flags!(x, x, ans, U32_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i32, carry, false);
             },
             TypedValue::Float(_) => {
-                panic!("Cannot apply this operation to floats!");
+                unreachable!()
             },
         }
         self.flags = flags;
@@ -1630,36 +1364,36 @@ impl<D: DiskController> CPUInternal<D> {
                     let c = x.trailing_zeros() < value;
                     (z as u8, c)
                 } else {
-                    let z = if x & U8_LEFT_BIT > 0 {u8::MAX} else {0};
+                    let z = if (x as i8) < 0 {u8::MAX} else {0};
                     (z, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
-                flags = make_flags!(x, x, ans, U8_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i8, carry, false);
             },
             TypedValue::Half(x) => {
                 let (ans, carry) = if let Some(z) = (x as i16).checked_shr(value) {
                     let c = x.trailing_zeros() < value;
                     (z as u16, c)
                 } else {
-                    let z = if x & U16_LEFT_BIT > 0 {u16::MAX} else {0};
+                    let z = if (x as i16) < 0 {u16::MAX} else {0};
                     (z, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Half(ans))?;
-                flags = make_flags!(x, x, ans, U16_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i16, carry, false);
             },
             TypedValue::Word(x) => {
                 let (ans, carry) = if let Some(z) = (x as i32).checked_shr(value) {
                     let c = x.trailing_zeros() < value;
                     (z as u32, c)
                 } else {
-                    let z = if x & U32_LEFT_BIT > 0 {u32::MAX} else {0};
+                    let z = if (x as i32) < 0 {u32::MAX} else {0};
                     (z, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Word(ans))?;
-                flags = make_flags!(x, x, ans, U32_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i32, carry, false);
             },
             TypedValue::Float(_) => {
-                panic!("Cannot apply this operation to floats!");
+                unreachable!()
             },
         }
         self.flags = flags;
@@ -1678,7 +1412,7 @@ impl<D: DiskController> CPUInternal<D> {
                     (0, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
-                flags = make_flags!(x, x, ans, U8_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i8, carry, false);
             },
             TypedValue::Half(x) => {
                 let (ans, carry) = if let Some(z) = x.checked_shr(value) {
@@ -1688,7 +1422,7 @@ impl<D: DiskController> CPUInternal<D> {
                     (0, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Half(ans))?;
-                flags = make_flags!(x, x, ans, U16_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i16, carry, false);
             },
             TypedValue::Word(x) => {
                 let (ans, carry) = if let Some(z) = x.checked_shr(value) {
@@ -1698,10 +1432,10 @@ impl<D: DiskController> CPUInternal<D> {
                     (0, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Word(ans))?;
-                flags = make_flags!(x, x, ans, U32_LEFT_BIT, carry);
+                flags = make_flags_int!(ans as i32, carry, false);
             },
             TypedValue::Float(_) => {
-                panic!("Cannot apply this operation to floats!");
+                unreachable!()
             },
         }
         self.flags = flags;
@@ -1731,23 +1465,29 @@ impl<D: DiskController> CPUInternal<D> {
         self.flags = match self.read_from_register(reg_ref)? {
             TypedValue::Byte(x) => {
                 let y = Into::<Option<u8>>::into(value).unwrap();
-                let ans = x.overflowing_sub(y);
-                make_flags!(x, y, ans.0, U8_LEFT_BIT, ans.1)
+                let u_ans = x.overflowing_sub(y);
+                let s_ans = (x as i8).overflowing_sub(y as i8);
+                debug_assert_eq!(u_ans.0, s_ans.0 as u8);
+                make_flags_int!(s_ans.0, u_ans.1, s_ans.1)
             },
             TypedValue::Half(x) => {
                 let y = Into::<Option<u16>>::into(value).unwrap();
-                let ans = x.overflowing_sub(y);
-                make_flags!(x, y, ans.0, U16_LEFT_BIT, ans.1)
+                let u_ans = x.overflowing_sub(y);
+                let s_ans = (x as i16).overflowing_sub(y as i16);
+                debug_assert_eq!(u_ans.0, s_ans.0 as u16);
+                make_flags_int!(s_ans.0, u_ans.1, s_ans.1)
             },
             TypedValue::Word(x) => {
                 let y = Into::<Option<u32>>::into(value).unwrap();
-                let ans = x.overflowing_sub(y);
-                make_flags!(x, y, ans.0, U32_LEFT_BIT, ans.1)
+                let u_ans = x.overflowing_sub(y);
+                let s_ans = (x as i32).overflowing_sub(y as i32);
+                debug_assert_eq!(u_ans.0, s_ans.0 as u32);
+                make_flags_int!(s_ans.0, u_ans.1, s_ans.1)
             },
             TypedValue::Float(x) => {
                 let y = Into::<Option<f32>>::into(value).unwrap();
                 let ans = x - y;
-                if ans == 0.0 {FLAG_ZERO} else if ans < 0.0 {FLAG_NEGATIVE} else {0}
+                make_flags_float!(ans)
             },
         };
         Ok(())

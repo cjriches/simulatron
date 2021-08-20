@@ -38,16 +38,16 @@ Operations on the lower bits of r0-r7 will consider the register to be of that s
 ## Flags
 There are several flags set by arithmetic or bitwise operations; these may be inspected by subsequent operations.
 
-| Flag | Meaning                                                                                                         |
-|:----:| --------------------------------------------------------------------------------------------------------------- |
-|   Z  | The last operation resulted in zero.                                                                            |
-|   N  | The last operation resulted in a negative number.                                                               |
-|   C  | The last operation either carried or borrowed a bit beyond the size of the register.                            |
-|   O  | The last operation resulted in a value with a different sign bit to the operands (which had the same sign bit). |
+| Flag | Meaning                                                                                              |
+|:----:| -----------------------------------------------------------------------------------------------------|
+|   Z  | The last operation resulted in zero.                                                                 |
+|   N  | The last operation resulted in a negative number.                                                    |
+|   C  | Unsigned carry: the last operation either carried or borrowed a bit beyond the size of the register. |
+|   O  | Signed overflow: the last operation resulted in a value that overflowed the sign bit.                |
 
-It follows that in unsigned arithmetic or bit shifts, overflow has occurred iff `C` is set. In signed arithmetic, overflow has occurred iff `C != O`. In signed bit shifts, overflow has occurred iff `O` is set. Rotations work the same as shifts, but since rotations have no arithmetic meaning, the concept of overflow is also meaningless.
+Exclusively signed operations will clear `C`; exclusively unsigned operations will clear `O`. Floating point operations will clear both.
 
-The register is 16 bits wide, but there are only 15 spaces for flags. Bit 15 is used during interrupt handling; it will always be zero when read, and writing it has no effect. The reserved bits should never be manually set to anything other than zero.
+The register is 16 bits wide, but there are only 15 spaces for flags. The most significant bit is used during interrupt handling; it will always be zero when read, and writing it has no effect. The reserved bits should never be manually set to anything other than zero.
 
 ```
 ______________________________________________

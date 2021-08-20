@@ -1787,7 +1787,7 @@ fn test_urshift() {
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x01);
     assert_eq!(internal!(cpu).r[1], 0x18);
-    assert_eq!(internal!(cpu).flags, FLAG_CARRY | FLAG_OVERFLOW);
+    assert_eq!(internal!(cpu).flags, FLAG_CARRY);
 }
 
 #[test]
@@ -1826,7 +1826,7 @@ fn test_big_shift() {
     assert_eq!(internal!(cpu).r[0], 0);
     assert_eq!(internal!(cpu).r[1], u32::MAX);
     assert_eq!(internal!(cpu).r[2], 0);
-    assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_CARRY | FLAG_OVERFLOW);
+    assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_CARRY);
 }
 
 #[test]
@@ -1961,7 +1961,7 @@ fn test_rotcarry() {
     assert_eq!(internal!(cpu).r[1], 0x30);
     assert_eq!(internal!(cpu).r[2], 0x7F);
     assert_eq!(internal!(cpu).r[3], 0x80);
-    assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY | FLAG_OVERFLOW);
+    assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
 }
 
 #[test]
@@ -2034,7 +2034,7 @@ fn test_compare() {
 
     let (cpu, ui_commands) = run(rom, None);
     assert_eq!(ui_commands.len(), 2);
-    assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY | FLAG_OVERFLOW);
+    assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
 
 
     let mut rom = [0; 512];
@@ -2054,11 +2054,11 @@ fn test_compare() {
     let mut rom = [0; 512];
     rom[0] = 0x0A;  // Copy literal
     rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // 255.
+    rom[2] = 0xFF;  // 255 (-1).
 
     rom[3] = 0x0A;  // Copy literal
     rom[4] = 0x11;  // into r1b
-    rom[5] = 0xFA;  // 250.
+    rom[5] = 0xFA;  // 250 (-6).
 
     rom[6] = 0x4B;  // Compare registers
     rom[7] = 0x10;  // r0b with
@@ -2066,5 +2066,41 @@ fn test_compare() {
 
     let (cpu, ui_commands) = run(rom, None);
     assert_eq!(ui_commands.len(), 2);
-    assert_eq!(internal!(cpu).flags, FLAG_OVERFLOW);  // TODO this should also have FLAG_CARRY. Our flag calculation is bugged.
+    assert_eq!(internal!(cpu).flags, 0);
+
+
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x80;  // 128 (-128).
+
+    rom[3] = 0x0A;  // Copy literal
+    rom[4] = 0x11;  // into r1b
+    rom[5] = 0x01;  // 1.
+
+    rom[6] = 0x4B;  // Compare registers
+    rom[7] = 0x10;  // r0b with
+    rom[8] = 0x11;  // r1b.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_OVERFLOW);
+
+
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x00;  // 0.
+
+    rom[3] = 0x0A;  // Copy literal
+    rom[4] = 0x11;  // into r1b
+    rom[5] = 0x81;  // 129 (-127).
+
+    rom[6] = 0x4B;  // Compare registers
+    rom[7] = 0x10;  // r0b with
+    rom[8] = 0x11;  // r1b.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_CARRY);
 }
