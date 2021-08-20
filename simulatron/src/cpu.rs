@@ -790,8 +790,8 @@ impl<D: DiskController> CPUInternal<D> {
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
-                let carry = self.flags & FLAG_CARRY > 0;
-                debug!("Adding {:?} to register {:#x} with carry={}", value, reg_ref, carry);
+                debug!("Adding {:?} to register {:#x} with carry={}", value, reg_ref,
+                    self.flags & FLAG_CARRY > 0);
                 self.instruction_addcarry(reg_ref, value)?;
             }
             0x24 => {  // ADDCARRY ref
@@ -801,8 +801,8 @@ impl<D: DiskController> CPUInternal<D> {
                 let src = fetch!(Byte);
                 check_same_type!(dest, src);
                 let value = self.read_from_register(src)?;
-                let carry = self.flags & FLAG_CARRY > 0;
-                debug!("Adding {:?} to register {:#x} with carry={}", value, dest, carry);
+                debug!("Adding {:?} to register {:#x} with carry={}", value, dest,
+                    self.flags & FLAG_CARRY > 0);
                 self.instruction_addcarry(dest, value)?;
             }
             0x25 => {  // SUB literal
@@ -826,8 +826,8 @@ impl<D: DiskController> CPUInternal<D> {
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
-                let carry = self.flags & FLAG_CARRY > 0;
-                debug!("Subtracting {:?} from register {:#x} with carry={}", value, reg_ref, carry);
+                debug!("Subtracting {:?} from register {:#x} with carry={}", value, reg_ref,
+                    self.flags & FLAG_CARRY > 0);
                 self.instruction_subborrow(reg_ref, value)?;
             }
             0x28 => {  // SUBBORROW ref
@@ -837,8 +837,8 @@ impl<D: DiskController> CPUInternal<D> {
                 let src = fetch!(Byte);
                 check_same_type!(dest, src);
                 let value = self.read_from_register(src)?;
-                let carry = self.flags & FLAG_CARRY > 0;
-                debug!("Subtracting {:?} from register {:#x} with carry={}", value, dest, carry);
+                debug!("Subtracting {:?} from register {:#x} with carry={}", value, dest,
+                    self.flags & FLAG_CARRY > 0);
                 self.instruction_subborrow(dest, value)?;
             }
             0x29 => {  // MULT literal
