@@ -1319,11 +1319,11 @@ impl<D: DiskController> CPUInternal<D> {
                 self.flags = flags & 0b0111111111111111;  // Ignore bit 15.
                 self.program_counter = address;
             }
-            0x6F => {  // SYSCALL
+            0x6B => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
             }
-            0x70 => {  // SCONVERT
+            0x6C => {  // SCONVERT
                 debug!("SCONVERT");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -1347,7 +1347,7 @@ impl<D: DiskController> CPUInternal<D> {
                     return Err(CPUError::TryAgainError);
                 }
             }
-            0x71 => {  // UCONVERT
+            0x6D => {  // UCONVERT
             debug!("UCONVERT");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -1370,6 +1370,7 @@ impl<D: DiskController> CPUInternal<D> {
                 }
             }
             _ => {  // Unrecognised
+                debug!("Unrecognised opcode: {:#x}", opcode);
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
             }
         }

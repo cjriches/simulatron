@@ -546,7 +546,7 @@ fn test_syscall() {
     rom[20] = 0x00;
     rom[21] = 0x01; // syscall only.
 
-    rom[22] = 0x6F; // SYSCALL.
+    rom[22] = 0x6B; // SYSCALL.
 
     rom[23] = 0x01; // Pause (fail condition).
 
@@ -1104,7 +1104,7 @@ fn test_float_add() {
     rom[1] = 0x10;  // into r0b
     rom[2] = 0x42;  // some number.
 
-    rom[3] = 0x70;  // Convert register
+    rom[3] = 0x6C;  // Convert register
     rom[4] = 0x18;  // into f0
     rom[5] = 0x00;  // from r0.
 
@@ -1112,7 +1112,7 @@ fn test_float_add() {
     rom[7] = 0x10;  // into r0b
     rom[8] = 0x56;  // some number.
 
-    rom[9] = 0x70;  // Convert register
+    rom[9] = 0x6C;  // Convert register
     rom[10] = 0x19; // into f1
     rom[11] = 0x00; // from r0.
 
@@ -1120,7 +1120,7 @@ fn test_float_add() {
     rom[13] = 0x18; // into f0
     rom[14] = 0x19; // from f1.
 
-    rom[15] = 0x70; // Convert register
+    rom[15] = 0x6C; // Convert register
     rom[16] = 0x01; // into r1
     rom[17] = 0x18; // from f0.
 
@@ -1142,19 +1142,19 @@ fn test_float_convert() {
     rom[4] = 0xFF;
     rom[5] = 0xFF;  // -1.
 
-    rom[6] = 0x70;  // Signed convert register
+    rom[6] = 0x6C;  // Signed convert register
     rom[7] = 0x18;  // into f0
     rom[8] = 0x00;  // from r0.
 
-    rom[9] = 0x71;  // Unsigned convert register
+    rom[9] = 0x6D;  // Unsigned convert register
     rom[10] = 0x19; // into f1
     rom[11] = 0x00; // from r0.
 
-    rom[12] = 0x71; // Unsigned convert register
+    rom[12] = 0x6D; // Unsigned convert register
     rom[13] = 0x00; // into r0
     rom[14] = 0x18; // from f0.
 
-    rom[15] = 0x70; // Signed convert register
+    rom[15] = 0x6C; // Signed convert register
     rom[16] = 0x01; // into r1
     rom[17] = 0x18; // from f0.
 
@@ -1195,7 +1195,7 @@ fn test_sub() {
     rom[1] = 0x10;  // into r0b
     rom[2] = 0x05;  // some number.
 
-    rom[3] = 0x70;  // Convert
+    rom[3] = 0x6C;  // Convert
     rom[4] = 0x18;  // into f0
     rom[5] = 0x00;  // r0.
 
@@ -1255,7 +1255,7 @@ fn test_mult() {
     rom[11] = 0x04;
     rom[12] = 0x00; // 1024.
 
-    rom[13] = 0x70; // Convert
+    rom[13] = 0x6C; // Convert
     rom[14] = 0x18; // into f0
     rom[15] = 0x01; // from r1.
 
@@ -1310,7 +1310,7 @@ fn test_sdiv() {
     rom[25] = 0x14; // into r4b
     rom[26] = 0xFF; // 255.
 
-    rom[27] = 0x70; // Convert
+    rom[27] = 0x6C; // Convert
     rom[28] = 0x18; // into f0
     rom[29] = 0x04; // r4.
 
@@ -1318,7 +1318,7 @@ fn test_sdiv() {
     rom[31] = 0x14; // into r4b
     rom[32] = 0x64; // 100.
 
-    rom[33] = 0x70; // Convert
+    rom[33] = 0x6C; // Convert
     rom[34] = 0x19; // into f1
     rom[35] = 0x04; // r4.
 
@@ -1467,7 +1467,7 @@ fn test_srem() {
     rom[25] = 0x14; // into r4b
     rom[26] = 0xFF; // 255.
 
-    rom[27] = 0x70; // Convert
+    rom[27] = 0x6C; // Convert
     rom[28] = 0x18; // into f0
     rom[29] = 0x04; // r4.
 
@@ -1475,7 +1475,7 @@ fn test_srem() {
     rom[31] = 0x14; // into r4b
     rom[32] = 0x64; // 100.
 
-    rom[33] = 0x70; // Convert
+    rom[33] = 0x6C; // Convert
     rom[34] = 0x19; // into f1
     rom[35] = 0x04; // r4.
 
