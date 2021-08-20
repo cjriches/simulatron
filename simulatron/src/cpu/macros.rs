@@ -280,6 +280,21 @@ macro_rules! sjgreater {
         && ($self.flags & FLAG_NEGATIVE != 0) == ($self.flags & FLAG_OVERFLOW != 0)) }
 }
 
+macro_rules! sjgreatereq {
+    ($self:ident) => { ("SJGREATEREQ", ($self.flags & FLAG_ZERO != 0)
+        || ($self.flags & FLAG_NEGATIVE != 0) == ($self.flags & FLAG_OVERFLOW != 0)) }
+}
+
+macro_rules! ujgreater {
+    ($self:ident) => { ("UJGREATER", ($self.flags & FLAG_CARRY == 0)
+        && ($self.flags & FLAG_ZERO == 0)) }
+}
+
+macro_rules! ujgreatereq {
+    ($self:ident) => { ("UJGREATEREQ", ($self.flags & FLAG_CARRY == 0)
+        || ($self.flags & FLAG_ZERO != 0)) }
+}
+
 // Create a conditional jump to literal opcode.
 macro_rules! cond_jump_literal {
     ($self:ident, $condition:expr) => {{
