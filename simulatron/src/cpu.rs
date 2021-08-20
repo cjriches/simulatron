@@ -1126,6 +1126,82 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Comparing register {:#x} with {:?}", dest, value);
                 self.instruction_compare(dest, value)?;
             }
+            0x4C => {  // BLOCKCMP literal literal literal
+                debug!("BLOCKCMP literal literal literal");
+                let length = fetch!(Word);
+                let source1 = fetch!(Word);
+                let source2 = fetch!(Word);
+                debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                self.instruction_blockcmp(length, source1, source2)?;
+            }
+            0x4D => {  // BLOCKCMP literal literal ref
+                debug!("BLOCKCMP literal literal ref");
+                let length = fetch!(Word);
+                let source1 = fetch!(Word);
+                let source2_ref = fetch!(Byte);
+                let source2 = try_tv_into_v!(self.read_from_register(source2_ref)?);
+                debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                self.instruction_blockcmp(length, source1, source2)?;
+            }
+            0x4E => {  // BLOCKCMP literal ref literal
+                debug!("BLOCKCMP literal ref literal");
+                let length = fetch!(Word);
+                let source1_ref = fetch!(Byte);
+                let source2 = fetch!(Word);
+                let source1 = try_tv_into_v!(self.read_from_register(source1_ref)?);
+                debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                self.instruction_blockcmp(length, source1, source2)?;
+            }
+            0x4F => {  // BLOCKCMP literal ref ref
+                debug!("BLOCKCMP literal ref ref");
+                let length = fetch!(Word);
+                let source1_ref = fetch!(Byte);
+                let source2_ref = fetch!(Byte);
+                let source1 = try_tv_into_v!(self.read_from_register(source1_ref)?);
+                let source2 = try_tv_into_v!(self.read_from_register(source2_ref)?);
+                debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                self.instruction_blockcmp(length, source1, source2)?;
+            }
+            0x50 => {  // BLOCKCMP ref literal literal
+                debug!("BLOCKCMP ref literal literal");
+                let length_ref = fetch!(Byte);
+                let source1 = fetch!(Word);
+                let source2 = fetch!(Word);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                self.instruction_blockcmp(length, source1, source2)?;
+            }
+            0x51 => {  // BLOCKCMP ref literal ref
+                debug!("BLOCKCMP ref literal ref");
+                let length_ref = fetch!(Byte);
+                let source1 = fetch!(Word);
+                let source2_ref = fetch!(Byte);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let source2 = try_tv_into_v!(self.read_from_register(source2_ref)?);
+                debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                self.instruction_blockcmp(length, source1, source2)?;
+            }
+            0x52 => {  // BLOCKCMP ref ref literal
+                debug!("BLOCKCMP ref ref literal");
+                let length_ref = fetch!(Byte);
+                let source1_ref = fetch!(Byte);
+                let source2 = fetch!(Word);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let source1 = try_tv_into_v!(self.read_from_register(source1_ref)?);
+                debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                self.instruction_blockcmp(length, source1, source2)?;
+            }
+            0x53 => {  // BLOCKCMP ref ref ref
+                debug!("BLOCKCMP ref ref ref");
+                let length_ref = fetch!(Byte);
+                let source1_ref = fetch!(Byte);
+                let source2_ref = fetch!(Byte);
+                let length = try_tv_into_v!(self.read_from_register(length_ref)?);
+                let source1 = try_tv_into_v!(self.read_from_register(source1_ref)?);
+                let source2 = try_tv_into_v!(self.read_from_register(source2_ref)?);
+                debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                self.instruction_blockcmp(length, source1, source2)?;
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
@@ -1490,6 +1566,36 @@ impl<D: DiskController> CPUInternal<D> {
                 make_flags_float!(ans)
             },
         };
+        Ok(())
+    }
+
+    fn instruction_blockcmp(&mut self, length: u32, source1: u32, source2: u32) -> CPUResult<()> {
+        if self.kernel_mode {
+            for i in 0..length {
+                let val1 = self.mmu.load_physical_8(source1 + i)?;
+                let val2 = self.mmu.load_physical_8(source2 + i)?;
+                if val1 > val2 {
+                    self.flags = 0;
+                    return Ok(());
+                } else if val2 > val1 {
+                    self.flags = FLAG_NEGATIVE;
+                    return Ok(());
+                }
+            }
+        } else {
+            for i in 0..length {
+                let val1 = self.mmu.load_virtual_8(self.pdpr, source1 + i, false)?;
+                let val2 = self.mmu.load_virtual_8(self.pdpr, source2 + i, false)?;
+                if val1 > val2 {
+                    self.flags = 0;
+                    return Ok(());
+                } else if val2 > val1 {
+                    self.flags = FLAG_NEGATIVE;
+                    return Ok(());
+                }
+            }
+        }
+        self.flags = FLAG_ZERO;
         Ok(())
     }
 

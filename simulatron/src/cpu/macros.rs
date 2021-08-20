@@ -50,64 +50,6 @@ macro_rules! make_flags_float {
     }}
 }
 
-//
-// // Make flags out of an arithmetic subtraction operation.
-// macro_rules! make_flags_sub {
-//     ($x:expr, $y:expr, $ans:expr, $left_bit:expr, $carry:expr) => {{
-//         let mut flags: u16 = 0;
-//         if $ans == 0 {
-//             flags |= FLAG_ZERO;
-//         } else if $ans & $left_bit != 0 {
-//             flags |= FLAG_NEGATIVE;
-//         }
-//         if $carry {
-//             flags |= FLAG_CARRY;
-//         }
-//         let x_sign = $x & $left_bit != 0;
-//         let y_sign = $y & $left_bit != 0;
-//         let ans_sign = $ans & $left_bit != 0;
-//         if x_sign != y_sign && x_sign != ans_sign {  // Note difference to addition.
-//             flags |= FLAG_OVERFLOW;
-//         }
-//         flags
-//     }}
-// }
-//
-// // Make flags out of an arithmetic multiplication operation.
-// macro_rules! make_flags_mult {
-//     ($x:expr, $y:expr, $ans:expr, $left_bit:expr, $carry:expr) => {{
-//         let mut flags: u16 = 0;
-//         if $ans == 0 {
-//             flags |= FLAG_ZERO;
-//         } else if $ans & $left_bit != 0 {
-//             flags |= FLAG_NEGATIVE;
-//         }
-//         if $carry {
-//             flags |= FLAG_CARRY;
-//         }
-//         let x_sign = $x & $left_bit != 0;
-//         let y_sign = $y & $left_bit != 0;
-//         let ans_sign = $ans & $left_bit != 0;
-//         if x_sign != y_sign && x_sign != ans_sign {  // Note difference to addition.
-//             flags |= FLAG_OVERFLOW;
-//         }
-//         flags
-//     }}
-// }
-//
-// // A macro for making flags out of an operation that can't overflow.
-// macro_rules! make_flags_no_overflow {
-//     ($ans:expr, $left_bit:expr) => {{
-//         if $ans == 0 {
-//             FLAG_ZERO
-//         } else if $ans & $left_bit != 0 {
-//             FLAG_NEGATIVE
-//         } else {
-//             0
-//         }
-//     }}
-// }
-
 // Create a binary operation that works as both signed and unsigned.
 macro_rules! bin_op_multisigned {
     ($self:expr, $reg_ref:expr, $value:expr, $int_op:ident, $float_op:ident) => {{

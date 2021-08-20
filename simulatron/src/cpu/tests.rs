@@ -2104,3 +2104,168 @@ fn test_compare() {
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_CARRY);
 }
+
+#[test]
+#[timeout(100)]
+fn test_blockcmp() {
+    let mut rom = [0; 512];
+    rom[0] = 0x4C;  // Block compare literal literal literal
+    rom[1] = 0x00;
+    rom[2] = 0x00;
+    rom[3] = 0x00;
+    rom[4] = 0x04;  // 4 bytes
+    rom[5] = 0x00;
+    rom[6] = 0x00;
+    rom[7] = 0x00;
+    rom[8] = 0xC0;  // ROM byte 128
+    rom[9] = 0x00;
+    rom[10] = 0x00;
+    rom[11] = 0x00;
+    rom[12] = 0xC4; // with ROM byte 132.
+
+    rom[128] = 0x12;
+    rom[129] = 0x34;
+    rom[130] = 0x56;
+    rom[131] = 0x78;
+
+    rom[132] = 0x12;
+    rom[133] = 0x00;
+    rom[134] = 0x56;
+    rom[135] = 0x78;
+
+    rom[136] = 0x12;
+    rom[137] = 0x34;
+    rom[138] = 0x56;
+    rom[139] = 0x99;
+
+    rom[140] = 0x12;
+    rom[141] = 0x34;
+    rom[142] = 0x56;
+    rom[143] = 0x78;
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, 0);
+
+
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0xC8;  // ROM byte 136.
+
+    rom[3] = 0x4D;  // Block compare literal literal ref
+    rom[4] = 0x00;
+    rom[5] = 0x00;
+    rom[6] = 0x00;
+    rom[7] = 0x04;  // 4 bytes
+    rom[8] = 0x00;
+    rom[9] = 0x00;
+    rom[10] = 0x00;
+    rom[11] = 0xC0; // ROM byte 128
+    rom[12] = 0x00; // with r0.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE);
+
+
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0xCC;  // ROM byte 140.
+
+    rom[3] = 0x4E;  // Block compare literal ref literal
+    rom[4] = 0x00;
+    rom[5] = 0x00;
+    rom[6] = 0x00;
+    rom[7] = 0x04;  // 4 bytes
+    rom[8] = 0x00;  // r0
+    rom[9] = 0x00;
+    rom[10] = 0x00;
+    rom[11] = 0x00;
+    rom[12] = 0xC0; // with ROM byte 128.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_ZERO);
+
+
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x04;  // 4.
+
+    rom[3] = 0x50;  // Block compare ref literal literal
+    rom[4] = 0x00;  // length r0
+    rom[5] = 0x00;
+    rom[6] = 0x00;
+    rom[7] = 0x00;
+    rom[8] = 0xC8;  // ROM byte 136.
+    rom[9] = 0x00;
+    rom[10] = 0x00;
+    rom[11] = 0x00;
+    rom[12] = 0xC4; // with ROM byte 132.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, 0);
+
+
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x04;  // 4.
+
+    rom[3] = 0x0A;  // Copy literal
+    rom[4] = 0x11;  // into r1b
+    rom[5] = 0xCC;  // ROM byte 140.
+
+    rom[6] = 0x52;  // Block compare ref ref literal
+    rom[7] = 0x00;  // length r0
+    rom[8] = 0x01;  // r1
+    rom[9] = 0x00;
+    rom[10] = 0x00;
+    rom[11] = 0x00;
+    rom[12] = 0xC4; // ROM byte 132.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, 0);
+
+
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x04;  // 4.
+
+    rom[3] = 0x0A;  // Copy literal
+    rom[4] = 0x11;  // into r1b
+    rom[5] = 0xCC;  // ROM byte 140.
+
+    rom[6] = 0x0A;  // Copy literal
+    rom[7] = 0x12;  // into r2b
+    rom[8] = 0xC8;  // ROM byte 136.
+
+    rom[9] = 0x53;  // Block compare ref ref ref
+    rom[10] = 0x00; // length r0
+    rom[11] = 0x01; // r1
+    rom[12] = 0x02; // with r2.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE);
+
+
+    rom[0] = 0x4C;  // Block compare literal literal literal
+    rom[1] = 0x00;
+    rom[2] = 0x00;
+    rom[3] = 0x02;
+    rom[4] = 0x00;  // 512 bytes
+    rom[5] = 0x00;
+    rom[6] = 0x00;
+    rom[7] = 0x00;
+    rom[8] = 0x40;  // start of ROM
+    rom[9] = 0x00;
+    rom[10] = 0x00;
+    rom[11] = 0x00;
+    rom[12] = 0x40; // with itself.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).flags, FLAG_ZERO);
+}
