@@ -266,6 +266,42 @@ macro_rules! bin_op_rotate_carry {
     }}
 }
 
+// Conditional jump definitions.
 macro_rules! jequal {
-    ($self:ident) => { $self.flags & FLAG_ZERO != 0 }
+    ($self:ident) => { ("JEQUAL", $self.flags & FLAG_ZERO != 0) }
+}
+
+macro_rules! jnotequal {
+    ($self:ident) => { ("JNOTEQUAL", $self.flags & FLAG_ZERO == 0) }
+}
+
+macro_rules! sjgreater {
+    ($self:ident) => { ("SJGREATER", ($self.flags & FLAG_ZERO == 0)
+        && ($self.flags & FLAG_NEGATIVE != 0) == ($self.flags & FLAG_OVERFLOW != 0)) }
+}
+
+// Create a conditional jump to literal opcode.
+macro_rules! cond_jump_literal {
+    ($self:ident, $condition:expr) => {{
+        debug!("{} literal", $condition.0);
+        let address = fetch!(Word);
+        if $condition.1 {
+            debug!("Jumping to {:#x}", address);
+            $self.program_counter = address;
+        }
+    }}
+}
+
+// Create a conditional jump to reference opcode.
+macro_rules! cond_jump_reference {
+    ($self:ident, $condition:expr) => {{
+        debug!("{} ref", $condition.0);
+        let reg_ref = fetch!(Byte);
+        debug!("{} to address in {:#x}", $condition.0, reg_ref);
+        let address = try_tv_into_v!($self.read_from_register(reg_ref)?);
+        if $condition.1 {
+            debug!("Jumping to {:#x}", address);
+            $self.program_counter = address;
+        }
+    }}
 }

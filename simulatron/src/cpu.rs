@@ -1202,41 +1202,23 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x54 => {  // JEQUAL literal
-                debug!("JEQUAL literal");
-                let address = fetch!(Word);
-                if jequal!(self) {
-                    debug!("Jumping to {:#x}", address);
-                    self.program_counter = address;
-                }
+            0x54 =>  {  // JEQUAL literal
+                cond_jump_literal!(self, jequal!(self))
             }
             0x55 => {  // JEQUAL ref
-                debug!("JEQUAL ref");
-                let reg_ref = fetch!(Byte);
-                debug!("JEQUAL to address in {:#x}", reg_ref);
-                let address = try_tv_into_v!(self.read_from_register(reg_ref)?);
-                if jequal!(self) {
-                    debug!("Jumping to {:#x}", address);
-                    self.program_counter = address;
-                }
+                cond_jump_reference!(self, jequal!(self))
             }
             0x56 => {  // JNOTEQUAL literal
-                debug!("JNOTEQUAL literal");
-                let address = fetch!(Word);
-                if !jequal!(self) {
-                    debug!("Jumping to {:#x}", address);
-                    self.program_counter = address;
-                }
+                cond_jump_literal!(self, jnotequal!(self))
             }
             0x57 => {  // JNOTEQUAL ref
-                debug!("JNOTEQUAL ref");
-                let reg_ref = fetch!(Byte);
-                debug!("JNOTEQUAL to address in {:#x}", reg_ref);
-                let address = try_tv_into_v!(self.read_from_register(reg_ref)?);
-                if !jequal!(self) {
-                    debug!("Jumping to {:#x}", address);
-                    self.program_counter = address;
-                }
+                cond_jump_reference!(self, jnotequal!(self))
+            }
+            0x58 => {  // SJGREATER literal
+                cond_jump_literal!(self, sjgreater!(self))
+            }
+            0x59 => {  // SJGREATER ref
+                cond_jump_reference!(self, sjgreater!(self))
             }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");

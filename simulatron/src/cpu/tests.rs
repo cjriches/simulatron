@@ -2348,3 +2348,46 @@ fn test_jnotequal() {
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
+
+#[test]
+#[timeout(100)]
+fn test_sjgreater() {
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x0A;  // 10.
+
+    rom[3] = 0x4A;  // Compare literal
+    rom[4] = 0x10;  // r0b
+    rom[5] = 0x0A;  // with 10.
+
+    rom[6] = 0x58;  // Jump if greater to literal address
+    rom[7] = 0x00;
+    rom[8] = 0x00;
+    rom[9] = 0x01;
+    rom[10] = 0x40; // ROM byte 256.
+
+    rom[11] = 0x4A; // Compare literal
+    rom[12] = 0x10; // r0b.
+    rom[13] = 0x09; // with 9.
+
+    rom[14] = 0x58; // Jump if greater to literal address
+    rom[15] = 0x00;
+    rom[16] = 0x00;
+    rom[17] = 0x00;
+    rom[18] = 0x80; // ROM byte 64.
+
+    rom[19] = 0x01; // Pause (fail condition).
+
+    rom[64] = 0x0A; // Copy literal
+    rom[65] = 0x17; // into r7b
+    rom[66] = 0x99; // some number.
+
+    rom[67] = 0x00; // HALT.
+
+    rom[256] = 0x01; // Pause (fail condition).
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[7], 0x99);
+}
