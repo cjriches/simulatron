@@ -1,6 +1,6 @@
 use std::sync::mpsc::Sender;
 
-use crate::cpu::{CPUError, CPUResult, INTERRUPT_ILLEGAL_OPERATION, INTERRUPT_PAGE_FAULT};
+use crate::cpu::{CPUError::TryAgainError, CPUResult, INTERRUPT_ILLEGAL_OPERATION, INTERRUPT_PAGE_FAULT};
 use crate::disk::DiskController;
 use crate::display::DisplayController;
 use crate::keyboard::KeyboardController;
@@ -110,7 +110,7 @@ impl<D: DiskController> MMU<D> {
         macro_rules! reject {
             () => {{
                 self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                Err(CPUError)
+                Err(TryAgainError)
             }};
         }
 
@@ -162,7 +162,7 @@ impl<D: DiskController> MMU<D> {
         macro_rules! reject {
             () => {{
                 self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                Err(CPUError)
+                Err(TryAgainError)
             }};
         }
 
@@ -218,7 +218,7 @@ impl<D: DiskController> MMU<D> {
         if (directory_entry & 1) == 0 {
             self.pfsr = PAGE_FAULT_INVALID_PAGE;
             self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-            return Err(CPUError);
+            return Err(TryAgainError);
         }
         // Find the page table entry.
         let page_table_base = directory_entry & 0xFFFFF000;  // First 20 bits of entry.
@@ -228,13 +228,13 @@ impl<D: DiskController> MMU<D> {
         if (page_table_entry & 1) == 0 {
             self.pfsr = PAGE_FAULT_INVALID_PAGE;
             self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-            return Err(CPUError);
+            return Err(TryAgainError);
         }
         // Check it's present.
         if (page_table_entry & 2) == 0 {
             self.pfsr = PAGE_FAULT_NOT_PRESENT;
             self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-            return Err(CPUError);
+            return Err(TryAgainError);
         }
         // Check permissions.
         let legal = match intent {
@@ -245,14 +245,14 @@ impl<D: DiskController> MMU<D> {
         if legal == 0 {
             self.pfsr = PAGE_FAULT_ILLEGAL_ACCESS;
             self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-            return Err(CPUError);
+            return Err(TryAgainError);
         }
         // Check COW.
         if let Intent::Write = intent {
             if (page_table_entry & 32) != 0 {
                 self.pfsr = PAGE_FAULT_COW;
                 self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
-                return Err(CPUError);
+                return Err(TryAgainError);
             }
         }
         // It's allowed, so find the physical address.
@@ -360,9 +360,9 @@ mod tests {
         const PDPR: u32 = RAM_BASE;
         // 0 is an invalid page directory entry; don't need to write anything.
         // Any translation should fail.
-        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0, Intent::Read), Err(CPUError));
-        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 1246, Intent::Write), Err(CPUError));
-        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 678424657, Intent::Execute), Err(CPUError));
+        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0, Intent::Read), Err(TryAgainError));
+        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 1246, Intent::Write), Err(TryAgainError));
+        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 678424657, Intent::Execute), Err(TryAgainError));
 
         // Now write a valid page directory entry.
         fixture.mmu.store_physical_32(RAM_BASE, 0x00005001).unwrap(); // Frame 1 of RAM, Valid.
@@ -372,11 +372,11 @@ mod tests {
             fixture.mmu.store_physical_32(RAM_BASE + 0x1000 + (i*4), page_entry).unwrap();
         }
         // Any translation should still fail.
-        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x0000, Intent::Read), Err(CPUError));
-        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x1000, Intent::Write), Err(CPUError));
-        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x2000, Intent::Execute), Err(CPUError));
+        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x0000, Intent::Read), Err(TryAgainError));
+        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x1000, Intent::Write), Err(TryAgainError));
+        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x2000, Intent::Execute), Err(TryAgainError));
         // Also test one where we didn't write a page entry.
-        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x3000, Intent::Read), Err(CPUError));
+        assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x3000, Intent::Read), Err(TryAgainError));
     }
 
     #[test]
@@ -386,11 +386,11 @@ mod tests {
         const PDPR: u32 = 0x00420000;
         // 0 is an invalid page directory entry; don't need to write anything.
         // Any translation should fail.
-        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0, false), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0, false), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_INVALID_PAGE);
-        assert_eq!(fixture.mmu.load_virtual_16(PDPR, 0x1000, true), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_16(PDPR, 0x1000, true), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_INVALID_PAGE);
@@ -407,11 +407,11 @@ mod tests {
             fixture.mmu.store_physical_32(0x00004000 + (i*4), page_entry).unwrap();
         }
         // Any translation should still fail.
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, false), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, false), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_INVALID_PAGE);
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, true), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, true), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_INVALID_PAGE);
@@ -447,25 +447,25 @@ mod tests {
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, true), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x0000, true), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
 
         // Second page entry should only allow write.
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, false), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, false), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
         fixture.mmu.store_virtual_32(PDPR, 0x1000, 56).unwrap();
         fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)).unwrap_err();
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, true), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x1000, true), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
 
         // Third page entry should only allow execute.
-        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x2000, false), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_32(PDPR, 0x2000, false), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_ILLEGAL_ACCESS);
@@ -488,7 +488,7 @@ mod tests {
         fixture.mmu.store_physical_32(0x00005000, 0x0000601D).unwrap();
 
         fixture.mmu.store_physical_8(0x6FFF, 12).unwrap();
-        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0x0FFF, false), Err(CPUError));
+        assert_eq!(fixture.mmu.load_virtual_8(PDPR, 0x0FFF, false), Err(TryAgainError));
         assert_eq!(fixture.interrupt_rx.recv_timeout(Duration::from_millis(10)),
                    Ok(INTERRUPT_PAGE_FAULT));
         assert_eq!(fixture.mmu.page_fault_status_register(), PAGE_FAULT_NOT_PRESENT);

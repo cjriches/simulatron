@@ -32,7 +32,10 @@ const FLAG_CARRY: u16 = 0x04;
 const FLAG_OVERFLOW: u16 = 0x08;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct CPUError;
+pub enum CPUError {
+    TryAgainError,
+    FatalError,
+}
 pub type CPUResult<T> = Result<T, CPUError>;
 
 struct InterruptLatch {
@@ -337,9 +340,13 @@ impl<D: DiskController> CPUInternal<D> {
                 Ok(PostCycleAction::Halt) => break,
                 Ok(PostCycleAction::Pause) => pausing = true,
                 Ok(PostCycleAction::None) => pausing = false,
-                Err(_) => {
+                Err(CPUError::TryAgainError) => {
                     self.program_counter = self.program_counter.wrapping_sub(rewind);
                     pausing = false;
+                },
+                Err(CPUError::FatalError) => {
+                    debug!("Fatal CPU error.");
+                    break;
                 },
             }
         }
@@ -377,7 +384,7 @@ impl<D: DiskController> CPUInternal<D> {
                     i
                 } else {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                    return Err(CPUError);
+                    return Err(CPUError::TryAgainError);
                 }
             }}
         }
@@ -393,7 +400,7 @@ impl<D: DiskController> CPUInternal<D> {
             ($r1:expr, $r2:expr) => {{
                 if self.reg_ref_type($r1)? != self.reg_ref_type($r2)? {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                    return Err(CPUError);
+                    return Err(CPUError::TryAgainError);
                 }
             }}
         }
@@ -403,9 +410,14 @@ impl<D: DiskController> CPUInternal<D> {
             ($r:expr) => {{
                 if self.reg_ref_type($r)? == ValueType::Float {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                    return Err(CPUError);
+                    return Err(CPUError::TryAgainError);
                 }
             }}
+        }
+
+        // Wrap an operation for which an error is fatal.
+        macro_rules! critical {
+            ($op:expr) => { $op.or(Err(CPUError::FatalError))? }
         }
 
         // Check for interrupts.
@@ -428,16 +440,18 @@ impl<D: DiskController> CPUInternal<D> {
             };
             self.kernel_mode = true;
             // Push flags to stack, with bit 15 set to the old mode.
+            // These push operations must not fail; we have no way to recover.
             let flags = self.flags | old_mode;
-            self.push(TypedValue::Half(flags))?;
+            critical!(self.push(TypedValue::Half(flags)));
             // Push the program counter to stack.
-            self.push(TypedValue::Word(self.program_counter))?;
+            critical!(self.push(TypedValue::Word(self.program_counter)));
             // Push the IMR to stack.
-            self.push(TypedValue::Half(self.imr))?;
+            critical!(self.push(TypedValue::Half(self.imr)));
             // Disable all interrupts.
             self.imr = 0;
             // Jump to the interrupt handler.
-            self.program_counter = tv_into_v!(self.load(interrupt * 4, false, ValueType::Word)?);
+            self.program_counter = tv_into_v!(critical!(
+                self.load(interrupt * 4, false, ValueType::Word)));
         }
 
         // Fetch next instruction.
@@ -485,17 +499,33 @@ impl<D: DiskController> CPUInternal<D> {
             0x05 => {  // IRETURN
                 debug!("IRETURN");
                 privileged!(self)?;
-                // Restore the IMR from the stack.
-                self.imr = tv_into_v!(self.pop(ValueType::Half)?);
+                // Pop the IMR off the stack.
+                let imr: u16 = tv_into_v!(self.pop(ValueType::Half)?);
                 // Pop the program counter off the stack.
-                self.program_counter = tv_into_v!(self.pop(ValueType::Word)?);
+                let pc: u32 = tv_into_v!(self.pop(ValueType::Word).map_err(|e| {
+                    // Ensure this operation is atomic by undoing any changes.
+                    // If the pop worked, push should too.
+                    self.push(TypedValue::Half(imr))
+                        .expect("Failed to clean up partially-failed IRETURN.");
+                    e
+                })?);
                 // Pop the flags off the stack.
-                let flags: u16 = tv_into_v!(self.pop(ValueType::Half)?);
+                let flags: u16 = tv_into_v!(self.pop(ValueType::Half).map_err(|e| {
+                    // Ensure this operation is atomic by undoing any changes.
+                    // If the pops worked, pushes should too.
+                    self.push(TypedValue::Word(pc))
+                        .expect("Failed to clean up partially-failed IRETURN.");
+                    self.push(TypedValue::Half(imr))
+                        .expect("Failed to clean up partially-failed IRETURN.");
+                    e
+                })?);
                 // If bit 15 is 0, enter user mode.
                 if (flags & 0b1000000000000000) == 0 {
                     self.kernel_mode = false;
                 }
-                // Set the flags.
+                // Set the registers.
+                self.imr = imr;
+                self.program_counter = pc;
                 self.flags = flags & 0b0111111111111111;
             }
             0x06 => {  // LOAD literal address into register ref
@@ -1279,7 +1309,13 @@ impl<D: DiskController> CPUInternal<D> {
             0x6A => {  // RETURN
                 debug!("RETURN");
                 let flags: u16 = tv_into_v!(self.pop(ValueType::Half)?);
-                let address: u32 = tv_into_v!(self.pop(ValueType::Word)?);
+                let address: u32 = tv_into_v!(self.pop(ValueType::Word).map_err(|e| {
+                    // Ensure this operation is atomic by undoing any changes.
+                    // If the pop worked, push should too.
+                    self.push(TypedValue::Half(flags))
+                        .expect("Failed to clean up partially-failed RETURN.");
+                    e
+                })?);
                 self.flags = flags & 0b0111111111111111;  // Ignore bit 15.
                 self.program_counter = address;
             }
@@ -1308,7 +1344,7 @@ impl<D: DiskController> CPUInternal<D> {
                     self.write_to_register(dest, TypedValue::Word(u))?;
                 } else {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                    return Err(CPUError);
+                    return Err(CPUError::TryAgainError);
                 }
             }
             0x71 => {  // UCONVERT
@@ -1330,7 +1366,7 @@ impl<D: DiskController> CPUInternal<D> {
                     self.write_to_register(dest, TypedValue::Word(u))?;
                 } else {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-                    return Err(CPUError);
+                    return Err(CPUError::TryAgainError);
                 }
             }
             _ => {  // Unrecognised
@@ -1423,7 +1459,7 @@ impl<D: DiskController> CPUInternal<D> {
         // We assume that the value has already been checked to match the register type.
         if value.is_integer_zero() {
             self.interrupt_tx.send(INTERRUPT_DIV_BY_0).unwrap();
-            return Err(CPUError);
+            return Err(CPUError::TryAgainError);
         }
         bin_op_signed!(self, reg_ref, value, overflowing_div, div)
     }
@@ -1432,7 +1468,7 @@ impl<D: DiskController> CPUInternal<D> {
         // We assume that the value has already been checked to match the register type.
         if value.is_integer_zero() {
             self.interrupt_tx.send(INTERRUPT_DIV_BY_0).unwrap();
-            return Err(CPUError);
+            return Err(CPUError::TryAgainError);
         }
         bin_op_unsigned!(self, reg_ref, value, overflowing_div)
     }
@@ -1441,7 +1477,7 @@ impl<D: DiskController> CPUInternal<D> {
         // We assume that the value has already been checked to match the register type.
         if value.is_integer_zero() {
             self.interrupt_tx.send(INTERRUPT_DIV_BY_0).unwrap();
-            return Err(CPUError);
+            return Err(CPUError::TryAgainError);
         }
         bin_op_signed!(self, reg_ref, value, overflowing_rem, rem)
     }
@@ -1450,7 +1486,7 @@ impl<D: DiskController> CPUInternal<D> {
         // We assume that the value has already been checked to match the register type.
         if value.is_integer_zero() {
             self.interrupt_tx.send(INTERRUPT_DIV_BY_0).unwrap();
-            return Err(CPUError);
+            return Err(CPUError::TryAgainError);
         }
         bin_op_unsigned!(self, reg_ref, value, overflowing_rem)
     }
@@ -1712,7 +1748,7 @@ impl<D: DiskController> CPUInternal<D> {
             Ok(ValueType::Word)
         } else {
             self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-            Err(CPUError)
+            Err(CPUError::TryAgainError)
         }
     }
 
@@ -1774,15 +1810,15 @@ impl<D: DiskController> CPUInternal<D> {
         } else if reg_ref == 0x25 {
             debug!("Illegal write to PFSR.");
             self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-            return Err(CPUError);
+            return Err(CPUError::TryAgainError);
         } else {
             debug!("Invalid register reference: {:#x}", reg_ref);
             self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-            return Err(CPUError);
+            return Err(CPUError::TryAgainError);
         };
         debug!("Register size mismatch: register {:#x} with size {}", reg_ref, value.size_in_bytes());
         self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-        return Err(CPUError);
+        return Err(CPUError::TryAgainError);
     }
 
     fn read_from_register(&mut self, reg_ref: u8) -> CPUResult<TypedValue> {
@@ -1813,7 +1849,7 @@ impl<D: DiskController> CPUInternal<D> {
         } else {
             debug!("Invalid register reference: {:#x}", reg_ref);
             self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-            Err(CPUError)
+            Err(CPUError::TryAgainError)
         }
     }
 

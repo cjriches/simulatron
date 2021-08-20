@@ -71,6 +71,8 @@ Servicing an interrupt causes the following to happen as a single atomic operati
 
 Note that no other state is saved, so if the interrupt handler wishes to preserve register values it should push and pop them itself. The handler can return by executing IRETURN, although this is not mandatory. It is also possible to modify the values on the stack before executing IRETURN to change what will happen.
 
+If any kind of error occurs during the context switch into the interrupt handler, the CPU will immediately halt, as there is no way to recover from this state. Recovering implies triggering and handling an interrupt, which we just failed to do. It is therefore wise to keep your kernel stack usable at all times.
+
 Executing IRETURN causes the following to happen as a single atomic operation:
 1. The IMR is popped off the stack.
 2. The next instruction to execute is popped off the stack.

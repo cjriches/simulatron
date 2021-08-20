@@ -3,7 +3,7 @@ macro_rules! privileged {
     ($self:ident) => {{
         if !$self.kernel_mode {
             $self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-            Err(CPUError)
+            Err(CPUError::TryAgainError)
         } else {
             Ok(())
         }
