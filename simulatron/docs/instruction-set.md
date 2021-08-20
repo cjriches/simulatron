@@ -213,25 +213,25 @@ Shifting by more than the width of the register will fill it with 1s or 0s as ap
 
 Note that long `BLKCMP` operations may be inefficient; see `BLOCKCOPY` and `BLOCKSET` for more details.
 
-`JEQUAL address`: Jump to the given address if the last comparison had `value1 = value2`, i.e. `Z`=1.
+`JEQUAL address`: Jump to the given address if the last comparison had `value1 = value2`, i.e. `Z=1`.
 
-`JNOTEQUAL address`: Jump to the given address if the last comparison had `value1 != value2`, i.e. `Z`=0.
+`JNOTEQUAL address`: Jump to the given address if the last comparison had `value1 != value2`, i.e. `Z=0`.
 
-`JGREATER address`: Jump to the given address if the last comparison had `value1 < value2` (signed comparison), i.e. `N`=`O` and `Z`=0.
+`SJGREATER address`: Jump to the given address if the last comparison had `value1 > value2` (signed comparison), i.e. `N=O` and `Z=0`.
 
-`JGREATEREQ address`: Jump to the given address if the last comparison had `value1 <= value2` (signed comparison), i.e. `N`=`O` or `Z`=1.
+`SJGREATEREQ address`: Jump to the given address if the last comparison had `value1 >= value2` (signed comparison), i.e. `N=O` or `Z=1`.
 
-`JABOVE address`: Like JGREATER but unsigned, i.e. `C`=0 and `Z`=0.
+`UJGREATER address`: Like SJGREATER but unsigned, i.e. `C=0` and `Z=0`.
 
-`JABOVEEQ address`: Like JGREATEREQ but unsigned, i.e. `C`=0 or `Z`=1.
+`UJGREATEREQ address`: Like SJGREATEREQ but unsigned, i.e. `C=0` or `Z=1`.
 
-`JLESSER address`: Jump to the given address if the last comparison had `value1 > value2` (signed comparison), i.e. `N`!=`O`.
+`SJLESSER address`: Jump to the given address if the last comparison had `value1 < value2` (signed comparison), i.e. `N!=O`.
 
-`JLESSEREQ address`: Jump to the given address if the last comparison had `value1 >= value2` (signed comparison), i.e. `N`!=`O` or `Z`=1.
+`SJLESSEREQ address`: Jump to the given address if the last comparison had `value1 <= value2` (signed comparison), i.e. `N!=O` or `Z=1`.
 
-`JBELOW address`: Like JLESSER but unsigned, i.e. `C`=1.
+`UJLESSER address`: Like SJLESSER but unsigned, i.e. `C=1`.
 
-`JBELOWEQ address`: Like JLESSEREQ but unsigned, i.e. `C`=1 or `Z`=1.
+`UJLESSEREQ address`: Like SJLESSEREQ but unsigned, i.e. `C=1` or `Z=1`.
 
 `CALL address`: Push the address of the next instruction followed by the current flags to the stack, and unconditionally jump to the given address.
 
@@ -360,22 +360,22 @@ Note that if an opcode takes multiple register references to registers with unsp
 |  0x55|JEQUAL      |Register ref address|                        |                    |
 |  0x56|JNOTEQUAL   |Literal address     |                        |                    |
 |  0x57|JNOTEQUAL   |Register ref address|                        |                    |
-|  0x58|JGREATER    |Literal address     |                        |                    |
-|  0x59|JGREATER    |Register ref address|                        |                    |
-|  0x5A|JGREATEREQ  |Literal address     |                        |                    |
-|  0x5B|JGREATEREQ  |Register ref address|                        |                    |
-|  0x5C|JABOVE      |Literal address     |                        |                    |
-|  0x5D|JABOVE      |Register ref address|                        |                    |
-|  0x5E|JABOVEEQ    |Literal address     |                        |                    |
-|  0x5F|JABOVEEQ    |Register ref address|                        |                    |
-|  0x60|JLESSER     |Literal address     |                        |                    |
-|  0x61|JLESSER     |Register ref address|                        |                    |
-|  0x62|JLESSEREQ   |Literal address     |                        |                    |
-|  0x63|JLESSEREQ   |Register ref address|                        |                    |
-|  0x64|JBELOW      |Literal address     |                        |                    |
-|  0x65|JBELOW      |Register ref address|                        |                    |
-|  0x66|JBELOWEQ    |Literal address     |                        |                    |
-|  0x67|JBELOWEQ    |Register ref address|                        |                    |
+|  0x58|SJGREATER   |Literal address     |                        |                    |
+|  0x59|SJGREATER   |Register ref address|                        |                    |
+|  0x5A|SJGREATEREQ |Literal address     |                        |                    |
+|  0x5B|SJGREATEREQ |Register ref address|                        |                    |
+|  0x5C|UJGREATER   |Literal address     |                        |                    |
+|  0x5D|UJGREATER   |Register ref address|                        |                    |
+|  0x5E|UJGREATEREQ |Literal address     |                        |                    |
+|  0x5F|UJGREATEREQ |Register ref address|                        |                    |
+|  0x60|SJLESSER    |Literal address     |                        |                    |
+|  0x61|SJLESSER    |Register ref address|                        |                    |
+|  0x62|SJLESSEREQ  |Literal address     |                        |                    |
+|  0x63|SJLESSEREQ  |Register ref address|                        |                    |
+|  0x64|UJLESSER    |Literal address     |                        |                    |
+|  0x65|UJLESSER    |Register ref address|                        |                    |
+|  0x66|UJLESSEREQ  |Literal address     |                        |                    |
+|  0x67|UJLESSEREQ  |Register ref address|                        |                    |
 |  0x68|CALL        |Literal address     |                        |                    |
 |  0x69|CALL        |Register ref address|                        |                    |
 |  0x6A|RETURN      |                    |                        |                    |

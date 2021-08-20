@@ -265,3 +265,7 @@ macro_rules! bin_op_rotate_carry {
         Ok(())
     }}
 }
+
+macro_rules! jequal {
+    ($self:ident) => { $self.flags & FLAG_ZERO != 0 }
+}

@@ -1202,6 +1202,24 @@ impl<D: DiskController> CPUInternal<D> {
                 debug!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
                 self.instruction_blockcmp(length, source1, source2)?;
             }
+            0x54 => {  // JEQUAL literal
+                debug!("JEQUAL literal");
+                let address = fetch!(Word);
+                if jequal!(self) {
+                    debug!("Jumping to {:#x}", address);
+                    self.program_counter = address;
+                }
+            }
+            0x55 => {  // JEQUAL ref
+            debug!("JEQUAL ref");
+                let reg_ref = fetch!(Byte);
+                debug!("JEQUAL to address in {:#x}", reg_ref);
+                let address = try_tv_into_v!(self.read_from_register(reg_ref)?);
+                if jequal!(self) {
+                    debug!("Jumping to {:#x}", address);
+                    self.program_counter = address;
+                }
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
