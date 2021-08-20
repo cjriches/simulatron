@@ -2652,3 +2652,125 @@ fn test_ujlessereq() {
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
+
+#[test]
+#[timeout(100)]
+fn test_call_return() {
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x22;  // into KSPR
+    rom[2] = 0x00;
+    rom[3] = 0x00;
+    rom[4] = 0x50;
+    rom[5] = 0x00;  // address 0x00005000.
+
+    rom[6] = 0x4A;  // Compare literal
+    rom[7] = 0x10;  // r0b
+    rom[8] = 0x00;  // with 0.
+
+    rom[9] = 0x68;  // Call literal address
+    rom[10] = 0x00;
+    rom[11] = 0x00;
+    rom[12] = 0x00;
+    rom[13] = 0x80; // ROM byte 64.
+
+    rom[14] = 0x0A; // Copy literal
+    rom[15] = 0x17; // into r7b
+    rom[16] = 0x56; // some number.
+
+    rom[17] = 0x0A; // Copy literal
+    rom[18] = 0x11; // into r1b
+    rom[19] = 0xC0; // ROM byte 128.
+
+    rom[20] = 0x69; // Call register address
+    rom[21] = 0x01; // r1.
+
+    rom[22] = 0x00; // HALT.
+
+    // Subroutine 1
+    rom[64] = 0x0A; // Copy literal
+    rom[65] = 0x16; // into r6b
+    rom[66] = 0xCA; // some number.
+
+    rom[67] = 0x4A; // Compare literal
+    rom[68] = 0x10; // r0b
+    rom[69] = 0x01; // with 1.
+
+    rom[70] = 0x6A; // RETURN.
+
+    // Subroutine 2
+    rom[128] = 0x0A; // Copy literal
+    rom[129] = 0x15; // into r5b
+    rom[130] = 0x29; // some number.
+
+    rom[131] = 0x6A; // RETURN.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[5], 0x29);
+    assert_eq!(internal!(cpu).r[6], 0xCA);
+    assert_eq!(internal!(cpu).r[7], 0x56);
+    assert_eq!(internal!(cpu).flags, FLAG_ZERO);
+    // The return address of the last subroutine should still be on the stack.
+    assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004FFF), Ok(0x56));
+}
+
+#[test]
+#[timeout(100)]
+fn test_call_modify_return() {
+    let mut rom = [0; 512];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x22;  // into KSPR
+    rom[2] = 0x00;
+    rom[3] = 0x00;
+    rom[4] = 0x50;
+    rom[5] = 0x00;  // address 0x00005000.
+
+    rom[6] = 0x68;  // Call literal address
+    rom[7] = 0x00;
+    rom[8] = 0x00;
+    rom[9] = 0x00;
+    rom[10] = 0x80; // ROM byte 64.
+
+    rom[11] = 0x01; // Pause (fail condition).
+
+    // Subroutine 1
+    // Erase the call metadata off the stack.
+    rom[64] = 0x21; // Add literal
+    rom[65] = 0x22; // into KSPR
+    rom[66] = 0x00;
+    rom[67] = 0x00;
+    rom[68] = 0x00;
+    rom[69] = 0x06; // 6 bytes.
+
+    // Replace it with our own.
+    rom[70] = 0x0A; // Copy literal
+    rom[71] = 0x10; // into r0b
+    rom[72] = 0xC0; // ROM byte 128.
+
+    rom[73] = 0x0E; // Push
+    rom[74] = 0x00; // r0.
+
+    rom[75] = 0x0A; // Copy literal
+    rom[76] = 0x10; // into r0b
+    rom[77] = 0x03; // ZERO and NEGATIVE flags (normally impossible to co-occur).
+
+    rom[78] = 0x0E; // Push
+    rom[79] = 0x08; // r0h.
+
+    rom[80] = 0x6A; // RETURN.
+
+    // Return point
+    rom[128] = 0x0A; // Copy literal
+    rom[129] = 0x17; // into r7b
+    rom[130] = 0x33; // some number.
+
+    rom[131] = 0x00; // HALT.
+
+    let (cpu, ui_commands) = run(rom, None);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[7], 0x33);
+    assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_NEGATIVE);
+    // The return address of the last subroutine should still be on the stack.
+    assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004FFF), Ok(0xC0));
+}

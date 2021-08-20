@@ -1262,6 +1262,27 @@ impl<D: DiskController> CPUInternal<D> {
             0x67 => {  // UJLESSEREQ ref
                 cond_jump_reference!(self, ujlessereq!(self))
             }
+            0x68 => {  // CALL literal
+                debug!("CALL literal");
+                let address = fetch!(Word);
+                debug!("Calling {:#x}", address);
+                self.instruction_call(address)?;
+            }
+            0x69 => {  // CALL ref
+                debug!("CALL ref");
+                let reg_ref = fetch!(Byte);
+                debug!("Calling address in {:#x}", reg_ref);
+                let address = try_tv_into_v!(self.read_from_register(reg_ref)?);
+                debug!("Calling {:#x}", address);
+                self.instruction_call(address)?;
+            }
+            0x6A => {  // RETURN
+                debug!("RETURN");
+                let flags: u16 = tv_into_v!(self.pop(ValueType::Half)?);
+                let address: u32 = tv_into_v!(self.pop(ValueType::Word)?);
+                self.flags = flags & 0b0111111111111111;  // Ignore bit 15.
+                self.program_counter = address;
+            }
             0x6F => {  // SYSCALL
                 debug!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
@@ -1657,6 +1678,19 @@ impl<D: DiskController> CPUInternal<D> {
         }
         self.flags = FLAG_ZERO;
         Ok(())
+    }
+
+    fn instruction_call(&mut self, address: u32) -> CPUResult<()> {
+        self.push(TypedValue::Word(self.program_counter))?;
+        self.push(TypedValue::Half(self.flags)).map(|success| {
+            self.program_counter = address;
+            success
+        }).map_err(|error| {
+            // Ensure this is atomic: don't leave the PC on the stack.
+            // If the push succeeded, the pop should always too.
+            self.pop(ValueType::Word).expect("Failed to clean up CALL that died halfway.");
+            error
+        })
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
