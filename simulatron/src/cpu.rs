@@ -16,14 +16,14 @@ use crate::mmu::MMU;
 use crate::ui::UICommand;
 use rotcarry::{Rcl, Rcr};
 
-pub const INTERRUPT_SYSCALL: u32 = 0;
-pub const INTERRUPT_KEYBOARD: u32 = 1;
-pub const INTERRUPT_DISK_A: u32 = 2;
-pub const INTERRUPT_DISK_B: u32 = 3;
-pub const INTERRUPT_PAGE_FAULT: u32 = 4;
-pub const INTERRUPT_DIV_BY_0: u32 = 5;
-pub const INTERRUPT_ILLEGAL_OPERATION: u32 = 6;
-pub const INTERRUPT_TIMER: u32 = 7;
+pub const INTERRUPT_ILLEGAL_OPERATION: u32 = 0;
+pub const INTERRUPT_DIV_BY_0: u32 = 1;
+pub const INTERRUPT_PAGE_FAULT: u32 = 2;
+pub const INTERRUPT_KEYBOARD: u32 = 3;
+pub const INTERRUPT_DISK_A: u32 = 4;
+pub const INTERRUPT_DISK_B: u32 = 5;
+pub const INTERRUPT_TIMER: u32 = 6;
+pub const INTERRUPT_SYSCALL: u32 = 7;
 const JOIN_THREAD: u32 = 4294967295;  // Not a real interrupt, just a thread join command.
 
 const FLAG_ZERO: u16 = 0x01;
@@ -52,8 +52,8 @@ impl InterruptLatch {
     }
 
     pub fn try_get_next(&mut self, imr: u16) -> Option<u32> {
-        // First, try and service latched interrupts, prioritising higher numbers first.
-        for i in (0..8).rev() {
+        // First, try and service latched interrupts, prioritising lower numbers first.
+        for i in 0..8 {
             if self.latched[i] && (imr & (1 << i as u16)) > 0 {
                 self.latched[i] = false;
                 return Some(i as u32);
@@ -79,8 +79,8 @@ impl InterruptLatch {
     }
 
     pub fn wait_for_next(&mut self, imr: u16) -> u32 {
-        // First, try and service latched interrupts, prioritising higher numbers first.
-        for i in (0..8).rev() {
+        // First, try and service latched interrupts, prioritising lower numbers first.
+        for i in 0..8 {
             if self.latched[i] && (imr & (1 << i as u16)) > 0 {
                 self.latched[i] = false;
                 return i as u32;

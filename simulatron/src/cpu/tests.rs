@@ -377,7 +377,7 @@ fn test_user_mode() {
     rom[71] = 0x0A; // Copy literal
     rom[72] = 0x24; // into imr
     rom[73] = 0x00;
-    rom[74] = 0x40; // illegal operation interrupt only.
+    rom[74] = 0x01; // illegal operation interrupt only.
 
     // Push the user mode address to the stack.
     rom[75] = 0x0A; // Copy literal
@@ -444,7 +444,7 @@ fn test_keyboard() {
     rom[13] = 0x00;
     rom[14] = 0x00;
     rom[15] = 0x00;
-    rom[16] = 0x04; // keyboard interrupt handler
+    rom[16] = 0x0C; // keyboard interrupt handler
     rom[17] = 0x00; // r0.
 
     // Address 0x4000 is HALT, so we should halt on interrupt.
@@ -452,7 +452,7 @@ fn test_keyboard() {
     rom[18] = 0x0A; // Copy literal
     rom[19] = 0x24; // into imr
     rom[20] = 0x00;
-    rom[21] = 0x02; // keyboard interrupt only.
+    rom[21] = 0x08; // keyboard interrupt only.
 
     rom[22] = 0x01; // Pause (will only be reached if this happens before interrupt sent).
     rom[23] = 0x01; // Pause (should never happen, acts as a fail condition).
@@ -538,13 +538,13 @@ fn test_syscall() {
     rom[13] = 0x00;
     rom[14] = 0x00;
     rom[15] = 0x00;
-    rom[16] = 0x00; // syscall interrupt handler
+    rom[16] = 0x1C; // syscall interrupt handler
     rom[17] = 0x00; // r0.
 
     rom[18] = 0x0A; // Copy literal
     rom[19] = 0x24; // into imr
     rom[20] = 0x00;
-    rom[21] = 0x01; // syscall only.
+    rom[21] = 0x80; // syscall only.
 
     rom[22] = 0x6B; // SYSCALL.
 
@@ -577,7 +577,7 @@ fn test_bad_reg_ref() {
     rom[6] = 0x0A; // Copy literal
     rom[7] = 0x24; // into imr
     rom[8] = 0x00;
-    rom[9] = 0x40; // illegal operation interrupt only.
+    rom[9] = 0x01; // illegal operation interrupt only.
 
     rom[10] = 0x0B; // Copy register
     rom[11] = 0x01; // into r1
@@ -670,7 +670,7 @@ fn test_pfsr() {
     rom[55] = 0x0A; // Copy literal
     rom[56] = 0x24; // into imr
     rom[57] = 0x00;
-    rom[58] = 0x10; // page fault interrupt only.
+    rom[58] = 0x04; // page fault interrupt only.
 
     // Set page fault interrupt handler
     rom[59] = 0x0A; // Copy literal
@@ -684,7 +684,7 @@ fn test_pfsr() {
     rom[66] = 0x00;
     rom[67] = 0x00;
     rom[68] = 0x00;
-    rom[69] = 0x10; // address 0x00000010 (page fault handler).
+    rom[69] = 0x08; // page fault handler
     rom[70] = 0x00; // r0.
 
     // Push the user mode address to the stack.
@@ -743,7 +743,7 @@ fn test_timer_literal_interval() {
     rom[13] = 0x00;
     rom[14] = 0x00;
     rom[15] = 0x00;
-    rom[16] = 0x07; // timer interrupt handler
+    rom[16] = 0x18; // timer interrupt handler
     rom[17] = 0x00; // r0.
 
     // Address 0x4000 is HALT, so we should halt on interrupt.
@@ -751,7 +751,7 @@ fn test_timer_literal_interval() {
     rom[18] = 0x0A; // Copy literal
     rom[19] = 0x24; // into imr
     rom[20] = 0x00;
-    rom[21] = 0x80; // timer interrupt only.
+    rom[21] = 0x40; // timer interrupt only.
 
     rom[22] = 0x02; // Set timer to
     rom[23] = 0x00;
@@ -788,7 +788,7 @@ fn test_timer_reg_interval() {
     rom[13] = 0x00;
     rom[14] = 0x00;
     rom[15] = 0x00;
-    rom[16] = 0x07; // timer interrupt handler
+    rom[16] = 0x18; // timer interrupt handler
     rom[17] = 0x00; // r0.
 
     // Address 0x4000 is HALT, so we should halt on interrupt.
@@ -796,7 +796,7 @@ fn test_timer_reg_interval() {
     rom[18] = 0x0A; // Copy literal
     rom[19] = 0x24; // into imr
     rom[20] = 0x00;
-    rom[21] = 0x80; // timer interrupt only.
+    rom[21] = 0x40; // timer interrupt only.
 
     rom[22] = 0x0A; // Copy literal
     rom[23] = 0x00; // into r0
@@ -1348,7 +1348,7 @@ fn test_div_by_zero() {
     rom[4] = 0x00;
     rom[5] = 0x00;
     rom[6] = 0x00;
-    rom[7] = 0x14;  // div by zero interrupt handler
+    rom[7] = 0x04;  // div by zero interrupt handler
     rom[8] = 0x00;  // r0.
 
     rom[9] = 0x0A;  // Copy literal
@@ -1361,7 +1361,7 @@ fn test_div_by_zero() {
     rom[15] = 0x0A; // Copy literal
     rom[16] = 0x24; // into imr
     rom[17] = 0x00;
-    rom[18] = 0x20; // div by zero interrupt only.
+    rom[18] = 0x02; // div by zero interrupt only.
 
     rom[19] = 0x2B; // Divide literal
     rom[20] = 0x10; // into r0b

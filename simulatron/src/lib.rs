@@ -60,7 +60,7 @@ impl Simulatron {
         test_rom[22] = 0x00;
         test_rom[23] = 0x00;
         test_rom[24] = 0x00;
-        test_rom[25] = 0x04; // keyboard interrupt handler
+        test_rom[25] = 0x0C; // keyboard interrupt handler
         test_rom[26] = 0x00; // r0.
 
         test_rom[27] = 0x0A; // Copy literal
@@ -74,7 +74,7 @@ impl Simulatron {
         test_rom[33] = 0x0A; // Copy literal
         test_rom[34] = 0x24; // into imr
         test_rom[35] = 0x00;
-        test_rom[36] = 0x02; // keyboard interrupt only.
+        test_rom[36] = 0x08; // keyboard interrupt only.
 
         test_rom[37] = 0x01; // Pause.
 

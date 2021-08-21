@@ -57,7 +57,7 @@ ______________________________________________
 ```
 
 ## Interrupts
-There are eight different interrupts, represented by the integers 0-7. When an interrupt is raised, it will be latched by the CPU. Between instruction cycles, the CPU will check for latched interrupts and service them. If there are multiple interrupts waiting, they will be prioritised in descending order. If an interrupt is disabled, it will not be serviced but will remain latched until it is enabled.
+There are eight different interrupts, represented by the integers 0-7. When an interrupt is raised, it will be latched by the CPU. Between instruction cycles, the CPU will check for latched interrupts and service them. If there are multiple interrupts waiting, they will be prioritised in ascending order. If an interrupt is disabled, it will not be serviced but will remain latched until it is enabled.
 
 An interrupt is enabled if and only if the IMR bit corresponding to its number is set to 1.
 
@@ -82,14 +82,14 @@ Executing IRETURN causes the following to happen as a single atomic operation:
 ### Interrupt definitions
 | Number | Name              | Cause                                                       |
 | ------:| ----------------- | ----------------------------------------------------------- |
-|      0 | Syscall           | The `SYSCALL` instruction.                                  |
-|      1 | Keyboard          | A key being pressed.                                        |
-|      2 | Disk A            | Disk A completes an operation.                              |
-|      3 | Disk B            | Disk B completes an operation.                              |
-|      4 | Page Fault        | Raised by the MMU - see memory management docs for details. |
-|      5 | Divide by 0       | Integer division by zero was attempted.                     |
-|      6 | Illegal Operation | An illegal operation was attempted, e.g. calling a privileged instruction in user mode, or trying to write to a read-only address. |
-|      7 | Timer             | Raised as described in the `TIMER` instruction.             |
+|      0 | Illegal Operation | An illegal operation was attempted, e.g. calling a privileged instruction in user mode, or trying to write to a read-only address. |
+|      1 | Divide by 0       | Integer division by zero was attempted.                     |
+|      2 | Page Fault        | Raised by the MMU - see memory management docs for details. |
+|      3 | Keyboard          | A key being pressed.                                        |
+|      4 | Disk A            | Disk A completes an operation.                              |
+|      5 | Disk B            | Disk B completes an operation.                              |
+|      6 | Timer             | Raised as described in the `TIMER` instruction.             |
+|      7 | Syscall           | The `SYSCALL` instruction.                                  |
 
 Example interrupt servicing (assume physical address 0 holds 0x00008420):
 ```
