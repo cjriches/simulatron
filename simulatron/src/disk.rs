@@ -4,11 +4,7 @@ mod disk_real;
 pub use disk_interface::*;
 pub use disk_real::RealDiskController;
 
-// Testing implementations.
-#[cfg(test)]
-mod disk_memory;
-#[cfg(test)]
-pub use disk_memory::MemDiskController;
+// Mock implementation for testing.
 #[cfg(test)]
 mod disk_mock;
 #[cfg(test)]

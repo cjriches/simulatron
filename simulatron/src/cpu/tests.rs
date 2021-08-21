@@ -2,18 +2,15 @@ use super::*;
 
 use ntest::{assert_about_eq, timeout};
 
-use crate::disk::{MemDiskController, MockDiskController, STATUS_SUCCESS};
+use crate::disk::MockDiskController;
 use crate::display::DisplayController;
 use crate::keyboard::{KeyboardController, KeyMessage, key_str_to_u8};
 use crate::mmu::{MMU, ROM, ROM_SIZE};
 use crate::ui::UICommand;
 
-fn run<D: DiskController + 'static>(rom: ROM,
-                                    keypress: Option<KeyMessage>,
-                                    disk_a: D,
-                                    disk_b: D,
-                                    interrupt_tx: mpsc::Sender<u32>,
-                                    interrupt_rx: mpsc::Receiver<u32>) -> (CPU<D>, Vec<UICommand>) {
+fn run(rom: ROM, keypress: Option<KeyMessage>,
+       interrupt_tx: mpsc::Sender<u32>,
+       interrupt_rx: mpsc::Receiver<u32>) -> (CPU<MockDiskController>, Vec<UICommand>) {
     // Create communication channels.
     let interrupt_tx_keyboard = interrupt_tx.clone();
     let interrupt_tx_mmu = interrupt_tx.clone();
@@ -26,6 +23,8 @@ fn run<D: DiskController + 'static>(rom: ROM,
     let display = DisplayController::new(ui_tx_display);
     let keyboard = KeyboardController::new(
         keyboard_tx, keyboard_rx, interrupt_tx_keyboard);
+    let disk_a = MockDiskController;
+    let disk_b = MockDiskController;
     let mmu = MMU::new(interrupt_tx_mmu, disk_a, disk_b,
                        display, keyboard, rom);
     let mut cpu = CPU::new(ui_tx, mmu, interrupt_tx, interrupt_rx);
@@ -43,7 +42,7 @@ fn run<D: DiskController + 'static>(rom: ROM,
 
 fn run_default(rom: ROM) -> (CPU<MockDiskController>, Vec<UICommand>) {
     let (interrupt_tx, interrupt_rx) = mpsc::channel();
-    run(rom, None, MockDiskController, MockDiskController, interrupt_tx, interrupt_rx)
+    run(rom, None, interrupt_tx, interrupt_rx)
 }
 
 macro_rules! internal {
@@ -468,7 +467,6 @@ fn test_keyboard() {
     let (interrupt_tx, interrupt_rx) = mpsc::channel();
     let (cpu, ui_commands) = run(rom,
                                  Some(KeyMessage::Key(KEY, false, false).unwrap()),
-                                 MockDiskController, MockDiskController,
                                  interrupt_tx, interrupt_rx);
     assert_eq!(ui_commands.len(), 2);
 
@@ -2783,85 +2781,4 @@ fn test_call_modify_return() {
     assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_NEGATIVE);
     // The return address of the last subroutine should still be on the stack.
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004FFF), Ok(0xC0));
-}
-
-#[test]
-#[timeout(100)]
-fn test_disks() {
-    let mut rom = [0; ROM_SIZE];
-    // Check Disk A status is SUCCESS (initially connected).
-    rom[0] = 0x06;  // Load
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x00;
-    rom[3] = 0x00;
-    rom[4] = 0x1F;
-    rom[5] = 0xEC;  // disk A status.
-
-    // Check Disk A blocks available is 4.
-    rom[6] = 0x06;  // Load from literal address
-    rom[7] = 0x01;  // into r1
-    rom[8] = 0x00;
-    rom[9] = 0x00;
-    rom[10] = 0x1F;
-    rom[11] = 0xED; // disk A blocks available.
-
-    // Write to Disk A buffer.
-    rom[12] = 0x10; // Block copy
-    rom[13] = 0x00;
-    rom[14] = 0x00;
-    rom[15] = 0x00;
-    rom[16] = 0x08; // 8 bytes
-    rom[17] = 0x00;
-    rom[18] = 0x00;
-    rom[19] = 0x20;
-    rom[20] = 0x00; // into disk A data
-    rom[21] = 0x00;
-    rom[22] = 0x00;
-    rom[23] = 0x01;
-    rom[24] = 0xC0; // from ROM byte 384.
-
-    // Send write command to Disk A.
-    rom[25] = 0x0A; // Copy literal
-    rom[26] = 0x12; // into r2b
-    rom[27] = 0x04; // command sustained write.
-
-    rom[28] = 0x08; // Store
-    rom[29] = 0x00;
-    rom[30] = 0x00;
-    rom[31] = 0x1F;
-    rom[32] = 0xF5; // into disk A command
-    rom[33] = 0x12; // r2b.
-
-    // MemDiskController is synchronous, so no need to wait for interrupt.
-
-    // Check we're now on block 1.
-    rom[34] = 0x06; // Load
-    rom[35] = 0x02; // into r2
-    rom[36] = 0x00;
-    rom[37] = 0x00;
-    rom[38] = 0x1F;
-    rom[39] = 0xF1; // disk A block address.
-
-    rom[40] = 0x00; // HALT.
-
-    // Data.
-    rom[384] = 0x42;
-    rom[385] = 0x56;
-    rom[386] = 0x69;
-    rom[387] = 0x12;
-    rom[388] = 0x34;
-    rom[389] = 0x56;
-    rom[390] = 0x78;
-    rom[391] = 0x90;
-
-    let (interrupt_tx, interrupt_rx) = mpsc::channel();
-    let disk_a = MemDiskController::new(interrupt_tx.clone(), INTERRUPT_DISK_A, 4);
-    let disk_b = MemDiskController::new(interrupt_tx.clone(), INTERRUPT_DISK_B, 2);
-    let (cpu, ui_commands) = run(rom, None, disk_a, disk_b,
-                                                                       interrupt_tx, interrupt_rx);
-    assert_eq!(ui_commands.len(), 2);
-    assert_eq!(internal!(cpu).r[0], STATUS_SUCCESS as u32);
-    assert_eq!(internal!(cpu).r[1], 4);
-    assert_eq!(internal!(cpu).r[2], 1);
-    assert!(internal!(cpu).interrupts.latched[INTERRUPT_DISK_A as usize]);
 }
