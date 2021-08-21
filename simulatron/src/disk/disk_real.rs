@@ -158,7 +158,7 @@ impl DiskController for RealDiskController {
         let watcher_interrupt_tx = self.interrupt_tx.clone();
         let watcher_dir_name = Arc::clone(&self.dir_path);
         let watcher_shared_data = Arc::clone(&self.shared_data);
-        let mut watcher = notify::immediate_watcher(move |event: notify::Result<notify::Event>| {
+        let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
             // We only care about files being created or removed. Therefore we
             // need Create, Remove, and Modify(Name(From)) events.
             if let notify::EventKind::Create(_)
