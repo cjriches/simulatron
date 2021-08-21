@@ -18,7 +18,7 @@ struct SharedData {
     status: u8,
     blocks_available: u32,
     block_to_access: u32,
-    buffer: Box<[u8; 4096]>,
+    buffer: Vec<u8>,
 }
 
 pub struct RealDiskController {
@@ -43,10 +43,10 @@ impl RealDiskController {
             worker_thread: None,
             watcher: None,
             shared_data: Arc::new(Mutex::new(SharedData {
-                status: 0,
+                status: STATUS_DISCONNECTED,
                 blocks_available: 0,
                 block_to_access: 0,
-                buffer: Box::new([0; 4096]),
+                buffer: vec![0; DISK_BUFFER_SIZE],
             }))
         }
     }
@@ -169,32 +169,29 @@ impl DiskController for RealDiskController {
                 ((self.shared_data.lock().unwrap().blocks_available & 0x0000FF00) >> 8) as u8,
             ADDRESS_NBA_4 =>
                 (self.shared_data.lock().unwrap().blocks_available & 0x000000FF) as u8,
+            ADDRESS_DA_1 =>
+                ((self.shared_data.lock().unwrap().block_to_access & 0xFF000000) >> 24) as u8,
+            ADDRESS_DA_2 =>
+                ((self.shared_data.lock().unwrap().block_to_access & 0x00FF0000) >> 26) as u8,
+            ADDRESS_DA_3 =>
+                ((self.shared_data.lock().unwrap().block_to_access & 0x0000FF00) >> 8) as u8,
+            ADDRESS_DA_4 =>
+                (self.shared_data.lock().unwrap().block_to_access & 0x000000FF) as u8,
             _ => panic!("Invalid address in disk::load_status.")
         }
     }
 
     fn store_data(&mut self, address: u32, value: u8) {
-        let index = address as usize;
         let buffer = &mut self.shared_data.lock().unwrap().buffer;
-        if index >= buffer.len() {
-            panic!("Invalid address in disk::store_data.");
-        }
-        buffer[index] = value;
+        buffer[address as usize] = value;
     }
 
     fn load_data(&self, address: u32) -> u8 {
-        let index = address as usize;
         let buffer = &self.shared_data.lock().unwrap().buffer;
-        if index >= buffer.len() {
-            panic!("Invalid address in disk::load_data.");
-        }
-        buffer[index]
+        buffer[address as usize]
     }
 }
 
-// The return_with_status macro hides the use of interrupt_tx and interrupt_num, so silence the
-// warnings from the IDE.
-//noinspection RsLiveness
 fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32, dir_path: &Path,
                     shared_data: &Arc<Mutex<SharedData>>, cmd: &DiskCommand) {
     // Acquire the shared data.
@@ -202,14 +199,12 @@ fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32, dir_pa
 
     // Create a macro for simple code reuse.
     macro_rules! return_with_status {
-            ($x:expr) => {
-                {
-                    sd.status = $x;
-                    interrupt_tx.send(interrupt_num).unwrap();
-                    return;
-                }
-            };
-        }
+        ($x:expr) => {{
+            sd.status = $x;
+            interrupt_tx.send(interrupt_num).unwrap();
+            return;
+        }}
+    }
 
     // If we are not connected to a disk or the address is out of
     // range, reject the command.
@@ -220,7 +215,7 @@ fn worker_iteration(interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u32, dir_pa
         return_with_status!(STATUS_BAD_COMMAND);
     }
 
-    let offset = (sd.block_to_access * 4096) as u64;
+    let offset = sd.block_to_access as u64 * DISK_BUFFER_SIZE as u64;
     match *cmd {
         DiskCommand::Read(sustained) => {
             // Find the file.
@@ -277,10 +272,11 @@ fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u3
                      event: &notify::Event) {
     // We only care about files being created or removed. Therefore we
     // need Create, Remove, and Modify(Name(From)) events.
-    if let notify::EventKind::Create(_) | notify::EventKind::Remove(_)
-    | notify::EventKind::Modify(
-        notify::event::ModifyKind::Name(
-            notify::event::RenameMode::From)) = event.kind {
+    if let notify::EventKind::Create(_)
+            | notify::EventKind::Remove(_)
+            | notify::EventKind::Modify(
+                notify::event::ModifyKind::Name(
+                    notify::event::RenameMode::From)) = event.kind {
         // Check the filesystem to see the new state.
         match get_file_name(dir_path) {
             None => {
@@ -299,8 +295,8 @@ fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u3
                 }).and_then(|metadata| {
                     // Get the size in blocks.
                     let bytes = metadata.len();
-                    if bytes % 4096 == 0 {
-                        u32::try_from(bytes / 4096).ok()
+                    if bytes % DISK_BUFFER_SIZE as u64 == 0 {
+                        u32::try_from(bytes / DISK_BUFFER_SIZE as u64).ok()
                     } else {None}
                 });
                 let mut sd = watcher_shared_data.lock().unwrap();
@@ -324,14 +320,15 @@ fn watcher_iteration(watcher_interrupt_tx: &mpsc::Sender<u32>, interrupt_num: u3
 }
 
 fn get_file_name(dir_path: &Path) -> Option<PathBuf> {
-    let mut dir_contents = fs::read_dir(dir_path).unwrap()
+    let mut dir_contents = fs::read_dir(dir_path)
+        .expect(&format!("Fatal: Failed to read directory '{}', does it exist?", dir_path.display()))
         .map(|res| res.unwrap().path())
         .collect::<Vec<_>>();
 
-    match dir_contents.len() {
-        0 => None,
-        1 => Some(dir_contents.remove(0)),
-        _ => panic!("There were multiple files in '{:?}'.", dir_path)
+    if dir_contents.len() == 1 {
+        Some(dir_contents.remove(0))
+    } else {
+        None
     }
 }
 
@@ -342,7 +339,6 @@ mod tests {
     use std::io;
     use std::time::Duration;
     use tempfile;
-    use rand::Rng;
 
     const INTERRUPT_NUM: u32 = 42;
 
@@ -375,6 +371,60 @@ mod tests {
         fn drop(&mut self) {
             self.disk.stop();
         }
+    }
+
+    // A test fixture containing a connected disk of the given size.
+    struct ConnectedDiskControllerFixture {
+        disk: RealDiskController,
+        _temp_dir: tempfile::TempDir,
+        interrupt_rx: mpsc::Receiver<u32>,
+    }
+
+    impl ConnectedDiskControllerFixture {
+        fn new(num_blocks: u32) -> io::Result<Self> {
+            // Set up temp directory.
+            let temp_dir = tempfile::tempdir()?;
+            let disk_dir = temp_dir.path().join("disk");
+            fs::create_dir(&disk_dir)?;
+            // Create disk controller.
+            let (tx, rx) = mpsc::channel();
+            let mut disk = RealDiskController::new(&disk_dir, tx, INTERRUPT_NUM);
+            disk.start();
+            // Create disk.
+            const FILE_NAME: &str = "x.simdisk";
+            let outer_location = temp_dir.path().join(FILE_NAME);
+            let inner_location = disk_dir.join(FILE_NAME);
+            {
+                let file = fs::File::create(&outer_location).unwrap();
+                file.set_len(num_blocks as u64 * DISK_BUFFER_SIZE as u64).unwrap();
+            }
+            // Insert disk.
+            fs::rename(&outer_location, &inner_location).unwrap();
+            let int = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+            assert_eq!(int, INTERRUPT_NUM);
+            {
+                let sd = disk.shared_data.lock().unwrap();
+                assert_eq!(sd.status, STATUS_SUCCESS);
+                assert_eq!(sd.blocks_available, num_blocks);
+            }
+            Ok(Self{
+                disk,
+                _temp_dir: temp_dir,
+                interrupt_rx: rx,
+            })
+        }
+    }
+
+    impl Drop for ConnectedDiskControllerFixture {
+        fn drop(&mut self) {
+            self.disk.stop();
+        }
+    }
+
+    fn random_block() -> Vec<u8> {
+        let mut block = Vec::with_capacity(DISK_BUFFER_SIZE);
+        block.resize_with(DISK_BUFFER_SIZE, rand::random);
+        block
     }
 
     #[test]
@@ -413,7 +463,7 @@ mod tests {
         let inner_location = fixture.disk_dir.join(FILE_NAME);
         {
             let file = fs::File::create(&outer_location).unwrap();
-            file.set_len(NUM_BLOCKS as u64 * 4096).unwrap();
+            file.set_len(NUM_BLOCKS as u64 * DISK_BUFFER_SIZE as u64).unwrap();
         }
 
         // Insert disk.
@@ -447,7 +497,7 @@ mod tests {
         let inner_location = fixture.disk_dir.join(BAD_SIZE_NAME);
         {
             let file = fs::File::create(&outer_location).unwrap();
-            file.set_len(4095).unwrap();
+            file.set_len(DISK_BUFFER_SIZE as u64 - 1).unwrap();
         }
         // Insert and assert not connected.
         fs::rename(&outer_location, &inner_location).unwrap();
@@ -529,63 +579,6 @@ mod tests {
         // explicitly forbidden situation with undefined behaviour - there's nothing to verify.
     }
 
-    // A test fixture containing a connected disk of the given size.
-    struct ConnectedDiskControllerFixture {
-        disk: RealDiskController,
-        _temp_dir: tempfile::TempDir,
-        interrupt_rx: mpsc::Receiver<u32>,
-    }
-
-    impl ConnectedDiskControllerFixture {
-        fn new(num_blocks: u32) -> io::Result<Self> {
-            // Set up temp directory.
-            let temp_dir = tempfile::tempdir()?;
-            let disk_dir = temp_dir.path().join("disk");
-            fs::create_dir(&disk_dir)?;
-            // Create disk controller.
-            let (tx, rx) = mpsc::channel();
-            let mut disk = RealDiskController::new(&disk_dir, tx, INTERRUPT_NUM);
-            disk.start();
-            // Create disk.
-            const FILE_NAME: &str = "x.simdisk";
-            let outer_location = temp_dir.path().join(FILE_NAME);
-            let inner_location = disk_dir.join(FILE_NAME);
-            {
-                let file = fs::File::create(&outer_location).unwrap();
-                file.set_len(num_blocks as u64 * 4096).unwrap();
-            }
-            // Insert disk.
-            fs::rename(&outer_location, &inner_location).unwrap();
-            let int = rx.recv_timeout(Duration::from_secs(1)).unwrap();
-            assert_eq!(int, INTERRUPT_NUM);
-            {
-                let sd = disk.shared_data.lock().unwrap();
-                assert_eq!(sd.status, STATUS_SUCCESS);
-                assert_eq!(sd.blocks_available, num_blocks);
-            }
-            Ok(Self{
-                disk,
-                _temp_dir: temp_dir,
-                interrupt_rx: rx,
-            })
-        }
-    }
-
-    impl Drop for ConnectedDiskControllerFixture {
-        fn drop(&mut self) {
-            self.disk.stop();
-        }
-    }
-
-    fn random_block() -> [u8; 4096] {
-        let mut block = [0; 4096];
-        let mut rng = rand::thread_rng();
-        for i in block.iter_mut() {
-            *i = rng.gen();
-        }
-        block
-    }
-
     #[test]
     fn test_read_write() {
         let mut fixture = ConnectedDiskControllerFixture::new(2).unwrap();
@@ -598,13 +591,13 @@ mod tests {
             let sd = fixture.disk.shared_data.lock().unwrap();
             assert_eq!(sd.status, STATUS_SUCCESS);
         }
-        for i in 0..4096 {
-            assert_eq!(fixture.disk.load_data(i), 0);
+        for i in 0..DISK_BUFFER_SIZE {
+            assert_eq!(fixture.disk.load_data(i as u32), 0);
         }
 
         // Ensure that write of random data succeeds.
         let data = random_block();
-        *fixture.disk.shared_data.lock().unwrap().buffer.as_mut() = data;
+        fixture.disk.shared_data.lock().unwrap().buffer = data.clone();
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_WRITE);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
@@ -615,9 +608,9 @@ mod tests {
         }
 
         // Ensure that we can read the written data.
-        *fixture.disk.shared_data.lock().unwrap().buffer.as_mut() = [0; 4096];
-        for i in 0..4096 {
-            assert_eq!(fixture.disk.load_data(i), 0);
+        fixture.disk.shared_data.lock().unwrap().buffer = vec![0; DISK_BUFFER_SIZE];
+        for i in 0..DISK_BUFFER_SIZE {
+            assert_eq!(fixture.disk.load_data(i as u32), 0);
         }
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_READ);
         {
@@ -627,8 +620,8 @@ mod tests {
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 0);
         }
-        for i in 0..4096 {
-            assert_eq!(fixture.disk.load_data(i), data[i as usize]);
+        for i in 0..DISK_BUFFER_SIZE {
+            assert_eq!(fixture.disk.load_data(i as u32), data[i]);
         }
 
         // Ensure if we read the second block it's still zeroes.
@@ -641,8 +634,8 @@ mod tests {
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 1);
         }
-        for i in 0..4096 {
-            assert_eq!(fixture.disk.load_data(i), 0);
+        for i in 0..DISK_BUFFER_SIZE {
+            assert_eq!(fixture.disk.load_data(i as u32), 0);
         }
     }
 
@@ -653,7 +646,7 @@ mod tests {
         // Sustained write two blocks of random data.
         let data1 = random_block();
         let data2 = random_block();
-        *fixture.disk.shared_data.lock().unwrap().buffer.as_mut() = data1;
+        fixture.disk.shared_data.lock().unwrap().buffer = data1.clone();
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_SUSTAINED_WRITE);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
@@ -662,7 +655,7 @@ mod tests {
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 1);
         }
-        *fixture.disk.shared_data.lock().unwrap().buffer.as_mut() = data2;
+        fixture.disk.shared_data.lock().unwrap().buffer = data2.clone();
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_SUSTAINED_WRITE);
         {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
@@ -682,8 +675,8 @@ mod tests {
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 1);
         }
-        for i in 0..4096 {
-            assert_eq!(fixture.disk.load_data(i), data1[i as usize]);
+        for i in 0..DISK_BUFFER_SIZE {
+            assert_eq!(fixture.disk.load_data(i as u32), data1[i]);
         }
         fixture.disk.store_control(ADDRESS_CMD, COMMAND_SUSTAINED_READ);
         {
@@ -693,8 +686,8 @@ mod tests {
             assert_eq!(sd.status, STATUS_SUCCESS);
             assert_eq!(sd.block_to_access, 2);
         }
-        for i in 0..4096 {
-            assert_eq!(fixture.disk.load_data(i), data2[i as usize]);
+        for i in 0..DISK_BUFFER_SIZE {
+            assert_eq!(fixture.disk.load_data(i as u32), data2[i]);
         }
     }
 
@@ -709,7 +702,7 @@ mod tests {
         assert_eq!(fixture.disk.load_status(ADDRESS_NBA_3), 0b1);
         assert_eq!(fixture.disk.load_status(ADDRESS_NBA_4), 0b00101100);
 
-        // Write a pattern to bytes 20-30 in block 15.
+        // Write a pattern to bytes 20-29 in block 15.
         for i in 20..30 {
             fixture.disk.store_data(i as u32, i - 19);
         }
@@ -729,8 +722,8 @@ mod tests {
             let int = fixture.interrupt_rx.recv_timeout(Duration::from_secs(1)).unwrap();
             assert_eq!(int, INTERRUPT_NUM);
             assert_eq!(fixture.disk.load_status(ADDRESS_STATUS), STATUS_SUCCESS);
-            for i in 0..4096 {
-                assert_eq!(fixture.disk.load_data(i), 0);
+            for i in 0..DISK_BUFFER_SIZE {
+                assert_eq!(fixture.disk.load_data(i as u32), 0);
             }
         }
 
@@ -746,10 +739,10 @@ mod tests {
                 assert_eq!(fixture.disk.load_data(i), 0);
             }
             for i in 20..30 {
-                assert_eq!(fixture.disk.load_data(i as u32), i - 19);
+                assert_eq!(fixture.disk.load_data(i), i as u8 - 19);
             }
-            for i in 30..4096 {
-                assert_eq!(fixture.disk.load_data(i), 0);
+            for i in 30..DISK_BUFFER_SIZE {
+                assert_eq!(fixture.disk.load_data(i as u32), 0);
             }
         }
     }

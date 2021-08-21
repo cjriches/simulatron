@@ -17,9 +17,11 @@ const BEGIN_DISPLAY: u32 = 0x0240;              // Write-only
 const BEGIN_KEYBOARD: u32 = 0x19B0;             // Read-only
 const BEGIN_RESERVED_2: u32 = 0x19B2;           // No access
 const BEGIN_DISK_A_STATUS: u32 = 0x1FEC;        // Read-only
-const BEGIN_DISK_A_CONTROL: u32 = 0x1FF1;       // Write-only
+const BEGIN_DISK_A_ADDRESS: u32 = 0x1FF1;       // Read/Write
+const BEGIN_DISK_A_COMMAND: u32 = 0x1FF5;       // Write-only
 const BEGIN_DISK_B_STATUS: u32 = 0x1FF6;        // Read-only
-const BEGIN_DISK_B_CONTROL: u32 = 0x1FFB;       // Write-only
+const BEGIN_DISK_B_ADDRESS: u32 = 0x1FFB;       // Read/WRite
+const BEGIN_DISK_B_COMMAND: u32 = 0x1FFF;       // Write-only
 const BEGIN_DISK_A_DATA: u32 = 0x2000;          // Read/Write
 const BEGIN_DISK_B_DATA: u32 = 0x3000;          // Read/Write
 const BEGIN_RAM: u32 = 0x4000;                  // Read/Write
@@ -142,15 +144,15 @@ impl<D: DiskController> MMU<D> {
         } else if address < BEGIN_KEYBOARD {  // Memory-mapped display
             self.display.store(address - BEGIN_DISPLAY, value);
             Ok(())
-        } else if address < BEGIN_DISK_A_CONTROL {  // Keyboard, Reserved, Disk A read-only
+        } else if address < BEGIN_DISK_A_ADDRESS {  // Keyboard, Reserved, Disk A read-only
             reject!()
         } else if address < BEGIN_DISK_B_STATUS {  // Disk A control
-            self.disk_a.store_control(address - BEGIN_DISK_A_CONTROL, value);
+            self.disk_a.store_control(address - BEGIN_DISK_A_STATUS, value);
             Ok(())
-        } else if address < BEGIN_DISK_B_CONTROL {  // Disk B read-only
+        } else if address < BEGIN_DISK_B_ADDRESS {  // Disk B read-only
             reject!()
         } else if address < BEGIN_DISK_A_DATA {  // Disk B control
-            self.disk_b.store_control(address - BEGIN_DISK_B_CONTROL, value);
+            self.disk_b.store_control(address - BEGIN_DISK_B_STATUS, value);
             Ok(())
         } else if address < BEGIN_DISK_B_DATA {  // Disk A data
             self.disk_a.store_data(address - BEGIN_DISK_A_DATA, value);
@@ -198,11 +200,11 @@ impl<D: DiskController> MMU<D> {
             Ok(self.keyboard.load(address - BEGIN_KEYBOARD))
         } else if address < BEGIN_DISK_A_STATUS {  // Reserved
             reject!()
-        } else if address < BEGIN_DISK_A_CONTROL {  // Disk A read-only
+        } else if address < BEGIN_DISK_A_COMMAND {  // Disk A readable
             Ok(self.disk_a.load_status(address - BEGIN_DISK_A_STATUS))
         } else if address < BEGIN_DISK_B_STATUS {  // Disk A control
             reject!()
-        } else if address < BEGIN_DISK_B_CONTROL {  // Disk B read-only
+        } else if address < BEGIN_DISK_B_COMMAND {  // Disk B readable
             Ok(self.disk_b.load_status(address - BEGIN_DISK_B_STATUS))
         } else if address < BEGIN_DISK_A_DATA {  // Disk B control
             reject!()

@@ -2,15 +2,19 @@ use super::*;
 
 use ntest::{assert_about_eq, timeout};
 
-use crate::disk::MockDiskController;
+use crate::disk::{MemDiskController, MockDiskController, STATUS_SUCCESS};
 use crate::display::DisplayController;
 use crate::keyboard::{KeyboardController, KeyMessage, key_str_to_u8};
 use crate::mmu::{MMU, ROM, ROM_SIZE};
 use crate::ui::UICommand;
 
-fn run(rom: ROM, keypress: Option<KeyMessage>) -> (CPU<MockDiskController>, Vec<UICommand>) {
+fn run<D: DiskController + 'static>(rom: ROM,
+                                    keypress: Option<KeyMessage>,
+                                    disk_a: D,
+                                    disk_b: D,
+                                    interrupt_tx: mpsc::Sender<u32>,
+                                    interrupt_rx: mpsc::Receiver<u32>) -> (CPU<D>, Vec<UICommand>) {
     // Create communication channels.
-    let (interrupt_tx, interrupt_rx) = mpsc::channel();
     let interrupt_tx_keyboard = interrupt_tx.clone();
     let interrupt_tx_mmu = interrupt_tx.clone();
     let (ui_tx, ui_rx) = mpsc::channel();
@@ -19,8 +23,6 @@ fn run(rom: ROM, keypress: Option<KeyMessage>) -> (CPU<MockDiskController>, Vec<
     let keyboard_tx_manual = keyboard_tx.clone();
 
     // Create components.
-    let disk_a = MockDiskController;
-    let disk_b = MockDiskController;
     let display = DisplayController::new(ui_tx_display);
     let keyboard = KeyboardController::new(
         keyboard_tx, keyboard_rx, interrupt_tx_keyboard);
@@ -39,6 +41,11 @@ fn run(rom: ROM, keypress: Option<KeyMessage>) -> (CPU<MockDiskController>, Vec<
     return (cpu, ui_commands);
 }
 
+fn run_default(rom: ROM) -> (CPU<MockDiskController>, Vec<UICommand>) {
+    let (interrupt_tx, interrupt_rx) = mpsc::channel();
+    run(rom, None, MockDiskController, MockDiskController, interrupt_tx, interrupt_rx)
+}
+
 macro_rules! internal {
     ($cpu:ident) => { $cpu.internal.as_ref().unwrap() }
 }
@@ -47,7 +54,7 @@ macro_rules! internal {
 #[timeout(100)]
 fn test_halt() {
     // Simplest possible test; check the CPU halts immediately on opcode 0.
-    let (_, ui_commands) = run([0; ROM_SIZE], None);
+    let (_, ui_commands) = run_default([0; ROM_SIZE]);
     assert_eq!(ui_commands.len(), 2);  // Enable and Disable messages.
 }
 
@@ -62,7 +69,7 @@ fn test_copy_literal() {
     rom[4] = 0x96;
     rom[5] = 0x96;  // some random number.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[3], 0x42069696);
 }
@@ -82,7 +89,7 @@ fn test_copy_reg() {
     rom[7] = 0x08;  // into r0h
     rom[8] = 0x0B;  // from r3h.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[3], 0x13579BDF);
     assert_eq!(internal!(cpu).r[0], 0x00009BDF);
@@ -106,7 +113,7 @@ fn test_store_literal_address() {
     rom[10] = 0xBC; // address 0x00004ABC
     rom[11] = 0x00; // r0.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).mmu.load_physical_32(0x00004ABC), Ok(0x12345678));
 }
@@ -133,7 +140,7 @@ fn test_store_reg_address() {
     rom[13] = 0x01; // address in r1
     rom[14] = 0x00; // r0.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).mmu.load_physical_32(0x00004ABC), Ok(0xABCDEF00));
 }
@@ -158,7 +165,7 @@ fn test_load_literal_address() {
 
     rom[64] = 0x55;
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0xFFFFFF55);
 }
@@ -185,7 +192,7 @@ fn test_load_reg_address() {
 
     rom[64] = 0x34;
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[6], 0x0000FF34);
 }
@@ -205,7 +212,7 @@ fn test_swap_literal() {
     rom[7] = 0x40;
     rom[8] = 0x00;  // address 0x00004000.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x00000000);
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004000), Ok(0x66));
@@ -230,7 +237,7 @@ fn test_swap_reg() {
     rom[10] = 0x10; // r0b
     rom[11] = 0x01; // address in r1.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x00000000);
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x00005000), Ok(0x77));
@@ -265,7 +272,7 @@ fn test_kernel_stack() {
     rom[17] = 0x0F; // Pop from the stack
     rom[18] = 0x09; // into r1h.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[1], 0x0000AAFF);
     assert_eq!(internal!(cpu).kspr, 0x00007FFF);
@@ -415,7 +422,7 @@ fn test_user_mode() {
     rom[130] = 0xB0;
     rom[131] = 0x01; // Valid entry at 0x0000B000.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     // Assert the user mode process stored in its stack correctly.
     assert_eq!(internal!(cpu).uspr, 0x00000063);
@@ -458,8 +465,11 @@ fn test_keyboard() {
     rom[23] = 0x01; // Pause (should never happen, acts as a fail condition).
 
     const KEY: &str = "F";
+    let (interrupt_tx, interrupt_rx) = mpsc::channel();
     let (cpu, ui_commands) = run(rom,
-                                 Some(KeyMessage::Key(KEY, false, false).unwrap()));
+                                 Some(KeyMessage::Key(KEY, false, false).unwrap()),
+                                 MockDiskController, MockDiskController,
+                                 interrupt_tx, interrupt_rx);
     assert_eq!(ui_commands.len(), 2);
 
     // Assert that the key was correctly detected.
@@ -507,7 +517,7 @@ fn test_display() {
     rom[25] = 0xE0;  // background colour cell (r0,c0)
     rom[26] = 0x10;  // r0b.
 
-    let (_cpu, ui_commands) = run(rom, None);
+    let (_cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 5);
     assert_eq!(ui_commands[0], UICommand::SetEnabled(true));
     assert_eq!(ui_commands[1], UICommand::SetChar(5, 32, '!'));
@@ -557,7 +567,7 @@ fn test_syscall() {
 
     rom[131] = 0x00; // HALT.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x42);
 }
@@ -585,7 +595,7 @@ fn test_bad_reg_ref() {
 
     rom[13] = 0x01; // Pause. We should never hit this.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[1], 0x00000000);
 }
@@ -714,7 +724,7 @@ fn test_pfsr() {
 
     rom[259] = 0x00; // Halt.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     // Assert the user mode process stored in its stack correctly.
     assert_eq!(internal!(cpu).r[5], internal!(cpu).mmu.page_fault_status_register());
@@ -761,7 +771,7 @@ fn test_timer_literal_interval() {
 
     rom[27] = 0x01; // Pause.
 
-    let (_cpu, ui_commands) = run(rom, None);
+    let (_cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     // Simply by halting we confirm that the test was successful.
 }
@@ -810,7 +820,7 @@ fn test_timer_reg_interval() {
 
     rom[30] = 0x01; // Pause.
 
-    let (_cpu, ui_commands) = run(rom, None);
+    let (_cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     // Simply by halting we confirm that the test was successful.
 }
@@ -876,7 +886,7 @@ fn test_blockcopy() {
     // This last byte should NOT be copied.
     rom[128] = 0xFF;
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x4000), Ok(0x11));
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x4001), Ok(0x22));
@@ -937,7 +947,7 @@ fn test_blockset() {
     rom[14] = 0x00; // destination address 0x00008000
     rom[15] = 0x11; // value in r1b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x8000), Ok(0x42));
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x8001), Ok(0x42));
@@ -995,7 +1005,7 @@ fn test_negate() {
     rom[11] = 0x20; // Negate
     rom[12] = 0x14; // r4b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], -0x12345678_i32 as u32);
     assert_eq!(internal!(cpu).r[4], (-0x10_i32 as u8) as u32);
@@ -1029,7 +1039,7 @@ fn test_add() {
     rom[16] = 0x12; // into r2b
     rom[17] = 0x01; // 1.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x0B);
     assert_eq!(internal!(cpu).r[1], 0x0C);
@@ -1048,7 +1058,7 @@ fn test_flags() {
     rom[4] = 0x10;  // into r0b
     rom[5] = 0x01;  // 1.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x00);
     assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_CARRY);
@@ -1062,7 +1072,7 @@ fn test_flags() {
     rom[4] = 0x10;  // into r0b
     rom[5] = 0x01;  // 1.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x80);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_OVERFLOW);
@@ -1076,7 +1086,7 @@ fn test_flags() {
     rom[4] = 0x10;  // into r0b
     rom[5] = 0x10;  // r0b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0xFE);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
@@ -1090,7 +1100,7 @@ fn test_flags() {
     rom[4] = 0x10;  // into r0b
     rom[5] = 0x10;  // r0b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x02);
     assert_eq!(internal!(cpu).flags, 0);
@@ -1124,7 +1134,7 @@ fn test_float_add() {
     rom[16] = 0x01; // into r1
     rom[17] = 0x18; // from f0.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_about_eq!(internal!(cpu).f[0], (0x42 + 0x56) as f32);
     assert_eq!(internal!(cpu).r[1], 0x42 + 0x56);
@@ -1158,7 +1168,7 @@ fn test_float_convert() {
     rom[16] = 0x01; // into r1
     rom[17] = 0x18; // from f0.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_about_eq!(internal!(cpu).f[0], -1.0);
     assert_about_eq!(internal!(cpu).f[1], u32::MAX as f32);
@@ -1182,7 +1192,7 @@ fn test_addcarry() {
     rom[7] = 0x10;  // into r0b
     rom[8] = 0x01;  // 1.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x02);
 }
@@ -1207,7 +1217,7 @@ fn test_sub() {
     rom[10] = 0x18; // into f0
     rom[11] = 0x18; // f0.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0xFE);
     assert_about_eq!(internal!(cpu).f[0], 0.0);
@@ -1229,7 +1239,7 @@ fn test_subborrow() {
     rom[7] = 0x10;  // into r0b
     rom[8] = 0x11;  // r1b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0xF9);
 }
@@ -1263,7 +1273,7 @@ fn test_mult() {
     rom[17] = 0x18; // into f0
     rom[18] = 0x18; // f0.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x0F);
     assert_eq!(internal!(cpu).r[1], 0x1400);
@@ -1326,7 +1336,7 @@ fn test_sdiv() {
     rom[37] = 0x18; // into f0
     rom[38] = 0x19; // by f1.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x01);
     assert_eq!(internal!(cpu).r[1], 0x02);
@@ -1376,7 +1386,7 @@ fn test_div_by_zero() {
 
     rom[131] = 0x00;  // HALT.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0xC0);
     assert_eq!(internal!(cpu).r[7], 0x01);
@@ -1419,7 +1429,7 @@ fn test_udiv() {
     rom[22] = 0x13; // into r3b
     rom[23] = 0xFB; // 251.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x01);
     assert_eq!(internal!(cpu).r[1], 0x02);
@@ -1483,7 +1493,7 @@ fn test_srem() {
     rom[37] = 0x18; // into f0
     rom[38] = 0x19; // by f1.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x07);
     assert_eq!(internal!(cpu).r[1], 0x00);
@@ -1530,7 +1540,7 @@ fn test_urem() {
     rom[22] = 0x13; // into r3b
     rom[23] = 0xFC; // 252.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x07);
     assert_eq!(internal!(cpu).r[1], 0x00);
@@ -1568,7 +1578,7 @@ fn test_not() {
     rom[16] = 0x33; // Logical NOT
     rom[17] = 0x03; // r3.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0xFFFC);
     assert_eq!(internal!(cpu).r[1], 0xFFFFFFFF);
@@ -1609,7 +1619,7 @@ fn test_and() {
     rom[19] = 0x12; // into r2b
     rom[20] = 0x13; // by r3b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x02);
     assert_eq!(internal!(cpu).r[1], 0x0);
@@ -1649,7 +1659,7 @@ fn test_or() {
     rom[19] = 0x12; // into r2b
     rom[20] = 0x13; // by r3b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x03);
     assert_eq!(internal!(cpu).r[1], 0x1F);
@@ -1689,7 +1699,7 @@ fn test_xor() {
     rom[19] = 0x12; // into r2b
     rom[20] = 0x13; // by r3b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x01);
     assert_eq!(internal!(cpu).r[1], 0x1F);
@@ -1721,7 +1731,7 @@ fn test_lshift() {
     rom[13] = 0x11; // into r1b
     rom[14] = 0x12; // r2b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x0C);
     assert_eq!(internal!(cpu).r[1], 0x80);
@@ -1752,7 +1762,7 @@ fn test_srshift() {
     rom[13] = 0x11; // into r1b
     rom[14] = 0x12; // r2b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x01);
     assert_eq!(internal!(cpu).r[1], 0xF8);
@@ -1783,7 +1793,7 @@ fn test_urshift() {
     rom[13] = 0x11; // into r1b
     rom[14] = 0x12; // r2b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x01);
     assert_eq!(internal!(cpu).r[1], 0x18);
@@ -1821,7 +1831,7 @@ fn test_big_shift() {
     rom[19] = 0x02; // into r2
     rom[20] = 0xFF; // by 255.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0);
     assert_eq!(internal!(cpu).r[1], u32::MAX);
@@ -1865,7 +1875,7 @@ fn test_lrot() {
     rom[22] = 0x00; // into r0
     rom[23] = 0x20; // by 32.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x01);
     assert_eq!(internal!(cpu).r[1], 0x20);
@@ -1910,7 +1920,7 @@ fn test_rrot() {
     rom[22] = 0x08; // into r0h
     rom[23] = 0x10; // by 16.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x40);
     assert_eq!(internal!(cpu).r[1], 0x08);
@@ -1955,7 +1965,7 @@ fn test_rotcarry() {
     rom[22] = 0x13; // into r3b
     rom[23] = 0x13; // by r3b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x00);
     assert_eq!(internal!(cpu).r[1], 0x30);
@@ -1999,7 +2009,7 @@ fn test_jump() {
 
     rom[145] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[0], 0x4000);
     assert_eq!(internal!(cpu).r[1], 0x0A174200);
@@ -2018,7 +2028,7 @@ fn test_compare() {
     rom[4] = 0x10;  // r0b with
     rom[5] = 0x40;  // 64.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_ZERO);
 
@@ -2032,7 +2042,7 @@ fn test_compare() {
     rom[4] = 0x10;  // r0b with
     rom[5] = 0x41;  // 65.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
 
@@ -2046,7 +2056,7 @@ fn test_compare() {
     rom[4] = 0x10;  // r0b with
     rom[5] = 0x3F;  // 63.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, 0);
 
@@ -2064,7 +2074,7 @@ fn test_compare() {
     rom[7] = 0x10;  // r0b with
     rom[8] = 0x11;  // r1b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, 0);
 
@@ -2082,7 +2092,7 @@ fn test_compare() {
     rom[7] = 0x10;  // r0b with
     rom[8] = 0x11;  // r1b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_OVERFLOW);
 
@@ -2100,7 +2110,7 @@ fn test_compare() {
     rom[7] = 0x10;  // r0b with
     rom[8] = 0x11;  // r1b.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_CARRY);
 }
@@ -2143,7 +2153,7 @@ fn test_blockcmp() {
     rom[142] = 0x56;
     rom[143] = 0x78;
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, 0);
 
@@ -2163,7 +2173,7 @@ fn test_blockcmp() {
     rom[11] = 0xC0; // ROM byte 128
     rom[12] = 0x00; // with r0.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE);
 
@@ -2183,7 +2193,7 @@ fn test_blockcmp() {
     rom[11] = 0x00;
     rom[12] = 0xC0; // with ROM byte 128.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_ZERO);
 
@@ -2203,7 +2213,7 @@ fn test_blockcmp() {
     rom[11] = 0x00;
     rom[12] = 0xC4; // with ROM byte 132.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, 0);
 
@@ -2224,7 +2234,7 @@ fn test_blockcmp() {
     rom[11] = 0x00;
     rom[12] = 0xC4; // ROM byte 132.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, 0);
 
@@ -2246,7 +2256,7 @@ fn test_blockcmp() {
     rom[11] = 0x01; // r1
     rom[12] = 0x02; // with r2.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE);
 
@@ -2265,7 +2275,7 @@ fn test_blockcmp() {
     rom[11] = 0x00;
     rom[12] = 0x40; // with itself.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).flags, FLAG_ZERO);
 }
@@ -2301,7 +2311,7 @@ fn test_jequal() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2344,7 +2354,7 @@ fn test_jnotequal() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2387,7 +2397,7 @@ fn test_sjgreater() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2430,7 +2440,7 @@ fn test_sjgreatereq() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2463,7 +2473,7 @@ fn test_ujgreater() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2496,7 +2506,7 @@ fn test_ujgreatereq() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2539,7 +2549,7 @@ fn test_sjlesser() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2582,7 +2592,7 @@ fn test_sjlessereq() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2615,7 +2625,7 @@ fn test_ujlesser() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2648,7 +2658,7 @@ fn test_ujlessereq() {
 
     rom[256] = 0x01; // Pause (fail condition).
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x99);
 }
@@ -2705,7 +2715,7 @@ fn test_call_return() {
 
     rom[131] = 0x6A; // RETURN.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[5], 0x29);
     assert_eq!(internal!(cpu).r[6], 0xCA);
@@ -2767,10 +2777,91 @@ fn test_call_modify_return() {
 
     rom[131] = 0x00; // HALT.
 
-    let (cpu, ui_commands) = run(rom, None);
+    let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x33);
     assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_NEGATIVE);
     // The return address of the last subroutine should still be on the stack.
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004FFF), Ok(0xC0));
+}
+
+#[test]
+#[timeout(100)]
+fn test_disks() {
+    let mut rom = [0; ROM_SIZE];
+    // Check Disk A status is SUCCESS (initially connected).
+    rom[0] = 0x06;  // Load
+    rom[1] = 0x10;  // into r0b
+    rom[2] = 0x00;
+    rom[3] = 0x00;
+    rom[4] = 0x1F;
+    rom[5] = 0xEC;  // disk A status.
+
+    // Check Disk A blocks available is 4.
+    rom[6] = 0x06;  // Load from literal address
+    rom[7] = 0x01;  // into r1
+    rom[8] = 0x00;
+    rom[9] = 0x00;
+    rom[10] = 0x1F;
+    rom[11] = 0xED; // disk A blocks available.
+
+    // Write to Disk A buffer.
+    rom[12] = 0x10; // Block copy
+    rom[13] = 0x00;
+    rom[14] = 0x00;
+    rom[15] = 0x00;
+    rom[16] = 0x08; // 8 bytes
+    rom[17] = 0x00;
+    rom[18] = 0x00;
+    rom[19] = 0x20;
+    rom[20] = 0x00; // into disk A data
+    rom[21] = 0x00;
+    rom[22] = 0x00;
+    rom[23] = 0x01;
+    rom[24] = 0xC0; // from ROM byte 384.
+
+    // Send write command to Disk A.
+    rom[25] = 0x0A; // Copy literal
+    rom[26] = 0x12; // into r2b
+    rom[27] = 0x04; // command sustained write.
+
+    rom[28] = 0x08; // Store
+    rom[29] = 0x00;
+    rom[30] = 0x00;
+    rom[31] = 0x1F;
+    rom[32] = 0xF5; // into disk A command
+    rom[33] = 0x12; // r2b.
+
+    // MemDiskController is synchronous, so no need to wait for interrupt.
+
+    // Check we're now on block 1.
+    rom[34] = 0x06; // Load
+    rom[35] = 0x02; // into r2
+    rom[36] = 0x00;
+    rom[37] = 0x00;
+    rom[38] = 0x1F;
+    rom[39] = 0xF1; // disk A block address.
+
+    rom[40] = 0x00; // HALT.
+
+    // Data.
+    rom[384] = 0x42;
+    rom[385] = 0x56;
+    rom[386] = 0x69;
+    rom[387] = 0x12;
+    rom[388] = 0x34;
+    rom[389] = 0x56;
+    rom[390] = 0x78;
+    rom[391] = 0x90;
+
+    let (interrupt_tx, interrupt_rx) = mpsc::channel();
+    let disk_a = MemDiskController::new(interrupt_tx.clone(), INTERRUPT_DISK_A, 4);
+    let disk_b = MemDiskController::new(interrupt_tx.clone(), INTERRUPT_DISK_B, 2);
+    let (cpu, ui_commands) = run(rom, None, disk_a, disk_b,
+                                                                       interrupt_tx, interrupt_rx);
+    assert_eq!(ui_commands.len(), 2);
+    assert_eq!(internal!(cpu).r[0], STATUS_SUCCESS as u32);
+    assert_eq!(internal!(cpu).r[1], 4);
+    assert_eq!(internal!(cpu).r[2], 1);
+    assert!(internal!(cpu).interrupts.latched[INTERRUPT_DISK_A as usize]);
 }

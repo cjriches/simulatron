@@ -22,11 +22,11 @@ Physical addresses are mapped as follows. All ranges are inclusive.
 |        19B2-1FEB | Reserved (1594 bytes)                        | Neither    |
 |             1FEC | Disk A status (1 byte)                       | Read       |
 |        1FED-1FF0 | Disk A blocks available (4 bytes)            | Read       |
-|        1FF1-1FF4 | Disk A block address (4 bytes)               | Write      |
+|        1FF1-1FF4 | Disk A block address (4 bytes)               | Both       |
 |             1FF5 | Disk A command register (1 byte)             | Write      |
 |             1FF6 | Disk B status (1 byte)                       | Read       |
 |        1FF7-1FFA | Disk B blocks available (4 bytes)            | Read       |
-|        1FFB-1FFE | Disk B block address (4 bytes)               | Write      |
+|        1FFB-1FFE | Disk B block address (4 bytes)               | Both       |
 |             1FFF | Disk B command register (1 byte)             | Write      |
 |        2000-2FFF | Disk A data (4096 bytes)                     | Both       |
 |        3000-3FFF | Disk B data (4096 bytes)                     | Both       |
