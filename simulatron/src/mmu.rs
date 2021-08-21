@@ -12,6 +12,21 @@ pub const PAGE_FAULT_ILLEGAL_ACCESS: u32 = 1;
 pub const PAGE_FAULT_NOT_PRESENT: u32 = 2;
 pub const PAGE_FAULT_COW: u32 = 3;
 
+#[allow(dead_code)]  // First constant not actually needed, just here for documentation purposes.
+pub const BEGIN_INTERRUPT_HANDLERS: u32 = 0x0000;   // Read/Write
+pub const BEGIN_RESERVED_1: u32 = 0x0020;           // No access
+pub const BEGIN_ROM: u32 = 0x0040;                  // Read-only
+pub const BEGIN_DISPLAY: u32 = 0x0240;              // Write-only
+pub const BEGIN_KEYBOARD: u32 = 0x19B0;             // Read-only
+pub const BEGIN_RESERVED_2: u32 = 0x19B2;           // No access
+pub const BEGIN_DISK_A_STATUS: u32 = 0x1FEC;        // Read-only
+pub const BEGIN_DISK_A_CONTROL: u32 = 0x1FF1;       // Write-only
+pub const BEGIN_DISK_B_STATUS: u32 = 0x1FF6;        // Read-only
+pub const BEGIN_DISK_B_CONTROL: u32 = 0x1FFB;       // Write-only
+pub const BEGIN_DISK_A_DATA: u32 = 0x2000;          // Read/Write
+pub const BEGIN_DISK_B_DATA: u32 = 0x3000;          // Read/Write
+pub const BEGIN_RAM: u32 = 0x4000;                  // Read/Write
+
 enum Intent {
     Read,
     Write,
@@ -114,32 +129,32 @@ impl<D: DiskController> MMU<D> {
             }};
         }
 
-        if address < 32 {            // Interrupt handlers
+        if address < BEGIN_RESERVED_1 {  // Interrupt handlers
             self.interrupt_vector[address as usize] = value;
             Ok(())
-        } else if address < 576 {    // Reserved, ROM
+        } else if address < BEGIN_DISPLAY {  // Reserved, ROM
             reject!()
-        } else if address < 6576 {   // Memory-mapped display
-            self.display.store(address - 576, value);
+        } else if address < BEGIN_KEYBOARD {  // Memory-mapped display
+            self.display.store(address - BEGIN_DISPLAY, value);
             Ok(())
-        } else if address < 8177 {   // Keyboard, Reserved, Disk A read-only
+        } else if address < BEGIN_DISK_A_CONTROL {  // Keyboard, Reserved, Disk A read-only
             reject!()
-        } else if address < 8182 {   // Disk A control
-            self.disk_a.store_control(address - 8177, value);
+        } else if address < BEGIN_DISK_B_STATUS {  // Disk A control
+            self.disk_a.store_control(address - BEGIN_DISK_A_CONTROL, value);
             Ok(())
-        } else if address < 8187 {   // Disk B read-only
+        } else if address < BEGIN_DISK_B_CONTROL {  // Disk B read-only
             reject!()
-        } else if address < 8192 {   // Disk B control
-            self.disk_b.store_control(address - 8187, value);
+        } else if address < BEGIN_DISK_A_DATA {  // Disk B control
+            self.disk_b.store_control(address - BEGIN_DISK_B_CONTROL, value);
             Ok(())
-        } else if address < 12288 {  // Disk A data
-            self.disk_a.store_data(address - 8192, value);
+        } else if address < BEGIN_DISK_B_DATA {  // Disk A data
+            self.disk_a.store_data(address - BEGIN_DISK_A_DATA, value);
             Ok(())
-        } else if address < 16384 {  // Disk B data
-            self.disk_b.store_data(address - 12288, value);
+        } else if address < BEGIN_RAM {  // Disk B data
+            self.disk_b.store_data(address - BEGIN_DISK_B_DATA, value);
             Ok(())
-        } else {                     // RAM
-            self.ram.store(address - 16384, value);
+        } else {  // RAM
+            self.ram.store(address - BEGIN_RAM, value);
             Ok(())
         }
     }
@@ -166,32 +181,32 @@ impl<D: DiskController> MMU<D> {
             }};
         }
 
-        if address < 32 {            // Interrupt handlers
+        if address < BEGIN_RESERVED_1 {  // Interrupt handlers
             Ok(self.interrupt_vector[address as usize])
-        } else if address < 64 {     // Reserved
+        } else if address < BEGIN_ROM {  // Reserved
             reject!()
-        } else if address < 576 {    // ROM
-            Ok(self.rom.load(address - 64))
-        } else if address < 6576 {   // Memory-mapped display
+        } else if address < BEGIN_DISPLAY {  // ROM
+            Ok(self.rom.load(address - BEGIN_ROM))
+        } else if address < BEGIN_KEYBOARD {  // Memory-mapped display
             reject!()
-        } else if address < 6578 {   // Keyboard buffers
-            Ok(self.keyboard.load(address - 6576))
-        } else if address < 8172 {   // Reserved
+        } else if address < BEGIN_RESERVED_2 {  // Keyboard buffers
+            Ok(self.keyboard.load(address - BEGIN_KEYBOARD))
+        } else if address < BEGIN_DISK_A_STATUS {  // Reserved
             reject!()
-        } else if address < 8177 {   // Disk A read-only
-            Ok(self.disk_a.load_status(address - 8172))
-        } else if address < 8182 {   // Disk A control
+        } else if address < BEGIN_DISK_A_CONTROL {  // Disk A read-only
+            Ok(self.disk_a.load_status(address - BEGIN_DISK_A_STATUS))
+        } else if address < BEGIN_DISK_B_STATUS {  // Disk A control
             reject!()
-        } else if address < 8187 {   // Disk B read-only
-            Ok(self.disk_b.load_status(address - 8182))
-        } else if address < 8192 {   // Disk B control
+        } else if address < BEGIN_DISK_B_CONTROL {  // Disk B read-only
+            Ok(self.disk_b.load_status(address - BEGIN_DISK_B_STATUS))
+        } else if address < BEGIN_DISK_A_DATA {  // Disk B control
             reject!()
-        } else if address < 12288 {  // Disk A data
-            Ok(self.disk_a.load_data(address - 8192))
-        } else if address < 16384 {  // Disk B data
-            Ok(self.disk_b.load_data(address - 12288))
-        } else {                     // RAM
-            Ok(self.ram.load(address - 16384))
+        } else if address < BEGIN_DISK_B_DATA {  // Disk A data
+            Ok(self.disk_a.load_data(address - BEGIN_DISK_A_DATA))
+        } else if address < BEGIN_RAM {  // Disk B data
+            Ok(self.disk_b.load_data(address - BEGIN_DISK_B_DATA))
+        } else {  // RAM
+            Ok(self.ram.load(address - BEGIN_RAM))
         }
     }
 
