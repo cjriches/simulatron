@@ -4,28 +4,34 @@ use crate::cpu::{CPUError::TryAgainError, CPUResult, INTERRUPT_ILLEGAL_OPERATION
 use crate::disk::DiskController;
 use crate::display::DisplayController;
 use crate::keyboard::KeyboardController;
-use crate::ram::RAM;
-use crate::rom::ROM;
 
 pub const PAGE_FAULT_INVALID_PAGE: u32 = 0;
 pub const PAGE_FAULT_ILLEGAL_ACCESS: u32 = 1;
 pub const PAGE_FAULT_NOT_PRESENT: u32 = 2;
 pub const PAGE_FAULT_COW: u32 = 3;
 
-#[allow(dead_code)]  // First constant not actually needed, just here for documentation purposes.
-pub const BEGIN_INTERRUPT_HANDLERS: u32 = 0x0000;   // Read/Write
-pub const BEGIN_RESERVED_1: u32 = 0x0020;           // No access
-pub const BEGIN_ROM: u32 = 0x0040;                  // Read-only
-pub const BEGIN_DISPLAY: u32 = 0x0240;              // Write-only
-pub const BEGIN_KEYBOARD: u32 = 0x19B0;             // Read-only
-pub const BEGIN_RESERVED_2: u32 = 0x19B2;           // No access
-pub const BEGIN_DISK_A_STATUS: u32 = 0x1FEC;        // Read-only
-pub const BEGIN_DISK_A_CONTROL: u32 = 0x1FF1;       // Write-only
-pub const BEGIN_DISK_B_STATUS: u32 = 0x1FF6;        // Read-only
-pub const BEGIN_DISK_B_CONTROL: u32 = 0x1FFB;       // Write-only
-pub const BEGIN_DISK_A_DATA: u32 = 0x2000;          // Read/Write
-pub const BEGIN_DISK_B_DATA: u32 = 0x3000;          // Read/Write
-pub const BEGIN_RAM: u32 = 0x4000;                  // Read/Write
+const BEGIN_INTERRUPT_VECTOR: u32 = 0x0000;     // Read/Write
+const BEGIN_RESERVED_1: u32 = 0x0020;           // No access
+const BEGIN_ROM: u32 = 0x0040;                  // Read-only
+const BEGIN_DISPLAY: u32 = 0x0240;              // Write-only
+const BEGIN_KEYBOARD: u32 = 0x19B0;             // Read-only
+const BEGIN_RESERVED_2: u32 = 0x19B2;           // No access
+const BEGIN_DISK_A_STATUS: u32 = 0x1FEC;        // Read-only
+const BEGIN_DISK_A_CONTROL: u32 = 0x1FF1;       // Write-only
+const BEGIN_DISK_B_STATUS: u32 = 0x1FF6;        // Read-only
+const BEGIN_DISK_B_CONTROL: u32 = 0x1FFB;       // Write-only
+const BEGIN_DISK_A_DATA: u32 = 0x2000;          // Read/Write
+const BEGIN_DISK_B_DATA: u32 = 0x3000;          // Read/Write
+const BEGIN_RAM: u32 = 0x4000;                  // Read/Write
+
+const INTERRUPT_VECTOR_SIZE: usize = (BEGIN_RESERVED_1 - BEGIN_INTERRUPT_VECTOR) as usize;
+type InterruptVector = [u8; INTERRUPT_VECTOR_SIZE];
+
+const RAM_SIZE: usize = (u32::MAX - BEGIN_RAM) as usize;
+type RAM = Vec<u8>;
+
+pub const ROM_SIZE: usize = (BEGIN_DISPLAY - BEGIN_ROM) as usize;
+pub type ROM = [u8; ROM_SIZE];
 
 enum Intent {
     Read,
@@ -35,7 +41,7 @@ enum Intent {
 
 pub struct MMU<D: DiskController> {
     interrupt_channel: Sender<u32>,
-    interrupt_vector: [u8; 32],
+    interrupt_vector: InterruptVector,
     disk_a: D,
     disk_b: D,
     display: DisplayController,
@@ -51,16 +57,15 @@ impl<D: DiskController> MMU<D> {
                disk_b: D,
                display: DisplayController,
                keyboard: KeyboardController,
-               ram: RAM,
                rom: ROM) -> Self {
         MMU {
             interrupt_channel,
-            interrupt_vector: [0; 32],
+            interrupt_vector: [0; INTERRUPT_VECTOR_SIZE],
             disk_a,
             disk_b,
             display,
             keyboard,
-            ram,
+            ram: vec![0; RAM_SIZE],
             rom,
             pfsr: 0,
         }
@@ -154,7 +159,7 @@ impl<D: DiskController> MMU<D> {
             self.disk_b.store_data(address - BEGIN_DISK_B_DATA, value);
             Ok(())
         } else {  // RAM
-            self.ram.store(address - BEGIN_RAM, value);
+            self.ram[(address - BEGIN_RAM) as usize] = value;
             Ok(())
         }
     }
@@ -186,7 +191,7 @@ impl<D: DiskController> MMU<D> {
         } else if address < BEGIN_ROM {  // Reserved
             reject!()
         } else if address < BEGIN_DISPLAY {  // ROM
-            Ok(self.rom.load(address - BEGIN_ROM))
+            Ok(self.rom[(address - BEGIN_ROM) as usize])
         } else if address < BEGIN_KEYBOARD {  // Memory-mapped display
             reject!()
         } else if address < BEGIN_RESERVED_2 {  // Keyboard buffers
@@ -206,7 +211,7 @@ impl<D: DiskController> MMU<D> {
         } else if address < BEGIN_RAM {  // Disk B data
             Ok(self.disk_b.load_data(address - BEGIN_DISK_B_DATA))
         } else {  // RAM
-            Ok(self.ram.load(address - BEGIN_RAM))
+            Ok(self.ram[(address - BEGIN_RAM) as usize])
         }
     }
 
@@ -280,13 +285,13 @@ impl<D: DiskController> MMU<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand;
+
+    use ntest::timeout;
+    use rand::{self, distributions::Distribution, SeedableRng};
     use std::sync::mpsc::{self, Receiver};
     use std::time::Duration;
 
     use crate::disk::MockDiskController;
-
-    const RAM_BASE: u32 = 0x4000;
 
     struct MMUFixture {
         mmu: MMU<MockDiskController>,
@@ -303,8 +308,7 @@ mod tests {
             let (keyboard_tx, keyboard_rx) = mpsc::channel();
             let keyboard = KeyboardController::new(
                 keyboard_tx, keyboard_rx, interrupt_tx.clone());
-            let ram = RAM::new();
-            let rom = ROM::new([0; 512]);
+            let rom = [0; ROM_SIZE];
 
             MMUFixture {
                 mmu: MMU::new(
@@ -313,7 +317,6 @@ mod tests {
                     disk_b,
                     display,
                     keyboard,
-                    ram,
                     rom,
                 ),
                 interrupt_rx,
@@ -325,22 +328,22 @@ mod tests {
     fn test_physical_ram() {
         let mut fixture = MMUFixture::new();
 
-        assert_eq!(fixture.mmu.load_physical_32(RAM_BASE), Ok(0));
-        fixture.mmu.store_physical_8(RAM_BASE, 0x01).unwrap();
-        fixture.mmu.store_physical_16(RAM_BASE + 2, 0x1234).unwrap();
-        assert_eq!(fixture.mmu.load_physical_32(RAM_BASE), Ok(0x01001234));
+        assert_eq!(fixture.mmu.load_physical_32(BEGIN_RAM), Ok(0));
+        fixture.mmu.store_physical_8(BEGIN_RAM, 0x01).unwrap();
+        fixture.mmu.store_physical_16(BEGIN_RAM + 2, 0x1234).unwrap();
+        assert_eq!(fixture.mmu.load_physical_32(BEGIN_RAM), Ok(0x01001234));
     }
 
     #[test]
     fn test_address_translation() {
         let mut fixture = MMUFixture::new();
 
-        const PDPR: u32 = RAM_BASE;
+        const PDPR: u32 = BEGIN_RAM;
         // Write a single page directory and page table entry.
         let directory_entry = 0x00005001;  // Frame 1 of RAM, Valid.
-        fixture.mmu.store_physical_32(RAM_BASE, directory_entry).unwrap();
+        fixture.mmu.store_physical_32(BEGIN_RAM, directory_entry).unwrap();
         let page_entry = 0x00006007; // Frame 2 of RAM, Valid, Present, Readable.
-        fixture.mmu.store_physical_32(RAM_BASE + 0x1000, page_entry).unwrap();
+        fixture.mmu.store_physical_32(BEGIN_RAM + 0x1000, page_entry).unwrap();
         assert_eq!(fixture.mmu.virtual_to_physical_address(0, PDPR, Intent::Read),
                    Ok(0x00006000));
     }
@@ -372,7 +375,7 @@ mod tests {
     fn test_invalid_page_fault() {
         let mut fixture = MMUFixture::new();
 
-        const PDPR: u32 = RAM_BASE;
+        const PDPR: u32 = BEGIN_RAM;
         // 0 is an invalid page directory entry; don't need to write anything.
         // Any translation should fail.
         assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0, Intent::Read), Err(TryAgainError));
@@ -380,11 +383,11 @@ mod tests {
         assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 678424657, Intent::Execute), Err(TryAgainError));
 
         // Now write a valid page directory entry.
-        fixture.mmu.store_physical_32(RAM_BASE, 0x00005001).unwrap(); // Frame 1 of RAM, Valid.
+        fixture.mmu.store_physical_32(BEGIN_RAM, 0x00005001).unwrap(); // Frame 1 of RAM, Valid.
         // Write some invalid page table entries to make sure the correct bit is being checked.
         for i in 0..3 {
             let page_entry = rand::random::<u32>() << 1;
-            fixture.mmu.store_physical_32(RAM_BASE + 0x1000 + (i*4), page_entry).unwrap();
+            fixture.mmu.store_physical_32(BEGIN_RAM + 0x1000 + (i*4), page_entry).unwrap();
         }
         // Any translation should still fail.
         assert_eq!(fixture.mmu.virtual_to_physical_address(PDPR, 0x0000, Intent::Read), Err(TryAgainError));
@@ -542,5 +545,57 @@ mod tests {
 
         // Assert the write didn't go through either time.
         assert_eq!(fixture.mmu.load_physical_32(0x6123), Ok(0));
+    }
+
+    #[test]
+    #[timeout(100)]
+    fn test_ram_performance() {
+        let mut fixture = MMUFixture::new();
+        const RAM_SIZE: u32 = super::RAM_SIZE as u32;  // Easier than casting every time.
+        const U32_SIZE: u32 = std::mem::size_of::<u32>() as u32;
+
+        // Write to very start, halfway through, near the end, and very end of RAM.
+        fixture.mmu.store_physical_8(BEGIN_RAM, 1).unwrap();
+        fixture.mmu.store_physical_8(BEGIN_RAM + RAM_SIZE / 2, 2).unwrap();
+        fixture.mmu.store_physical_8(BEGIN_RAM + RAM_SIZE - 10, 3).unwrap();
+        fixture.mmu.store_physical_8(BEGIN_RAM + RAM_SIZE - 1, 4).unwrap();
+
+        // Read back the same locations.
+        assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM), Ok(1));
+        assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM + RAM_SIZE / 2), Ok(2));
+        assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM + RAM_SIZE - 10), Ok(3));
+        assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM + RAM_SIZE - 1), Ok(4));
+
+        // Perform some random access.
+        const NUM_RANDOMS: usize = 1000;
+
+        // Generate some random numbers to store.
+        let mut random_data = Vec::with_capacity(NUM_RANDOMS);
+        random_data.resize_with(NUM_RANDOMS, rand::random::<u32>);
+
+        // Generate some (deterministic) random addresses, aligned by u32 and non-repeating.
+        let uniform_gen = rand::distributions::Uniform::new(
+            BEGIN_RAM / U32_SIZE,
+            u32::MAX / U32_SIZE);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x9636734947793487);
+        let mut random_addresses = Vec::with_capacity(NUM_RANDOMS);
+        let mut i: usize = 0;
+        while i < NUM_RANDOMS {
+            let address_candidate = uniform_gen.sample(&mut rng) * U32_SIZE;
+            if !random_addresses.contains(&address_candidate) {
+                random_addresses.push(address_candidate);
+                i += 1;
+            }
+        }
+
+        // Random write.
+        for i in 0..NUM_RANDOMS {
+            fixture.mmu.store_physical_32(random_addresses[i], random_data[i]).unwrap();
+        }
+
+        // Random read.
+        for i in 0..NUM_RANDOMS {
+            assert_eq!(fixture.mmu.load_physical_32(random_addresses[i]), Ok(random_data[i]));
+        }
     }
 }

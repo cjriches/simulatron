@@ -3,13 +3,12 @@ mod display;
 mod disk;
 mod keyboard;
 mod mmu;
-mod ram;
-mod rom;
 mod ui;
 
 use std::sync::mpsc;
 
 use crate::disk::RealDiskController;
+use crate::mmu::ROM_SIZE;
 
 pub struct Simulatron {
     cpu: cpu::CPU<RealDiskController>,
@@ -31,7 +30,7 @@ impl Simulatron {
         let keyboard_tx_ui = keyboard_tx.clone();
 
         // Set up test ROM.
-        let mut test_rom = [0; 512];
+        let mut test_rom = [0; ROM_SIZE];
         test_rom[0] = 0x0A;  // Copy literal
         test_rom[1] = 0x10;  // into r0b
         test_rom[2] = 0x24;  // character '$'.
@@ -109,10 +108,8 @@ impl Simulatron {
             keyboard_tx,
             keyboard_rx,
             interrupt_tx_keyboard);
-        let ram = ram::RAM::new();
-        let rom = rom::ROM::new(test_rom);
         let mmu = mmu::MMU::new(interrupt_tx_mmu, disk_a, disk_b,
-                                display, keyboard, ram, rom);
+                                display, keyboard, test_rom);
         let cpu = cpu::CPU::new(ui_tx_cpu, mmu, interrupt_tx, interrupt_rx);
         let ui = ui::UI::new(ui_tx, ui_rx, keyboard_tx_ui);
 

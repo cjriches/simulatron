@@ -174,7 +174,7 @@ impl DiskController for RealDiskController {
     }
 
     fn store_data(&mut self, address: u32, value: u8) {
-        let index = usize::try_from(address).unwrap();
+        let index = address as usize;
         let buffer = &mut self.shared_data.lock().unwrap().buffer;
         if index >= buffer.len() {
             panic!("Invalid address in disk::store_data.");
@@ -183,7 +183,7 @@ impl DiskController for RealDiskController {
     }
 
     fn load_data(&self, address: u32) -> u8 {
-        let index = usize::try_from(address).unwrap();
+        let index = address as usize;
         let buffer = &self.shared_data.lock().unwrap().buffer;
         if index >= buffer.len() {
             panic!("Invalid address in disk::load_data.");
