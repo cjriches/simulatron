@@ -27,7 +27,7 @@ const BEGIN_RAM: u32 = 0x4000;                  // Read/Write
 const INTERRUPT_VECTOR_SIZE: usize = (BEGIN_RESERVED_1 - BEGIN_INTERRUPT_VECTOR) as usize;
 type InterruptVector = [u8; INTERRUPT_VECTOR_SIZE];
 
-const RAM_SIZE: usize = (u32::MAX - BEGIN_RAM) as usize;
+const RAM_SIZE: usize = (u32::MAX - BEGIN_RAM + 1) as usize;
 type RAM = Vec<u8>;
 
 pub const ROM_SIZE: usize = (BEGIN_DISPLAY - BEGIN_ROM) as usize;
@@ -557,14 +557,14 @@ mod tests {
         // Write to very start, halfway through, near the end, and very end of RAM.
         fixture.mmu.store_physical_8(BEGIN_RAM, 1).unwrap();
         fixture.mmu.store_physical_8(BEGIN_RAM + RAM_SIZE / 2, 2).unwrap();
-        fixture.mmu.store_physical_8(BEGIN_RAM + RAM_SIZE - 10, 3).unwrap();
-        fixture.mmu.store_physical_8(BEGIN_RAM + RAM_SIZE - 1, 4).unwrap();
+        fixture.mmu.store_physical_8(BEGIN_RAM + (RAM_SIZE - 10), 3).unwrap();
+        fixture.mmu.store_physical_8(BEGIN_RAM + (RAM_SIZE - 1), 4).unwrap();
 
         // Read back the same locations.
         assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM), Ok(1));
         assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM + RAM_SIZE / 2), Ok(2));
-        assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM + RAM_SIZE - 10), Ok(3));
-        assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM + RAM_SIZE - 1), Ok(4));
+        assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM + (RAM_SIZE - 10)), Ok(3));
+        assert_eq!(fixture.mmu.load_physical_8(BEGIN_RAM + (RAM_SIZE - 1)), Ok(4));
 
         // Perform some random access.
         const NUM_RANDOMS: usize = 1000;
