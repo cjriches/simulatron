@@ -12,6 +12,8 @@ The header describes overall metadata and the layout of the other elements. The 
 
 You may notice that the presence of distinct program sections is overkill for making a directly executable image. However, this format is designed with the future in mind, and could theoretically be loadable by an operating system.
 
+This file format is always big-endian, as Simulatron is big-endian.
+
 ## Header Format
 | Offset | Size    | Description                                  |
 | ------:| ------- | -------------------------------------------- |
@@ -20,8 +22,7 @@ You may notice that the presence of distinct program sections is overkill for ma
 |   0x08 | 4 bytes | Pointer to the start of the symbol table.    |
 |   0x0C | 4 bytes | Number of entries in the symbol table.       |
 |   0x10 | 4 bytes | Pointer to the start of the section headers. |
-|   0x14 | 1 byte  | Number of sections / section headers.        |
-|   0x15 | 3 bytes | Zero padding.                                |
+|   0x14 | 4 bytes | Number of sections / section headers.        |
 |   0x18 | N/A     | End of header (size).                        |
 
 ## Symbol Table Format
@@ -62,7 +63,7 @@ _________________________
 _________________________
 ```
 
-There must be only one section with the `E` flag set, and this section must also have the `X` flag set. Note that the effect of the permission bits is up to whatever is consuming the object code, and they may be ignored.
+There must be exactly one section with the `E` flag set (amongst all files linked together), and this section must also have the `X` flag set. Note that the effect of the permission bits is up to whatever is consuming the object code, and they may be ignored.
 
 ## Section Format
 A section is arbitrary binary code, that may be instructions and/or data for Simulatron. Any location where a symbol value is to be inserted must be left as zero; this helps detect malformed code in some cases.
