@@ -1,6 +1,12 @@
 # Simulatron
 ### Version 2.0.0-alpha
 
+## Overview
+Simulatron is a virtual machine with its own custom architecture, designed to aid understanding of hardware and low-level software, and to be fun to play around with.
+
+## Usage
+TODO
+
 ## Build Prerequisites
 For `web-view` to build, various other things may need to be installed. Running on Kubuntu 18.04 LTS, the following additional packages were required:
 * `libcairo2-dev`
