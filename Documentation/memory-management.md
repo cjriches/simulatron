@@ -59,7 +59,7 @@ A page table also consists of 1024 32-bit entries. It must be frame-aligned. Eac
 ```
 _________________________________________________________________________________________________
 |31|30|29|28|27|26|25|24|23|22|21|20|19|18|17|16|15|14|13|12|11|10|9 |8 |7 |6 |5 |4 |3 |2 |1 |0 |
-|                      Address of Frame                     |USER-DEF|RESERVED|C |E |W |R |P |V |
+|                      Address of Frame                     |USER-DEF|RESERVED|C |X |W |R |P |V |
 _________________________________________________________________________________________________
 ```
 
@@ -71,7 +71,7 @@ R stands for Read. If 0, attempted reads will generate a page fault.
 
 W stands for Write. If 0, attempted writes will generate a page fault.
 
-E stands for Execute. If 0, attempted instruction fetches will generate a page fault.
+X stands for eXecute. If 0, attempted instruction fetches will generate a page fault.
 
 C stands for Copy-On-Write. If both W and C are 1, then an attempted write will trigger a page fault.
 
@@ -85,7 +85,7 @@ If a page fault occurs, an interrupt will be sent to the CPU and the Page Fault 
 | Code |               Meaning                 |
 | ----:| ------------------------------------- |
 |    0 | Invalid page                          |
-|    1 | Illegal access (R, W, or E violation) |
+|    1 | Illegal access (R, W, or X violation) |
 |    2 | Page not present                      |
 |    3 | Copy-on-write                         |
 
