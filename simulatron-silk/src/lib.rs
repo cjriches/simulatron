@@ -28,21 +28,21 @@ const FLAG_EXECUTE: u8 = 0x10;
 pub const ROM_SIZE: usize = 512;
 
 /// An object code section.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct Section {
     flags: u8,
     data: Vec<u8>,
 }
 
 /// A location within an object code section.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct Location {
     section_index: usize,
     section_offset: usize,
 }
 
 /// A symbol table entry.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct SymbolTableEntry {
     symbol_type: u8,
     value: Option<u32>,
@@ -50,12 +50,12 @@ struct SymbolTableEntry {
 }
 
 /// A symbol table.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct SymbolTable(HashMap<String, SymbolTableEntry>);
 
 /// A whole parsed object file. Can be combined with others, and then processed
 /// into a specific target.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ObjectFile {
     symbols: SymbolTable,
     sections: Vec<Section>,
@@ -202,8 +202,8 @@ impl ObjectFile {
 
         // Read in all the offsets.
         let mut offsets = Vec::with_capacity(num_refs);
-        for i in 0..num_refs {
-            offsets[i] = source.read_be_u32()?;
+        for _ in 0..num_refs {
+            offsets.push(source.read_be_u32()?);
         }
 
         // Remember the current file position.
@@ -273,5 +273,122 @@ impl ObjectFile {
     /// Process an object file into a disk image.
     pub fn link_as_disk(self) -> OFResult<Vec<u8>> {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_file(path: &str, expected: &ObjectFile) {
+        let mut file = std::fs::File::open(path).unwrap();
+        let parsed = ObjectFile::new(&mut file).unwrap();
+        assert_eq!(parsed, *expected);
+    }
+
+    /// The simplest possible file: no symbols, one entrypoint section
+    /// containing a single byte.
+    #[test]
+    fn test_minimal() {
+        let section = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0],
+        };
+
+        let symbols = SymbolTable(HashMap::new());
+
+        let expected = ObjectFile {
+            symbols,
+            sections: vec![section],
+        };
+
+        parse_file("examples/minimal.simobj", &expected);
+    }
+
+    /// A file with a single symbol called foo, and a single entrypoint section.
+    #[test]
+    fn test_single_symbol() {
+        let section = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
+                       0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00],
+        };
+
+        let mut symbols = SymbolTable(HashMap::with_capacity(1));
+        symbols.0.insert(String::from("foo"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_INTERNAL,
+            value: Some(0x12345678),
+            references: vec![Location { section_index: 0, section_offset: 0x02 },
+                             Location { section_index: 0, section_offset: 0x0C },
+            ],
+        });
+
+        let expected = ObjectFile {
+            symbols,
+            sections: vec![section],
+        };
+
+        parse_file("examples/single-symbol.simobj", &expected);
+    }
+
+    /// A file with a single symbol called foo, and multiple sections.
+    #[test]
+    fn test_multi_section() {
+        let section0 = Section {
+            flags: FLAG_READ | FLAG_WRITE,
+            data: vec![0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
+                       0xFF, 0xFF, 0xFF, 0xFF],
+        };
+        let section1 = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0x11, 0x00, 0x00, 0x00, 0x00, 0x11, 0x11, 0x11],
+        };
+
+        let mut symbols = SymbolTable(HashMap::with_capacity(1));
+        symbols.0.insert(String::from("foo"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_INTERNAL,
+            value: Some(0x12345678),
+            references: vec![Location { section_index: 0, section_offset: 0x04 },
+                             Location { section_index: 1, section_offset: 0x01 },
+            ],
+        });
+
+        let expected = ObjectFile {
+            symbols,
+            sections: vec![section0, section1],
+        };
+
+        parse_file("examples/multi-section.simobj", &expected);
+    }
+
+    /// A file with multiple symbols, and a single entrypoint section.
+    #[test]
+    fn test_multi_symbol() {
+        let section = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00, 0x00, 0x00, 0x00, 0x00, 0xFF],
+        };
+
+        let mut symbols = SymbolTable(HashMap::with_capacity(2));
+        symbols.0.insert(String::from("bar"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_INTERNAL,
+            value: Some(0x12345678),
+            references: vec![Location { section_index: 0, section_offset: 0x01 },
+                             Location { section_index: 0, section_offset: 0x05 },
+            ],
+        });
+        symbols.0.insert(String::from("foobaz"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_PUBLIC,
+            value: Some(0x9ABCDEF0),
+            references: vec![Location { section_index: 0, section_offset: 0x09 }],
+        });
+
+        let expected = ObjectFile {
+            symbols,
+            sections: vec![section],
+        };
+
+        parse_file("examples/multi-symbol.simobj", &expected);
     }
 }
