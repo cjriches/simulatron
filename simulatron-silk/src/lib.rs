@@ -4,7 +4,7 @@ mod read_be;
 
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::io::{self, Seek, SeekFrom, Read};
+use std::io::{Seek, SeekFrom};
 
 use error::{OFError, OFResult};
 use read_be::ReadBE;
@@ -46,7 +46,7 @@ struct Location {
 struct SymbolTableEntry {
     symbol_type: u8,
     value: Option<u32>,
-    locations: Vec<Location>,
+    references: Vec<Location>,
 }
 
 /// A symbol table.
@@ -60,6 +60,9 @@ pub struct ObjectFile {
     symbols: SymbolTable,
     sections: Vec<Section>,
 }
+
+/// A section plus its location in an object file.
+type SpannedSection = (Section, u32, u32);
 
 impl ObjectFile {
     /// Parse a new object file from a byte stream.
@@ -98,11 +101,12 @@ impl ObjectFile {
         })
     }
 
-    /// Parse the section headers and sections. Produces a vector of (Section,
-    /// base, length) triples, where the base and length are used in
+    /// Parse the section headers and sections. Produces a vector of `(Section,
+    /// base, length)` triples, where the base and length are used in
     /// `parse_symbol_table` to determine which section an offset belongs to.
+    /// This vector is sorted by `base`.
     fn parse_sections<S>(source: &mut S, base: u32,
-                         num_headers: usize) -> OFResult<Vec<(Section, u32, u32)>>
+                         num_headers: usize) -> OFResult<Vec<SpannedSection>>
         where S: ReadBE + Seek
     {
         // Seek to the start of section headers.
@@ -133,16 +137,127 @@ impl ObjectFile {
             }, section_start, section_length as u32));
         }
 
+        // Sort sections by section_start.
+        sections.sort_unstable_by_key(|section| section.1);
+
         Ok(sections)
     }
 
     /// Parse the symbol table.
     fn parse_symbol_table<S>(source: &mut S, base: u32, num_entries: usize,
-                             sections: &Vec<(Section, u32, u32)>)
+                             sections: &Vec<SpannedSection>)
                              -> OFResult<SymbolTable>
         where S: ReadBE + Seek
     {
-        todo!()
+        // Seek to the start of the symbol table.
+        source.seek(SeekFrom::Start(base as u64))?;
+
+        // Process each section.
+        let mut table = HashMap::with_capacity(num_entries);
+        for _ in 0..num_entries {
+            // Read the symbol type.
+            let symbol_type = source.read_u8()?;
+            // Read the symbol value.
+            let value = source.read_be_u32()?;
+            // Read the name.
+            let name_len = source.read_u8()?.into();
+            let mut name_buf = vec![0; name_len];
+            source.read_exact(&mut name_buf)?;
+            let name = Self::validate_symbol_name(name_buf)?;
+            // Check the name is unique.
+            assert_or_error!(!table.contains_key(&name),
+                format!("Multiple definitions for symbol {}.", name));
+            // Read the number of references.
+            let num_refs = source.read_be_u32()?.try_into().unwrap();
+            // Read the references.
+            let references = Self::parse_references(source,
+                                                    num_refs, sections)?;
+            // Add the entry to the map.
+            let value= if symbol_type == SYMBOL_TYPE_EXTERNAL {
+                None
+            } else {
+                Some(value)
+            };
+            let entry = SymbolTableEntry {
+                symbol_type,
+                value,
+                references,
+            };
+            let was_present = table.insert(name.clone(), entry);
+            assert!(was_present.is_none());  // Sanity check.
+        }
+
+        Ok(SymbolTable(table))
+    }
+
+    /// Parse a list of symbol references. This validates that the reference
+    /// points to a zero-filled location within a section.
+    fn parse_references<S>(source: &mut S, num_refs: usize,
+                           sections: &Vec<SpannedSection>)
+                           -> OFResult<Vec<Location>>
+        where S: ReadBE + Seek
+    {
+        // Allocate the vector.
+        let mut refs = Vec::with_capacity(num_refs);
+
+        // Read in all the offsets.
+        let mut offsets = Vec::with_capacity(num_refs);
+        for i in 0..num_refs {
+            offsets[i] = source.read_be_u32()?;
+        }
+
+        // Remember the current file position.
+        let current_pos = source.stream_position()?;
+
+        // Check that each referenced location is currently zero, and turn it
+        // into a Location.
+        for offset in &offsets {
+            source.seek(SeekFrom::Start(*offset as u64))?;
+            let value = source.read_be_u32()?;
+            assert_or_error!(value == 0, "Symbol reference was non-zero.");
+            // Find the location from the file offset.
+            let mut i = 0;
+            let location = loop {
+                // Check if the offset is within this base and length.
+                let (_, base, length) = &sections[i];
+                if *offset >= *base && *offset < *base + *length {
+                    break Location {
+                        section_index: i,
+                        section_offset: (*offset - base)
+                            .try_into().unwrap(),
+                    };
+                }
+                i += 1;
+                assert_or_error!(i < sections.len(),
+                    "Symbol reference pointed outside of a section.");
+            };
+            // Add the location to the vector.
+            refs.push(location);
+        }
+
+        // Restore the file position.
+        source.seek(SeekFrom::Start(current_pos))?;
+
+        Ok(refs)
+    }
+
+    /// Validate a symbol name, either returning it as a String, or returning
+    /// an error.
+    fn validate_symbol_name(name: Vec<u8>) -> OFResult<String> {
+        // The length should be statically guaranteed by the object code format,
+        // but do a sanity check anyway.
+        assert!(name.len() < 256);
+
+        // Valid bytes are in the inclusive ranges 48-57, 65-90, 95, or 97-122.
+        for byte in &name {
+            match byte {
+                48..=57 | 65..=90 | 95 | 97..=122 => {},
+                _ => return Err(OFError::new("Invalid symbol name.")),
+            }
+        }
+
+        // Strings of this format are guaranteed to be valid UTF-8.
+        Ok(String::from_utf8(name).unwrap())
     }
 
     /// Combine the symbols and sections of two object files.
