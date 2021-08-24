@@ -1,19 +1,24 @@
 use std::io;
 
 /// Error type for this module.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct OFError {
     desc: String,
 }
 
 impl OFError {
     /// Convenient creation.
-    pub(super) fn new<S>(desc: S) -> Self
+    pub(crate) fn new<S>(desc: S) -> Self
         where S: Into<String>
     {
         OFError {
             desc: desc.into(),
         }
+    }
+
+    /// Extract the message.
+    pub fn message(&self) -> &str {
+        &self.desc
     }
 }
 

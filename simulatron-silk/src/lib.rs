@@ -50,8 +50,7 @@ struct SymbolTableEntry {
 }
 
 /// A symbol table.
-#[derive(Debug, PartialEq, Eq)]
-struct SymbolTable(HashMap<String, SymbolTableEntry>);
+type SymbolTable = HashMap<String, SymbolTableEntry>;
 
 /// A whole parsed object file. Can be combined with others, and then processed
 /// into a specific target.
@@ -187,7 +186,7 @@ impl ObjectFile {
             assert!(was_present.is_none());  // Sanity check.
         }
 
-        Ok(SymbolTable(table))
+        Ok(table)
     }
 
     /// Parse a list of symbol references. This validates that the reference
@@ -261,8 +260,71 @@ impl ObjectFile {
     }
 
     /// Combine the symbols and sections of two object files.
-    pub fn combine(self, other: Self) -> OFResult<Self> {
-        todo!()
+    pub fn combine(mut self, mut other: Self) -> OFResult<Self> {
+        // Remember the number of sections in self.
+        let self_sections = self.sections.len();
+        // Add the other sections.
+        self.sections.reserve(other.sections.len());
+        self.sections.append(&mut other.sections);
+        // Add the other symbols.
+        self.symbols.reserve(other.symbols.len());
+        for (name, mut new_entry) in other.symbols {
+            // Relocate the references.
+            for reference in &mut new_entry.references {
+                reference.section_index += self_sections;
+            }
+            // If this symbol is new, we can add it straight away. Otherwise,
+            // we must either:
+            // a) Rename to avoid collision between an internal symbol and
+            //    another (of any type).
+            // b) Resolve between an external and a public symbol.
+            // c) Reject two public symbols.
+            match self.symbols.get_mut(&name) {
+                None => {
+                    self.symbols.insert(name, new_entry);
+                },
+                Some(existing_entry) => {
+                    // Case a) rename an internal symbol.
+                    if new_entry.symbol_type == SYMBOL_TYPE_INTERNAL {
+                        // Rename the new entry before inserting.
+                        let new_name = gen_non_conflicting_name(&self.symbols, &name)?;
+                        let was_present = self.symbols.insert(new_name, new_entry);
+                        assert!(was_present.is_none());
+                    } else if existing_entry.symbol_type == SYMBOL_TYPE_INTERNAL {
+                        // Rename the existing entry then insert.
+                        let new_name = gen_non_conflicting_name(&self.symbols, &name)?;
+                        let old = self.symbols.remove(&name).unwrap();
+                        let was_present = self.symbols.insert(new_name, old)
+                            .or(self.symbols.insert(name, new_entry));
+                        assert!(was_present.is_none());
+                    // Case b) resolve external and public.
+                    } else if new_entry.symbol_type == SYMBOL_TYPE_EXTERNAL
+                            && existing_entry.symbol_type == SYMBOL_TYPE_PUBLIC {
+                        // Eat the new entry's references.
+                        existing_entry.references.append(&mut new_entry.references);
+                    } else if new_entry.symbol_type == SYMBOL_TYPE_PUBLIC
+                            && existing_entry.symbol_type == SYMBOL_TYPE_EXTERNAL {
+                        // Eat the new entry's references, take its value, and
+                        // change type to public.
+                        existing_entry.references.append(&mut new_entry.references);
+                        assert!(existing_entry.value.is_none());
+                        assert!(new_entry.value.is_some());
+                        existing_entry.value = new_entry.value;
+                        existing_entry.symbol_type = SYMBOL_TYPE_PUBLIC;
+                    // Case c) reject two public symbols.
+                    } else if new_entry.symbol_type == SYMBOL_TYPE_PUBLIC
+                            && existing_entry.symbol_type == SYMBOL_TYPE_PUBLIC {
+                        return Err(OFError::new(
+                            format!("Multiple definitions for symbol {}.", name)));
+                    } else {
+                        // Sanity check.
+                        unreachable!();
+                    }
+                }
+            }
+        }
+
+        Ok(self)
     }
 
     /// Process an object file into a ROM image.
@@ -276,14 +338,49 @@ impl ObjectFile {
     }
 }
 
+fn gen_non_conflicting_name<V>(map: &HashMap<String, V>,
+                               base: &String) -> OFResult<String> {
+    for suffix in 0..=u32::MAX {
+        let candidate = format!("{}{}", base, suffix);
+        if !map.contains_key(&candidate) {
+            return Ok(candidate);
+        }
+    }
+    Err(OFError::new(
+        format!("Failed to rename symbol {} to a unique value.", base)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn parse_file(path: &str, expected: &ObjectFile) {
-        let mut file = std::fs::File::open(path).unwrap();
-        let parsed = ObjectFile::new(&mut file).unwrap();
-        assert_eq!(parsed, *expected);
+    use std::fs::File;
+
+    /// Parse the given list of files and combine them.
+    macro_rules! parse_files {
+        // Single file case.
+        ($f:expr) => {{
+            let mut f = File::open($f).unwrap();
+            ObjectFile::new(&mut f)
+        }};
+
+        // Multiple files.
+        ($f0:expr, $($fs:expr),+) => {{
+            // Open and parse the first.
+            let mut f0 = File::open($f0).unwrap();
+            let parsed0 = ObjectFile::new(&mut f0);
+            // Fold with the remaining files.
+            [$($fs),*].iter().fold(parsed0, |parsed, path| {
+                // If the previous parse succeeded, parse the next one.
+                parsed.and_then(|of1| {
+                    let mut f = File::open(path).unwrap();
+                    ObjectFile::new(&mut f).and_then(|of2| {
+                        // If that succeeded too, combine them.
+                        of1.combine(of2)
+                    })
+                })
+            })
+        }};
     }
 
     /// The simplest possible file: no symbols, one entrypoint section
@@ -295,14 +392,15 @@ mod tests {
             data: vec![0],
         };
 
-        let symbols = SymbolTable(HashMap::new());
+        let symbols = HashMap::new();
 
         let expected = ObjectFile {
             symbols,
             sections: vec![section],
         };
 
-        parse_file("examples/minimal.simobj", &expected);
+        let parsed = parse_files!("examples/minimal.simobj");
+        assert_eq!(parsed, Ok(expected));
     }
 
     /// A file with a single symbol called foo, and a single entrypoint section.
@@ -314,8 +412,8 @@ mod tests {
                        0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00],
         };
 
-        let mut symbols = SymbolTable(HashMap::with_capacity(1));
-        symbols.0.insert(String::from("foo"), SymbolTableEntry {
+        let mut symbols = HashMap::with_capacity(1);
+        symbols.insert(String::from("foo"), SymbolTableEntry {
             symbol_type: SYMBOL_TYPE_INTERNAL,
             value: Some(0x12345678),
             references: vec![Location { section_index: 0, section_offset: 0x02 },
@@ -328,7 +426,8 @@ mod tests {
             sections: vec![section],
         };
 
-        parse_file("examples/single-symbol.simobj", &expected);
+        let parsed = parse_files!("examples/single-symbol.simobj");
+        assert_eq!(parsed, Ok(expected));
     }
 
     /// A file with a single symbol called foo, and multiple sections.
@@ -344,8 +443,8 @@ mod tests {
             data: vec![0x11, 0x00, 0x00, 0x00, 0x00, 0x11, 0x11, 0x11],
         };
 
-        let mut symbols = SymbolTable(HashMap::with_capacity(1));
-        symbols.0.insert(String::from("foo"), SymbolTableEntry {
+        let mut symbols = HashMap::with_capacity(1);
+        symbols.insert(String::from("foo"), SymbolTableEntry {
             symbol_type: SYMBOL_TYPE_INTERNAL,
             value: Some(0x12345678),
             references: vec![Location { section_index: 0, section_offset: 0x04 },
@@ -358,7 +457,8 @@ mod tests {
             sections: vec![section0, section1],
         };
 
-        parse_file("examples/multi-section.simobj", &expected);
+        let parsed = parse_files!("examples/multi-section.simobj");
+        assert_eq!(parsed, Ok(expected));
     }
 
     /// A file with multiple symbols, and a single entrypoint section.
@@ -370,15 +470,15 @@ mod tests {
                        0x00, 0x00, 0x00, 0x00, 0x00, 0xFF],
         };
 
-        let mut symbols = SymbolTable(HashMap::with_capacity(2));
-        symbols.0.insert(String::from("bar"), SymbolTableEntry {
+        let mut symbols = HashMap::with_capacity(2);
+        symbols.insert(String::from("bar"), SymbolTableEntry {
             symbol_type: SYMBOL_TYPE_INTERNAL,
             value: Some(0x12345678),
             references: vec![Location { section_index: 0, section_offset: 0x01 },
                              Location { section_index: 0, section_offset: 0x05 },
             ],
         });
-        symbols.0.insert(String::from("foobaz"), SymbolTableEntry {
+        symbols.insert(String::from("foobaz"), SymbolTableEntry {
             symbol_type: SYMBOL_TYPE_PUBLIC,
             value: Some(0x9ABCDEF0),
             references: vec![Location { section_index: 0, section_offset: 0x09 }],
@@ -389,6 +489,153 @@ mod tests {
             sections: vec![section],
         };
 
-        parse_file("examples/multi-symbol.simobj", &expected);
+        let parsed = parse_files!("examples/multi-symbol.simobj");
+        assert_eq!(parsed, Ok(expected));
     }
+
+    /// Combine the single-symbol and multi-section files.
+    #[test]
+    fn test_combine_internal() {
+        let section0 = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
+                       0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00],
+        };
+        let section1 = Section {
+            flags: FLAG_READ | FLAG_WRITE,
+            data: vec![0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
+                       0xFF, 0xFF, 0xFF, 0xFF],
+        };
+        let section2 = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0x11, 0x00, 0x00, 0x00, 0x00, 0x11, 0x11, 0x11],
+        };
+
+        let mut symbols = HashMap::with_capacity(2);
+        symbols.insert(String::from("foo"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_INTERNAL,
+            value: Some(0x12345678),
+            references: vec![Location { section_index: 0, section_offset: 0x02 },
+                             Location { section_index: 0, section_offset: 0x0C },
+            ],
+        });
+        symbols.insert(String::from("foo0"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_INTERNAL,
+            value: Some(0x12345678),
+            references: vec![Location { section_index: 1, section_offset: 0x04 },
+                             Location { section_index: 2, section_offset: 0x01 },
+            ],
+        });
+
+        let expected = ObjectFile {
+            symbols,
+            sections: vec![section0, section1, section2],
+        };
+
+        let parsed = parse_files!(
+            "examples/single-symbol.simobj",
+            "examples/multi-section.simobj"
+        );
+        assert_eq!(parsed, Ok(expected));
+    }
+
+    /// Combine the multi-symbol file with one that has an external reference
+    /// to the public symbol.
+    #[test]
+    fn test_combine_external() {
+        let section0 = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00, 0x00, 0x00, 0x00, 0x00, 0xFF],
+        };
+        let section1 = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0x00, 0x00, 0x00, 0x00],
+        };
+
+        let mut symbols = HashMap::with_capacity(2);
+        symbols.insert(String::from("bar"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_INTERNAL,
+            value: Some(0x12345678),
+            references: vec![Location { section_index: 0, section_offset: 0x01 },
+                             Location { section_index: 0, section_offset: 0x05 },
+            ],
+        });
+        symbols.insert(String::from("foobaz"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_PUBLIC,
+            value: Some(0x9ABCDEF0),
+            references: vec![Location { section_index: 0, section_offset: 0x09 },
+                             Location { section_index: 1, section_offset: 0x00 },
+            ],
+        });
+
+        let expected = ObjectFile {
+            symbols,
+            sections: vec![section0, section1],
+        };
+
+        let parsed = parse_files!(
+            "examples/multi-symbol.simobj",
+            "examples/external-symbol.simobj"
+        );
+        assert_eq!(parsed, Ok(expected));
+    }
+
+    /// Same as combine_external but with the files the other way around.
+    #[test]
+    fn test_combine_external_reversed() {
+        let section0 = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0x00, 0x00, 0x00, 0x00],
+        };
+        let section1 = Section {
+            flags: FLAG_ENTRYPOINT | FLAG_EXECUTE,
+            data: vec![0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                       0x00, 0x00, 0x00, 0x00, 0x00, 0xFF],
+        };
+
+        let mut symbols = HashMap::with_capacity(2);
+        symbols.insert(String::from("bar"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_INTERNAL,
+            value: Some(0x12345678),
+            references: vec![Location { section_index: 1, section_offset: 0x01 },
+                             Location { section_index: 1, section_offset: 0x05 },
+            ],
+        });
+        symbols.insert(String::from("foobaz"), SymbolTableEntry {
+            symbol_type: SYMBOL_TYPE_PUBLIC,
+            value: Some(0x9ABCDEF0),
+            references: vec![Location { section_index: 0, section_offset: 0x00 },
+                             Location { section_index: 1, section_offset: 0x09 },
+            ],
+        });
+
+        let expected = ObjectFile {
+            symbols,
+            sections: vec![section0, section1],
+        };
+
+        let parsed = parse_files!(
+            "examples/external-symbol.simobj",
+            "examples/multi-symbol.simobj"
+        );
+        assert_eq!(parsed, Ok(expected));
+    }
+
+    /// Try (and fail) to combine two files with the same public symbol.
+    #[test]
+    fn test_combine_public() {
+        let parsed = parse_files!(
+            "examples/multi-symbol.simobj",
+            "examples/multi-symbol.simobj"
+        );
+        match parsed {
+            Ok(_) => panic!(),
+            Err(e) => {
+                assert_eq!(e.message(), "Multiple definitions for symbol foobaz.");
+            }
+        }
+    }
+
+    // TODO test public and external conflicting with internal.
 }
