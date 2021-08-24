@@ -1,0 +1,13 @@
+---
+source: src/lib.rs
+expression: parsed
+
+---
+---Symbols---
+foo I 0x12345678 
+  Section 0 0x00000002
+  Section 0 0x0000000C
+---Sections---
+Section 0 flags: 0000010001
+FF FF 00 00  00 00 FF FF  FF FF FF FF  00 00 00 00
+

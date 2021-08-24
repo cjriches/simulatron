@@ -1,0 +1,18 @@
+---
+source: src/lib.rs
+expression: parsed
+
+---
+---Symbols---
+bar I 0x12345678 
+  Section 0 0x00000001
+  Section 0 0x00000005
+foobaz P 0x9ABCDEF0 
+  Section 0 0x00000009
+  Section 1 0x00000000
+---Sections---
+Section 0 flags: 0000010001
+FF 00 00 00  00 00 00 00  00 00 00 00  00 FF
+Section 1 flags: 0000010001
+00 00 00 00
+
