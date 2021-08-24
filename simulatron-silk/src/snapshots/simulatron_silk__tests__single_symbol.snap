@@ -5,9 +5,9 @@ expression: parsed
 ---
 ---Symbols---
 foo I 0x12345678 
-  Section 0 0x00000002
-  Section 0 0x0000000C
+  0x0000003B
+  0x00000045
 ---Sections---
-Section 0 flags: 0000010001
-FF FF 00 00  00 00 FF FF  FF FF FF FF  00 00 00 00
+Section 0 flags: 00010001 start: 0x00000039 length: 0x00000010
+0x00000000    FF FF 00 00  00 00 FF FF  FF FF FF FF  00 00 00 00
 

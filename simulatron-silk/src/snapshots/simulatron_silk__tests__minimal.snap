@@ -5,6 +5,6 @@ expression: parsed
 ---
 ---Symbols---
 ---Sections---
-Section 0 flags: 0000010001
-00
+Section 0 flags: 00010001 start: 0x00000024 length: 0x00000001
+0x00000000    00
 

@@ -5,12 +5,12 @@ expression: parsed
 ---
 ---Symbols---
 foobaz E
-  Section 1 0x00000000
+  0x00000076
 foobaz0 I 0x00000000 
-  Section 0 0x00000000
+  0x00000038
 ---Sections---
-Section 0 flags: 0000010001
-00 00 00 00  42 42
-Section 1 flags: 0000010001
-00 00 00 00
+Section 0 flags: 00010001 start: 0x00000038 length: 0x00000006
+0x00000000    00 00 00 00  42 42
+Section 1 flags: 00010001 start: 0x00000076 length: 0x00000004
+0x00000000    00 00 00 00
 

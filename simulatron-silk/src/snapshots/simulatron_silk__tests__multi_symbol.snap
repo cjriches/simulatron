@@ -5,11 +5,11 @@ expression: parsed
 ---
 ---Symbols---
 bar I 0x12345678 
-  Section 0 0x00000001
-  Section 0 0x00000005
+  0x0000004E
+  0x00000052
 foobaz P 0x9ABCDEF0 
-  Section 0 0x00000009
+  0x00000056
 ---Sections---
-Section 0 flags: 0000010001
-FF 00 00 00  00 00 00 00  00 00 00 00  00 FF
+Section 0 flags: 00010001 start: 0x0000004D length: 0x0000000E
+0x00000000    FF 00 00 00  00 00 00 00  00 00 00 00  00 FF
 

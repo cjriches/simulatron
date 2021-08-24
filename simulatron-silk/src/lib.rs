@@ -5,7 +5,7 @@ mod read_be;
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 use std::io::{Seek, SeekFrom};
 
 use error::{OFError, OFResult};
@@ -25,48 +25,29 @@ const FLAG_ENTRYPOINT: u8 = 0x01;
 const FLAG_READ: u8 = 0x04;
 const FLAG_WRITE: u8 = 0x08;
 const FLAG_EXECUTE: u8 = 0x10;
+const INVALID_FLAGS: u8 = !(FLAG_ENTRYPOINT | FLAG_READ
+                           | FLAG_WRITE | FLAG_EXECUTE);
 
 // Simulatron-specific constants.
 pub const ROM_SIZE: usize = 512;
+pub const DISK_ALIGN: usize = 4096;
 
 /// An object code section.
 #[derive(Debug, PartialEq, Eq)]
 struct Section {
     flags: u8,
+    start: u32,
+    length: u32,
     data: Vec<u8>,
 }
 
 impl Display for Section {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // Write flags.
-        writeln!(f, "flags: {:010b}", self.flags)?;
+        writeln!(f, "flags: {:08b} start: {:#010X} length: {:#010X}",
+                 self.flags, self.start, self.length)?;
         // Write data.
-        for i in 0..self.data.len() {
-            // Write each byte as two hex digits.
-            write!(f, "{:02X}", self.data[i])?;
-            if i + 1 == self.data.len() {
-                break;  // Don't append final whitespace.
-            }
-            match i % 16 {
-                15 => write!(f, "\n"),          // Newline after 16 bytes
-                3 | 7 | 11 => write!(f, "  "),  // Double-space after 4 bytes
-                _ => write!(f, " "),            // Single-space between bytes
-            }?;
-        }
-        Ok(())
-    }
-}
-
-/// A location within an object code section.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Location {
-    section_index: usize,
-    section_offset: usize,
-}
-
-impl Display for Location {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Section {} {:#010X}", self.section_index, self.section_offset)
+        write!(f, "{}", pretty_print_hex_block(&self.data))
     }
 }
 
@@ -75,7 +56,7 @@ impl Display for Location {
 struct SymbolTableEntry {
     symbol_type: u8,
     value: Option<u32>,
-    references: Vec<Location>,
+    references: Vec<u32>,
 }
 
 /// A symbol table.
@@ -99,8 +80,8 @@ impl Display for ObjectFile {
                 Some(val) => format!(" {:#010X} ", val),
             };
             writeln!(f, "{} {}{}", name,char::from(symbol.symbol_type), value_str)?;
-            for reference in &symbol.references {
-                writeln!(f, "  {}", reference)?;
+            for reference in symbol.references.iter() {
+                writeln!(f, "  {:#010X}", reference)?;
             }
         }
         writeln!(f, "---Sections---")?;
@@ -111,9 +92,6 @@ impl Display for ObjectFile {
         Ok(())
     }
 }
-
-/// A section plus its location in an object file.
-type SpannedSection = (Section, u32, u32);
 
 impl ObjectFile {
     /// Parse a new object file from a byte stream.
@@ -142,22 +120,19 @@ impl ObjectFile {
 
         // Parse the symbol table.
         let symbols = Self::parse_symbol_table(source, symbol_table_start,
-                                               num_symbol_table_entries,
-                                               &sections)?;
+                                               num_symbol_table_entries)?;
 
         // Return the result.
         Ok(ObjectFile {
             symbols,
-            sections: sections.into_iter().map(|triple| triple.0).collect(),
+            sections,
         })
     }
 
-    /// Parse the section headers and sections. Produces a vector of `(Section,
-    /// base, length)` triples, where the base and length are used in
-    /// `parse_symbol_table` to determine which section an offset belongs to.
-    /// This vector is sorted by `base`.
+    /// Parse the section headers and sections. Produces a vector of sections,
+    /// sorted by their location in the file.
     fn parse_sections<S>(source: &mut S, base: u32,
-                         num_headers: usize) -> OFResult<Vec<SpannedSection>>
+                         num_headers: usize) -> OFResult<Vec<Section>>
         where S: ReadBE + Seek
     {
         // Seek to the start of section headers.
@@ -182,21 +157,22 @@ impl ObjectFile {
             // Restore the previous position.
             source.seek(SeekFrom::Start(current_pos))?;
             // Add the sector to the vector.
-            sections.push((Section {
+            sections.push(Section {
                 flags,
+                start: section_start,
+                length: section_length as u32,
                 data,
-            }, section_start, section_length as u32));
+            });
         }
 
-        // Sort sections by section_start.
-        sections.sort_unstable_by_key(|section| section.1);
+        // Sort sections by their location within the file.
+        sections.sort_unstable_by_key(|section| section.start);
 
         Ok(sections)
     }
 
     /// Parse the symbol table.
-    fn parse_symbol_table<S>(source: &mut S, base: u32, num_entries: usize,
-                             sections: &Vec<SpannedSection>)
+    fn parse_symbol_table<S>(source: &mut S, base: u32, num_entries: usize)
                              -> OFResult<SymbolTable>
         where S: ReadBE + Seek
     {
@@ -221,8 +197,7 @@ impl ObjectFile {
             // Read the number of references.
             let num_refs = source.read_be_u32()?.try_into().unwrap();
             // Read the references.
-            let references = Self::parse_references(source,
-                                                    num_refs, sections)?;
+            let references = Self::parse_references(source, num_refs)?;
             // Add the entry to the map.
             let value= if symbol_type == SYMBOL_TYPE_EXTERNAL {
                 None
@@ -234,7 +209,7 @@ impl ObjectFile {
                 value,
                 references,
             };
-            let was_present = table.insert(name.clone(), entry);
+            let was_present = table.insert(name, entry);
             assert!(was_present.is_none());  // Sanity check.
         }
 
@@ -243,14 +218,10 @@ impl ObjectFile {
 
     /// Parse a list of symbol references. This validates that the reference
     /// points to a zero-filled location within a section.
-    fn parse_references<S>(source: &mut S, num_refs: usize,
-                           sections: &Vec<SpannedSection>)
-                           -> OFResult<Vec<Location>>
+    fn parse_references<S>(source: &mut S, num_refs: usize)
+                           -> OFResult<Vec<u32>>
         where S: ReadBE + Seek
     {
-        // Allocate the vector.
-        let mut refs = Vec::with_capacity(num_refs);
-
         // Read in all the offsets.
         let mut offsets = Vec::with_capacity(num_refs);
         for _ in 0..num_refs {
@@ -260,36 +231,17 @@ impl ObjectFile {
         // Remember the current file position.
         let current_pos = source.stream_position()?;
 
-        // Check that each referenced location is currently zero, and turn it
-        // into a Location.
-        for offset in &offsets {
+        // Check that each referenced location is currently zero.
+        for offset in offsets.iter() {
             source.seek(SeekFrom::Start(*offset as u64))?;
             let value = source.read_be_u32()?;
             assert_or_error!(value == 0, "Symbol reference was non-zero.");
-            // Find the location from the file offset.
-            let mut i = 0;
-            let location = loop {
-                // Check if the offset is within this base and length.
-                let (_, base, length) = &sections[i];
-                if *offset >= *base && *offset < *base + *length {
-                    break Location {
-                        section_index: i,
-                        section_offset: (*offset - base)
-                            .try_into().unwrap(),
-                    };
-                }
-                i += 1;
-                assert_or_error!(i < sections.len(),
-                    "Symbol reference pointed outside of a section.");
-            };
-            // Add the location to the vector.
-            refs.push(location);
         }
 
         // Restore the file position.
         source.seek(SeekFrom::Start(current_pos))?;
 
-        Ok(refs)
+        Ok(offsets)
     }
 
     /// Validate a symbol name, either returning it as a String, or returning
@@ -300,7 +252,7 @@ impl ObjectFile {
         assert!(name.len() < 256);
 
         // Valid bytes are in the inclusive ranges 48-57, 65-90, 95, or 97-122.
-        for byte in &name {
+        for byte in name.iter() {
             match byte {
                 48..=57 | 65..=90 | 95 | 97..=122 => {},
                 _ => return Err(OFError::new("Invalid symbol name.")),
@@ -313,17 +265,21 @@ impl ObjectFile {
 
     /// Combine the symbols and sections of two object files.
     pub fn combine(mut self, mut other: Self) -> OFResult<Self> {
-        // Remember the number of sections in self.
-        let self_sections = self.sections.len();
+        // We will need to offset all the references in `other`.
+        let offset = self.length();
+        // Offset the other sections.
+        for section in other.sections.iter_mut() {
+            section.start += offset;
+        }
         // Add the other sections.
         self.sections.reserve(other.sections.len());
         self.sections.append(&mut other.sections);
         // Add the other symbols.
         self.symbols.reserve(other.symbols.len());
-        for (name, mut new_entry) in other.symbols {
+        for (name, mut new_entry) in other.symbols.into_iter() {
             // Relocate the references.
-            for reference in &mut new_entry.references {
-                reference.section_index += self_sections;
+            for reference in new_entry.references.iter_mut() {
+                *reference += offset;
             }
             // If this symbol is new, we can add it straight away. Otherwise,
             // we must either:
@@ -379,14 +335,123 @@ impl ObjectFile {
         Ok(self)
     }
 
+    fn length(&self) -> u32 {
+        // We depend on the invariant that sections are kept sorted.
+        match self.sections.last() {
+            None => 0,
+            Some(last_section) => last_section.start
+                                            + last_section.length,
+        }
+    }
+
     /// Process an object file into a ROM image.
-    pub fn link_as_rom(self) -> OFResult<[u8; ROM_SIZE]> {
-        todo!()
+    pub fn link_as_rom(self) -> OFResult<Vec<u8>> {
+        // Generate image.
+        let mut image = self.link_as_image()?;
+        // Ensure it is the correct size.
+        assert_or_error!(image.len() <= ROM_SIZE,
+            format!("Binary ({} bytes) exceeds rom capacity ({} bytes).",
+            image.len(), ROM_SIZE));
+        image.resize(ROM_SIZE, 0);
+
+        Ok(image)
     }
 
     /// Process an object file into a disk image.
     pub fn link_as_disk(self) -> OFResult<Vec<u8>> {
-        todo!()
+        // Generate image.
+        let mut image = self.link_as_image()?;
+        // Pad it to the next multiple of DISK_ALIGN.
+        let remainder = image.len() % DISK_ALIGN;
+        if remainder > 0 {
+            let new_len = image.len() + DISK_ALIGN - remainder;
+            image.resize(new_len, 0);
+        }
+
+        Ok(image)
+    }
+
+    /// Process an object file into a generic, unpadded image.
+    fn link_as_image(mut self) -> OFResult<Vec<u8>> {
+        // Find the entrypoint section.
+        let mut entrypoint_index = None;
+        for (i, section) in self.sections.iter().enumerate() {
+            assert_or_error!(section.flags & INVALID_FLAGS == 0,
+                "Invalid section flags.");
+            if section.flags & FLAG_ENTRYPOINT != 0 {
+                assert_or_error!(section.flags & FLAG_EXECUTE != 0,
+                    "Section had entrypoint but not execute set.");
+                assert_or_error!(entrypoint_index.is_none(),
+                    "Multiple entrypoint sections were defined.");
+                entrypoint_index = Some(i);
+            }
+        }
+        assert_or_error!(entrypoint_index.is_some(),
+            "No entrypoint section was defined.");
+        let entrypoint_index = entrypoint_index.unwrap();
+
+        // Relocate the entrypoint section to the start.
+        let entrypoint = &mut self.sections[entrypoint_index];
+        let cutoff = entrypoint.start;
+        let offset = entrypoint.length;
+        entrypoint.start = 0;
+        for i in 0..entrypoint_index {
+            self.sections[i].start += offset;
+        }
+        move_to_start(&mut self.sections, entrypoint_index);
+
+        // Resolve all symbol references.
+        for (name, symbol) in self.symbols.iter() {
+            assert_or_error!(symbol.value.is_some(),
+                format!("Unresolved symbol: {}", name));
+            let value = symbol.value.unwrap().to_be_bytes();
+            for reference in symbol.references.iter() {
+                // Account for relocating the entrypoint section.
+                let relocated = if *reference < cutoff {
+                    // This was before the entrypoint before, so add the offset.
+                    *reference + offset
+                } else if *reference < cutoff + offset {
+                    // This was in the entrypoint before, so subtract the cutoff.
+                    *reference - cutoff
+                } else {
+                    // This was after the entrypoint, no change.
+                    *reference
+                };
+                // Resolve reference.
+                let mut resolved = false;
+                for section in self.sections.iter_mut() {
+                    if relocated < section.start + section.length {
+                        // Splice into the section.
+                        let section_offset: usize = (relocated - section.start)
+                            .try_into().unwrap();
+                        for i in 0..4 {
+                            // Sanity check.
+                            assert_eq!(section.data[section_offset + i], 0);
+                            section.data[section_offset + i] = value[i];
+                        }
+                        resolved = true;
+                        break;
+                    }
+                }
+                assert!(resolved);  // Sanity check.
+            }
+        }
+
+        // Concatenate sections.
+        // First, calculate the true length in bytes. This has nothing to do with
+        // the section `start` and `length` parameters, which are expressed in
+        // terms of original file offsets.
+        let mut length = 0;
+        for section in self.sections.iter() {
+            length += section.data.len();
+        }
+        // Now allocate the buffer and fill it.
+        let mut image = Vec::with_capacity(length);
+        for section in self.sections.iter_mut() {
+            image.append(&mut section.data);
+        }
+
+        Ok(image)
     }
 }
 
@@ -402,11 +467,65 @@ fn gen_non_conflicting_name<V>(map: &HashMap<String, V>,
         format!("Failed to rename symbol {} to a unique value.", base)))
 }
 
+/// Efficiently move the given index to the start of the vector.
+/// Doing a `.remove()` followed by a `.insert()` requires two
+/// linear time operations, whereas this only requires one.
+fn move_to_start<T>(v: &mut Vec<T>, index: usize) {
+    assert!(index < v.len(),
+            "Index {} out of bounds for vector with length {}.", index, v.len());
+    let ptr = v.as_mut_ptr();
+    unsafe {
+        // Remember the item to move.
+        let item = ptr.add(index).read();
+        // Shift the others up.
+        for i in (0..index).rev() {
+            ptr.add(i + 1).write(ptr.add(i).read());
+        }
+        // Put the moved item back in at the start.
+        ptr.write(item);
+    }
+}
+
+/// Nicely format the given Vec<u8> as a hex block.
+fn pretty_print_hex_block(image: &Vec<u8>) -> String {
+    // Each 16 bytes of the input produces a line consisting of:
+    // - a 10-character address
+    // - 32 characters of bytes
+    // - 22 spaces
+    // - 1 newline
+    // Therefore, each 16 bytes of input produces about 65 bytes of output.
+    let mut str = String::with_capacity((image.len()/16 + 1) * 65);
+    for (i, byte) in image.iter().enumerate() {
+        match i % 16 {
+            0 => {
+                // At the start of each 16 bytes, print an address header.
+                write!(str, "{:#010X}    ", i).unwrap();
+            }
+            4 | 8 | 12 => {
+                // After each 4 bytes, print a double space.
+                str.push_str("  ");
+            },
+            _ => {
+                // Single-space between bytes.
+                str.push(' ');
+            }
+        }
+        // Write each byte as two hex digits.
+        write!(str, "{:02X}", byte).unwrap();
+        // If this is the last byte of the not-last row, add a newline.
+        if (i % 16 == 15) && (i + 1 != image.len()) {
+            str.push('\n');
+        }
+    }
+
+    return str;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use insta::assert_display_snapshot;
+    use insta::{assert_snapshot, assert_display_snapshot};
     use std::fs::File;
 
     /// Parse the given list of files and combine them.
@@ -436,12 +555,59 @@ mod tests {
         }};
     }
 
+    /// Format the given Vec<u8> nicely and then snapshot it.
+    macro_rules! assert_image_snapshot {
+        ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img)) }
+    }
+
+    /// Since `move_to_start` is unsafe internally, we'd better test it.
+    #[test]
+    fn test_move_to_start() {
+        let mut v = vec![0, 1, 2, 3, 4];
+
+        // Test identity.
+        move_to_start(&mut v, 0);
+        assert_eq!(v, vec![0, 1, 2, 3, 4]);
+
+        // Test a small move.
+        move_to_start(&mut v, 1);
+        assert_eq!(v, vec![1, 0, 2, 3, 4]);
+
+        // Test full length move.
+        move_to_start(&mut v, 4);
+        assert_eq!(v, vec![4, 1, 0, 2, 3]);
+
+        // Test move from the middle.
+        move_to_start(&mut v, 2);
+        assert_eq!(v, vec![0, 4, 1, 2, 3]);
+
+        // Test out-of-bounds.
+        let result = std::panic::catch_unwind(move || {
+            move_to_start(&mut v, 5);
+        });
+        assert!(result.is_err());
+    }
+
     /// The simplest possible file: no symbols, one entrypoint section
     /// containing a single byte.
     #[test]
     fn test_minimal() {
         let parsed = parse_files!("examples/minimal.simobj").unwrap();
         assert_display_snapshot!(parsed);
+    }
+
+    #[test]
+    fn test_minimal_link_rom() {
+        let parsed = parse_files!("examples/minimal.simobj").unwrap();
+        let rom = parsed.link_as_rom().unwrap();
+        assert_eq!(rom, vec![0; ROM_SIZE]);
+    }
+
+    #[test]
+    fn test_minimal_link_disk() {
+        let parsed = parse_files!("examples/minimal.simobj").unwrap();
+        let disk = parsed.link_as_disk().unwrap();
+        assert_eq!(disk, vec![0; DISK_ALIGN]);
     }
 
     /// A file with a single symbol called foo, and a single entrypoint section.
@@ -451,6 +617,13 @@ mod tests {
         assert_display_snapshot!(parsed);
     }
 
+    #[test]
+    fn test_single_symbol_link() {
+        let parsed = parse_files!("examples/single-symbol.simobj").unwrap();
+        let rom = parsed.link_as_rom().unwrap();
+        assert_image_snapshot!(&rom);
+    }
+
     /// A file with a single symbol called foo, and multiple sections.
     #[test]
     fn test_multi_section() {
@@ -458,11 +631,25 @@ mod tests {
         assert_display_snapshot!(parsed);
     }
 
+    #[test]
+    fn test_multi_section_link() {
+        let parsed = parse_files!("examples/multi-section.simobj").unwrap();
+        let rom = parsed.link_as_rom().unwrap();
+        assert_image_snapshot!(&rom);
+    }
+
     /// A file with multiple symbols, and a single entrypoint section.
     #[test]
     fn test_multi_symbol() {
         let parsed = parse_files!("examples/multi-symbol.simobj").unwrap();
         assert_display_snapshot!(parsed);
+    }
+
+    #[test]
+    fn test_multi_symbol_link() {
+        let parsed = parse_files!("examples/multi-symbol.simobj").unwrap();
+        let rom = parsed.link_as_rom().unwrap();
+        assert_image_snapshot!(&rom);
     }
 
     /// Combine the single-symbol and multi-section files.
@@ -473,6 +660,20 @@ mod tests {
             "examples/multi-section.simobj"
         ).unwrap();
         assert_display_snapshot!(parsed);
+    }
+
+    #[test]
+    fn test_combine_internal_link() {
+        let parsed = parse_files!(
+            "examples/single-symbol.simobj",
+            "examples/multi-section.simobj"
+        ).unwrap();
+        let result = parsed.link_as_rom();
+        match result {
+            Ok(_) => panic!(),
+            Err(e) => assert_eq!(e.message(),
+                                 "Multiple entrypoint sections were defined."),
+        }
     }
 
     /// Combine the multi-symbol file with one that has an external reference
@@ -529,4 +730,6 @@ mod tests {
         ).unwrap();
         assert_display_snapshot!(parsed);
     }
+
+    // TODO test with truly null input: no symbols and no sections, or a single empty section.
 }

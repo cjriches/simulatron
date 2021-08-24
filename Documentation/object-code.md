@@ -14,6 +14,8 @@ You may notice that the presence of distinct program sections is overkill for ma
 
 This file format is always big-endian, as Simulatron is big-endian.
 
+Note that due to the use of 32-bit addresses, the maximum size of any object code file or linked combination of object code files is 4 GiB. This is also the amount of memory addressable by Simulatron, so you really shouldn't be making executables that big.
+
 ## Header Format
 | Offset | Size    | Description                                  |
 | ------:| ------- | -------------------------------------------- |
