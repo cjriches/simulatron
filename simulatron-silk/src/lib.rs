@@ -510,5 +510,23 @@ mod tests {
         }
     }
 
-    // TODO test public and external conflicting with internal.
+    /// Public symbol conflicting with an internal one.
+    #[test]
+    fn test_combine_public_internal() {
+        let parsed = parse_files!(
+            "examples/multi-symbol.simobj",
+            "examples/internal-foobaz.simobj"
+        ).unwrap();
+        assert_display_snapshot!(parsed);
+    }
+
+    /// External symbol conflicting with an internal one.
+    #[test]
+    fn test_combine_external_internal() {
+        let parsed = parse_files!(
+            "examples/internal-foobaz.simobj",
+            "examples/external-symbol.simobj"
+        ).unwrap();
+        assert_display_snapshot!(parsed);
+    }
 }

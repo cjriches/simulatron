@@ -1,0 +1,16 @@
+---
+source: src/lib.rs
+expression: parsed
+
+---
+---Symbols---
+foobaz E
+  Section 1 0x00000000
+foobaz0 I 0x00000000 
+  Section 0 0x00000000
+---Sections---
+Section 0 flags: 0000010001
+00 00 00 00  42 42
+Section 1 flags: 0000010001
+00 00 00 00
+
