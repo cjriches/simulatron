@@ -7,7 +7,7 @@ pub struct OFError {
 }
 
 impl OFError {
-    /// Convenient creation.
+    /// Create an error with the given message, only allowed within the crate.
     pub(crate) fn new<S>(desc: S) -> Self
         where S: Into<String>
     {

@@ -1,10 +1,13 @@
 use super::*;
 
 use insta::{assert_snapshot, assert_display_snapshot};
+use log::info;
 use std::fs::File;
 
+use crate::data::{DISK_ALIGN, ROM_SIZE, pretty_print_hex_block};
+
 /// Initialise logging.
-fn init() {
+pub fn init() {
     use std::io::Write;
 
     // The logger can only be initialised once, but we don't know the order of
@@ -22,65 +25,34 @@ fn init() {
 macro_rules! parse_files {
     // Single file case.
     ($f:expr) => {{
-        let mut f = File::open($f).unwrap();
+        let f = File::open($f).unwrap();
         info!("Parsing '{}'", $f);
-        ObjectFile::new(&mut f)
+        Parser::parse(f).map(Linker::new)
     }};
 
     // Multiple files.
     ($f0:expr, $($fs:expr),+) => {{
         // Open and parse the first.
-        let mut f0 = File::open($f0).unwrap();
+        let f0 = File::open($f0).unwrap();
         info!("Parsing '{}'", $f0);
-        let parsed0 = ObjectFile::new(&mut f0);
-        // Fold with the remaining files.
-        [$($fs),*].iter().fold(parsed0, |parsed, path| {
-            // If the previous parse succeeded, parse the next one.
-            parsed.and_then(|of1| {
-                let mut f = File::open(path).unwrap();
+        Parser::parse(f0).and_then(|parsed0| {
+            // Add it to a linker.
+            let mut linker = Linker::new(parsed0);
+            // Add the remaining files.
+            for path in [$($fs),*].iter() {
+                let f = File::open(path).unwrap();
                 info!("Parsing '{}'", path);
-                ObjectFile::new(&mut f).and_then(|of2| {
-                    // If that succeeded too, combine them.
-                    info!("Combining '{}'", path);
-                    of1.combine(of2)
-                })
-            })
+                let parsed = Parser::parse(f)?;
+                linker = linker.add(parsed)?;
+            }
+            Ok(linker)
         })
     }};
 }
 
 /// Format the given Vec<u8> nicely and then snapshot it.
 macro_rules! assert_image_snapshot {
-        ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img)) }
-    }
-
-/// Since `move_to_start` is unsafe internally, we'd better test it.
-#[test]
-fn test_move_to_start() {
-    init();
-    let mut v = vec![0, 1, 2, 3, 4];
-
-    // Test identity.
-    move_to_start(&mut v, 0);
-    assert_eq!(v, vec![0, 1, 2, 3, 4]);
-
-    // Test a small move.
-    move_to_start(&mut v, 1);
-    assert_eq!(v, vec![1, 0, 2, 3, 4]);
-
-    // Test full length move.
-    move_to_start(&mut v, 4);
-    assert_eq!(v, vec![4, 1, 0, 2, 3]);
-
-    // Test move from the middle.
-    move_to_start(&mut v, 2);
-    assert_eq!(v, vec![0, 4, 1, 2, 3]);
-
-    // Test out-of-bounds.
-    let result = std::panic::catch_unwind(move || {
-        move_to_start(&mut v, 5);
-    });
-    assert!(result.is_err());
+    ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img)) }
 }
 
 /// The simplest possible file: no symbols, one entrypoint section
