@@ -227,3 +227,64 @@ fn test_no_sections() {
     let error = parsed.link_as_rom().unwrap_err();
     assert_eq!(error.message(), "No entrypoint section was defined.");
 }
+
+/// Test with no entrypoint section.
+#[test]
+fn test_no_entrypoint() {
+    let parsed = parse_files!("examples/no-entrypoint.simobj").unwrap();
+    let error = parsed.link_as_disk().unwrap_err();
+    assert_eq!(error.message(), "No entrypoint section was defined.");
+}
+
+/// Test with a non-executable entrypoint.
+#[test]
+fn test_non_exec_entrypoint() {
+    let parsed = parse_files!("examples/non-exec-entrypoint.simobj").unwrap();
+    let error = parsed.link_as_rom().unwrap_err();
+    assert_eq!(error.message(), "Section had entrypoint but not execute set.");
+}
+
+/// Ensure things too big for ROM are rejected.
+#[test]
+fn test_too_big_for_rom() {
+    let parsed = parse_files!("examples/big.simobj").unwrap();
+    let error = parsed.link_as_rom().unwrap_err();
+    assert_eq!(error.message(),
+               format!("Binary (5000 bytes) exceeds rom capacity ({} bytes).", ROM_SIZE));
+}
+
+/// Ensure that disk images get padded appropriately.
+#[test]
+fn test_disk_padding() {
+    let parsed = parse_files!("examples/big.simobj").unwrap();
+    let disk = parsed.link_as_disk().unwrap();
+    let mut expected = vec![0x42; 5000];
+    expected.resize(DISK_ALIGN * 2, 0);
+    assert_eq!(disk, expected);
+}
+
+/// Try a malformed (truncated) file.
+#[test]
+fn test_too_small() {
+    let error = parse_files!("examples/too-small.simobj").unwrap_err();
+    assert_eq!(error.message(), "IO error: Unexpected EOF.");
+}
+
+/// Try a file with random padding around the important bits.
+#[test]
+fn test_gaps() {
+    let parsed = parse_files!("examples/multi-section-with-gaps.simobj").unwrap();
+    let rom1 = parsed.link_as_rom().unwrap();
+
+    // It should result in the same image as the no-gaps version.
+    let parsed = parse_files!("examples/multi-section.simobj").unwrap();
+    let rom2 = parsed.link_as_rom().unwrap();
+    assert_eq!(rom1, rom2);
+}
+
+/// Try a file where section references don't point to zeros.
+#[test]
+fn test_bad_reference() {
+    let error = parse_files!("examples/bad-reference.simobj").unwrap_err();
+    assert_eq!(error.message(), "Symbol reference was non-zero.");
+}

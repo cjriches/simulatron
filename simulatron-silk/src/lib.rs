@@ -448,9 +448,7 @@ impl ObjectFile {
         }
 
         // Concatenate sections.
-        // First, calculate the true length in bytes. This has nothing to do with
-        // the section `start` and `length` parameters, which are expressed in
-        // terms of original file offsets.
+        // First, calculate the true length in bytes.
         let mut length = 0;
         for section in self.sections.iter() {
             length += section.data.len();
