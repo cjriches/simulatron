@@ -6,6 +6,7 @@ mod read_be;
 mod tests;
 
 use itertools::Itertools;
+use log::{trace, debug, info};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::{Display, Formatter, Write};
@@ -115,20 +116,29 @@ impl ObjectFile {
         assert_or_error!(magic == MAGIC_HEADER, "Invalid magic header.");
         let version = source.read_be_u16()?;
         assert_or_error!(version == ABI_VERSION, "Unsupported ABI version.");
+        info!("Verified magic header and ABI version.");
 
         // Read the rest of the header.
         let symbol_table_start = source.read_be_u32()?;
+        debug!("Symbol table starts at {:#010X}", symbol_table_start);
         let num_symbol_table_entries = source.read_be_u32()?.try_into().unwrap();
+        debug!("Symbol table has {} entries.", num_symbol_table_entries);
         let section_headers_start = source.read_be_u32()?;
+        debug!("Section headers start at {:#010X}", section_headers_start);
         let num_section_headers = source.read_be_u32()?.try_into().unwrap();
+        debug!("There are {} section headers.", num_section_headers);
 
         // Parse the sections.
+        info!("About to parse sections.");
         let sections = Self::parse_sections(source, section_headers_start,
                                             num_section_headers)?;
+        info!("Sections parsed successfully.");
 
         // Parse the symbol table.
+        info!("About to parse symbol table.");
         let symbols = Self::parse_symbol_table(source, symbol_table_start,
                                                num_symbol_table_entries)?;
+        info!("Symbol table parsed successfully.");
 
         // Return the result.
         Ok(ObjectFile {
@@ -148,20 +158,25 @@ impl ObjectFile {
 
         // Process each section.
         let mut sections = Vec::with_capacity(num_headers);
-        for _ in 0..num_headers {
+        for i in 0..num_headers {
+            info!("About to parse section {}.", i);
             // Read the flags.
             let flags = source.read_u8()?;
+            debug!("Flags: {:08b}", flags);
             // Skip the padding.
             source.seek(SeekFrom::Current(3))?;
             // Read the section location.
             let section_start = source.read_be_u32()?;
+            debug!("Section starts at {:#010X}", section_start);
             let section_length = source.read_be_u32()?.try_into().unwrap();
+            debug!("Section is {} bytes long.", section_length);
             // Remember the current position and seek to the section.
             let current_pos = source.stream_position()?;
             source.seek(SeekFrom::Start(section_start as u64))?;
             // Read the section.
             let mut data = vec![0; section_length];
             source.read_exact(&mut data)?;
+            trace!("Section data:\n{}", pretty_print_hex_block(&data));
             // Restore the previous position.
             source.seek(SeekFrom::Start(current_pos))?;
             // Add the sector to the vector.
@@ -171,6 +186,7 @@ impl ObjectFile {
                 length: section_length as u32,
                 data,
             });
+            info!("Parsed section {} successfully.", i);
         }
 
         // Sort sections by their location within the file.
@@ -189,23 +205,30 @@ impl ObjectFile {
 
         // Process each section.
         let mut table = HashMap::with_capacity(num_entries);
-        for _ in 0..num_entries {
+        for i in 0..num_entries {
+            info!("About to parse symbol {}.", i);
             // Read the symbol type.
             let symbol_type = source.read_u8()?;
+            trace!("Symbol type: {}", symbol_type);
             // Read the symbol value.
             let value = source.read_be_u32()?;
+            debug!("Symbol value: {:#010X}", value);
             // Read the name.
             let name_len = source.read_u8()?.into();
+            debug!("Symbol name length: {}", name_len);
             let mut name_buf = vec![0; name_len];
             source.read_exact(&mut name_buf)?;
             let name = Self::validate_symbol_name(name_buf)?;
+            debug!("Symbol name: {}", name);
             // Check the name is unique.
             assert_or_error!(!table.contains_key(&name),
                 format!("Multiple definitions for symbol {}.", name));
             // Read the number of references.
             let num_refs = source.read_be_u32()?.try_into().unwrap();
+            debug!("Symbol has {} references.", num_refs);
             // Read the references.
             let references = Self::parse_references(source, num_refs)?;
+            debug!("All references parsed successfully.");
             // Add the entry to the map.
             let value= if symbol_type == SYMBOL_TYPE_EXTERNAL {
                 None
@@ -219,6 +242,7 @@ impl ObjectFile {
             };
             let was_present = table.insert(name, entry);
             assert!(was_present.is_none());  // Sanity check.
+            info!("Parsed symbol {} successfully.", i);
         }
 
         Ok(table)
@@ -232,15 +256,18 @@ impl ObjectFile {
     {
         // Read in all the offsets.
         let mut offsets = Vec::with_capacity(num_refs);
-        for _ in 0..num_refs {
-            offsets.push(source.read_be_u32()?);
+        for i in 0..num_refs {
+            let offset = source.read_be_u32()?;
+            trace!("Reference {}: {:#010X}", i, offset);
+            offsets.push(offset);
         }
 
         // Remember the current file position.
         let current_pos = source.stream_position()?;
 
         // Check that each referenced location is currently zero.
-        for offset in offsets.iter() {
+        for (i, offset) in offsets.iter().enumerate() {
+            trace!("Checking reference {}.", i);
             source.seek(SeekFrom::Start(*offset as u64))?;
             let value = source.read_be_u32()?;
             assert_or_error!(value == 0, "Symbol reference was non-zero.");
@@ -263,7 +290,17 @@ impl ObjectFile {
         for byte in name.iter() {
             match byte {
                 48..=57 | 65..=90 | 95 | 97..=122 => {},
-                _ => return Err(OFError::new("Invalid symbol name.")),
+                _ => {
+                    match String::from_utf8(name) {
+                        Ok(s) => {
+                            debug!("Invalid name: {}", s);
+                        },
+                        Err(_) => {
+                            debug!("Invalid name (unprintable).");
+                        },
+                    }
+                    return Err(OFError::new("Invalid symbol name."));
+                },
             }
         }
 
@@ -275,6 +312,7 @@ impl ObjectFile {
     pub fn combine(mut self, mut other: Self) -> OFResult<Self> {
         // We will need to offset all the references in `other`.
         let offset = self.length();
+        debug!("Offsetting other by {:#010X}", offset);
         // Offset the other sections.
         for section in other.sections.iter_mut() {
             section.start += offset;
@@ -282,6 +320,7 @@ impl ObjectFile {
         // Add the other sections.
         self.sections.reserve(other.sections.len());
         self.sections.append(&mut other.sections);
+        debug!("Gobbled all sections.");
         // Add the other symbols.
         self.symbols.reserve(other.symbols.len());
         for (name, mut new_entry) in other.symbols.into_iter() {
@@ -297,18 +336,23 @@ impl ObjectFile {
             // c) Reject two public symbols.
             match self.symbols.get_mut(&name) {
                 None => {
+                    debug!("Adding new symbol {}", name);
                     self.symbols.insert(name, new_entry);
                 },
                 Some(existing_entry) => {
+                    trace!("New symbol conflicts.");
                     // Case a) rename an internal symbol.
                     if new_entry.symbol_type == SYMBOL_TYPE_INTERNAL {
                         // Rename the new entry before inserting.
                         let new_name = gen_non_conflicting_name(&self.symbols, &name)?;
+                        debug!("Renaming new symbol {} to {} and adding.", name, new_name);
                         let was_present = self.symbols.insert(new_name, new_entry);
                         assert!(was_present.is_none());
                     } else if existing_entry.symbol_type == SYMBOL_TYPE_INTERNAL {
                         // Rename the existing entry then insert.
                         let new_name = gen_non_conflicting_name(&self.symbols, &name)?;
+                        debug!("Renaming existing symbol {} to {} and \
+                                adding a new one with the old name.", name, new_name);
                         let old = self.symbols.remove(&name).unwrap();
                         let was_present = self.symbols.insert(new_name, old)
                             .or(self.symbols.insert(name, new_entry));
@@ -317,11 +361,13 @@ impl ObjectFile {
                     } else if new_entry.symbol_type == SYMBOL_TYPE_EXTERNAL
                             && existing_entry.symbol_type == SYMBOL_TYPE_PUBLIC {
                         // Eat the new entry's references.
+                        debug!("Adding external reference to {}.", name);
                         existing_entry.references.append(&mut new_entry.references);
                     } else if new_entry.symbol_type == SYMBOL_TYPE_PUBLIC
                             && existing_entry.symbol_type == SYMBOL_TYPE_EXTERNAL {
                         // Eat the new entry's references, take its value, and
                         // change type to public.
+                        debug!("Resolving external reference {}.", name);
                         existing_entry.references.append(&mut new_entry.references);
                         assert!(existing_entry.value.is_none());
                         assert!(new_entry.value.is_some());
@@ -355,7 +401,10 @@ impl ObjectFile {
     /// Process an object file into a ROM image.
     pub fn link_as_rom(self) -> OFResult<Vec<u8>> {
         // Generate image.
+        info!("Generating ROM image.");
         let mut image = self.link_as_image(READ_ONLY)?;
+        info!("Image generated.");
+        debug!("Raw size: {} bytes.", image.len());
         // Ensure it is the correct size.
         assert_or_error!(image.len() <= ROM_SIZE,
             format!("Binary ({} bytes) exceeds rom capacity ({} bytes).",
@@ -368,11 +417,15 @@ impl ObjectFile {
     /// Process an object file into a disk image.
     pub fn link_as_disk(self) -> OFResult<Vec<u8>> {
         // Generate image.
+        info!("Generating disk image.");
         let mut image = self.link_as_image(READ_WRITE)?;
+        info!("Image generated.");
+        debug!("Raw size: {} bytes.", image.len());
         // Pad it to the next multiple of DISK_ALIGN.
         let remainder = image.len() % DISK_ALIGN;
         if remainder > 0 {
             let new_len = image.len() + DISK_ALIGN - remainder;
+            debug!("Padding to {} bytes.", new_len);
             image.resize(new_len, 0);
         }
 
@@ -382,8 +435,10 @@ impl ObjectFile {
     /// Process an object file into a generic, unpadded image.
     fn link_as_image(mut self, read_only: ImageAccess) -> OFResult<Vec<u8>> {
         // Find the entrypoint section.
+        info!("Looking for entrypoint section.");
         let mut entrypoint_index = None;
         for (i, section) in self.sections.iter().enumerate() {
+            debug!("Checking section {}.", i);
             assert_or_error!(section.flags & INVALID_FLAGS == 0,
                 "Invalid section flags.");
             assert_or_error!(!(read_only && (section.flags & FLAG_WRITE != 0)),
@@ -393,6 +448,7 @@ impl ObjectFile {
                     "Section had entrypoint but not execute set.");
                 assert_or_error!(entrypoint_index.is_none(),
                     "Multiple entrypoint sections were defined.");
+                debug!("Section {} is entrypoint.", i);
                 entrypoint_index = Some(i);
             }
         }
@@ -405,6 +461,7 @@ impl ObjectFile {
         let cutoff = entrypoint.start;
         let offset = entrypoint.length;
         entrypoint.start = 0;
+        debug!("Offsetting pre-entrypoint sections by {:#010X}", offset);
         for i in 0..entrypoint_index {
             self.sections[i].start += offset;
         }
@@ -412,6 +469,7 @@ impl ObjectFile {
 
         // Resolve all symbol references.
         for (name, symbol) in self.symbols.iter() {
+            debug!("Linking symbol {}", name);
             assert_or_error!(symbol.value.is_some(),
                 format!("Unresolved symbol: {}", name));
             let value = symbol.value.unwrap().to_be_bytes();
@@ -427,6 +485,8 @@ impl ObjectFile {
                     // This was after the entrypoint, so no change.
                     *reference
                 };
+                trace!("Relocating reference from {:#010X} to {:#010X}",
+                    reference, relocated);
                 // Resolve reference.
                 let mut resolved = false;
                 for section in self.sections.iter_mut() {
@@ -448,6 +508,7 @@ impl ObjectFile {
         }
 
         // Concatenate sections.
+        debug!("Linking complete; concatenating sections.");
         // First, calculate the true length in bytes.
         let mut length = 0;
         for section in self.sections.iter() {
