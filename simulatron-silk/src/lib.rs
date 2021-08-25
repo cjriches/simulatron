@@ -421,7 +421,7 @@ impl ObjectFile {
                     // This was in the entrypoint before, so subtract the cutoff.
                     *reference - cutoff
                 } else {
-                    // This was after the entrypoint, no change.
+                    // This was after the entrypoint, so no change.
                     *reference
                 };
                 // Resolve reference.
@@ -474,7 +474,8 @@ fn gen_non_conflicting_name<V>(map: &HashMap<String, V>,
         format!("Failed to rename symbol {} to a unique value.", base)))
 }
 
-/// Efficiently move the given index to the start of the vector.
+/// Efficiently move the given index to the start of the vector, displacing
+/// prior elements and shifting them up.
 /// Doing a `.remove()` followed by a `.insert()` requires two
 /// linear time operations, whereas this only requires one.
 fn move_to_start<T>(v: &mut Vec<T>, index: usize) {
