@@ -13,7 +13,7 @@ foo0 I 0x12345678
 ---Sections---
 Section 0 flags: 00010001 start: 0x00000039 length: 0x00000010
 0x00000000    FF FF 00 00  00 00 FF FF  FF FF FF FF  00 00 00 00
-Section 1 flags: 00001100 start: 0x0000008E length: 0x0000000C
+Section 1 flags: 00000100 start: 0x0000008E length: 0x0000000C
 0x00000000    FF FF FF FF  00 00 00 00  FF FF FF FF
 Section 2 flags: 00010001 start: 0x0000009A length: 0x00000008
 0x00000000    11 00 00 00  00 11 11 11

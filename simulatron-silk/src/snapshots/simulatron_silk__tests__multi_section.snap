@@ -8,7 +8,7 @@ foo I 0x12345678
   0x00000049
   0x00000052
 ---Sections---
-Section 0 flags: 00001100 start: 0x00000045 length: 0x0000000C
+Section 0 flags: 00000100 start: 0x00000045 length: 0x0000000C
 0x00000000    FF FF FF FF  00 00 00 00  FF FF FF FF
 Section 1 flags: 00010001 start: 0x00000051 length: 0x00000008
 0x00000000    11 00 00 00  00 11 11 11

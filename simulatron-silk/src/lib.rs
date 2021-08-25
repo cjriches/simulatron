@@ -32,6 +32,11 @@ const INVALID_FLAGS: u8 = !(FLAG_ENTRYPOINT | FLAG_READ
 pub const ROM_SIZE: usize = 512;
 pub const DISK_ALIGN: usize = 4096;
 
+// Is an image read-only or not?
+type ImageAccess = bool;
+const READ_ONLY: ImageAccess = true;
+const READ_WRITE: ImageAccess = false;
+
 /// An object code section.
 #[derive(Debug, PartialEq, Eq)]
 struct Section {
@@ -347,7 +352,7 @@ impl ObjectFile {
     /// Process an object file into a ROM image.
     pub fn link_as_rom(self) -> OFResult<Vec<u8>> {
         // Generate image.
-        let mut image = self.link_as_image()?;
+        let mut image = self.link_as_image(READ_ONLY)?;
         // Ensure it is the correct size.
         assert_or_error!(image.len() <= ROM_SIZE,
             format!("Binary ({} bytes) exceeds rom capacity ({} bytes).",
@@ -360,7 +365,7 @@ impl ObjectFile {
     /// Process an object file into a disk image.
     pub fn link_as_disk(self) -> OFResult<Vec<u8>> {
         // Generate image.
-        let mut image = self.link_as_image()?;
+        let mut image = self.link_as_image(READ_WRITE)?;
         // Pad it to the next multiple of DISK_ALIGN.
         let remainder = image.len() % DISK_ALIGN;
         if remainder > 0 {
@@ -372,12 +377,14 @@ impl ObjectFile {
     }
 
     /// Process an object file into a generic, unpadded image.
-    fn link_as_image(mut self) -> OFResult<Vec<u8>> {
+    fn link_as_image(mut self, read_only: ImageAccess) -> OFResult<Vec<u8>> {
         // Find the entrypoint section.
         let mut entrypoint_index = None;
         for (i, section) in self.sections.iter().enumerate() {
             assert_or_error!(section.flags & INVALID_FLAGS == 0,
                 "Invalid section flags.");
+            assert_or_error!(!(read_only && (section.flags & FLAG_WRITE != 0)),
+                "Cannot have a writable section in a read-only image.");
             if section.flags & FLAG_ENTRYPOINT != 0 {
                 assert_or_error!(section.flags & FLAG_EXECUTE != 0,
                     "Section had entrypoint but not execute set.");
@@ -663,17 +670,14 @@ mod tests {
     }
 
     #[test]
-    fn test_combine_internal_link() {
+    fn test_multiple_entrypoints() {
         let parsed = parse_files!(
             "examples/single-symbol.simobj",
             "examples/multi-section.simobj"
         ).unwrap();
-        let result = parsed.link_as_rom();
-        match result {
-            Ok(_) => panic!(),
-            Err(e) => assert_eq!(e.message(),
-                                 "Multiple entrypoint sections were defined."),
-        }
+        let error = parsed.link_as_rom().unwrap_err();
+        assert_eq!(error.message(),
+                   "Multiple entrypoint sections were defined.");
     }
 
     /// Combine the multi-symbol file with one that has an external reference
@@ -700,15 +704,11 @@ mod tests {
     /// Try (and fail) to combine two files with the same public symbol.
     #[test]
     fn test_combine_public() {
-        let parsed = parse_files!(
+        let error = parse_files!(
             "examples/multi-symbol.simobj",
             "examples/multi-symbol.simobj"
-        );
-        match parsed {
-            Ok(_) => panic!(),
-            Err(e) =>
-                assert_eq!(e.message(), "Multiple definitions for symbol foobaz."),
-        }
+        ).unwrap_err();
+        assert_eq!(error.message(), "Multiple definitions for symbol foobaz.");
     }
 
     /// Public symbol conflicting with an internal one.
@@ -729,6 +729,19 @@ mod tests {
             "examples/external-symbol.simobj"
         ).unwrap();
         assert_display_snapshot!(parsed);
+    }
+
+    // Make sure writable sections are disallowed in ROM only.
+    #[test]
+    fn test_writable() {
+        let parsed = parse_files!("examples/writable-section.simobj").unwrap();
+        let error = parsed.link_as_rom().unwrap_err();
+        assert_eq!(error.message(),
+                   "Cannot have a writable section in a read-only image.");
+
+        let parsed = parse_files!("examples/writable-section.simobj").unwrap();
+        let disk = parsed.link_as_disk().unwrap();
+        assert_image_snapshot!(&disk);
     }
 
     // TODO test with truly null input: no symbols and no sections, or a single empty section.
