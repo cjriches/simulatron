@@ -461,6 +461,9 @@ impl ObjectFile {
             image.append(&mut section.data);
         }
 
+        // Ensure the image is not empty.
+        assert_or_error!(image.len() > 0, "Cannot produce an empty image.");
+
         Ok(image)
     }
 }

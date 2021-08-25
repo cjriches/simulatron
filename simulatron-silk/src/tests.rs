@@ -212,4 +212,18 @@ fn test_writable() {
     assert_image_snapshot!(&disk);
 }
 
-// TODO test with truly null input: no symbols and no sections, or a single empty section.
+/// Test with a single empty section.
+#[test]
+fn test_empty_section() {
+    let parsed = parse_files!("examples/null-section.simobj").unwrap();
+    let error = parsed.link_as_rom().unwrap_err();
+    assert_eq!(error.message(), "Cannot produce an empty image.");
+}
+
+/// Test with no sections at all.
+#[test]
+fn test_no_sections() {
+    let parsed = parse_files!("examples/no-sections.simobj").unwrap();
+    let error = parsed.link_as_rom().unwrap_err();
+    assert_eq!(error.message(), "No entrypoint section was defined.");
+}
