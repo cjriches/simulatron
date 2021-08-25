@@ -334,3 +334,11 @@ fn test_bad_reference() {
     let error = parse_files!("examples/bad-reference.simobj").unwrap_err();
     assert_eq!(error.message(), "Symbol reference was non-zero.");
 }
+
+/// Ensure invalid symbol types are rejected.
+#[test]
+fn test_invalid_symbol_type() {
+    init();
+    let error = parse_files!("examples/invalid-symbol-type.simobj").unwrap_err();
+    assert_eq!(error.message(), "Invalid symbol type.");
+}

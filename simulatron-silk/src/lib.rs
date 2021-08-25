@@ -24,6 +24,15 @@ const SYMBOL_TYPE_INTERNAL: u8 = b'I';
 const SYMBOL_TYPE_PUBLIC: u8 = b'P';
 const SYMBOL_TYPE_EXTERNAL: u8 = b'E';
 
+fn symbol_type_name(symbol_type: u8) -> OFResult<&'static str> {
+    match symbol_type {
+        SYMBOL_TYPE_INTERNAL => Ok("Internal"),
+        SYMBOL_TYPE_PUBLIC => Ok("Public"),
+        SYMBOL_TYPE_EXTERNAL => Ok("External"),
+        _ => Err(OFError::new("Invalid symbol type.")),
+    }
+}
+
 // Section header flags.
 const FLAG_ENTRYPOINT: u8 = 0x01;
 const FLAG_READ: u8 = 0x04;
@@ -210,6 +219,8 @@ impl ObjectFile {
             // Read the symbol type.
             let symbol_type = source.read_u8()?;
             trace!("Symbol type: {}", symbol_type);
+            let symbol_type_str = symbol_type_name(symbol_type)?;
+            debug!("Symbol type: {}", symbol_type_str);
             // Read the symbol value.
             let value = source.read_be_u32()?;
             debug!("Symbol value: {:#010X}", value);
