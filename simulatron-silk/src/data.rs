@@ -1,8 +1,9 @@
 use itertools::Itertools;
 use std::collections::HashMap;
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Write};
 
-pub use crate::error::{OFError, OFResult};
+use crate::error::{OFError, OFResult};
 
 // Symbol type constants.
 pub const SYMBOL_TYPE_INTERNAL: u8 = b'I';
@@ -49,6 +50,35 @@ impl Display for Section {
     }
 }
 
+impl Section {
+    /// Compare the given section's range against the given address.
+    fn compare_address(&self, index: u32) -> Ordering {
+        if index < self.start {
+            Ordering::Greater  // The section is greater than the index.
+        } else if index < self.start + self.length {
+            Ordering::Equal    // The section contains the index.
+        } else {
+            Ordering::Less     // The section is lesser than the index.
+        }
+    }
+
+    /// Find the section containing the given address within its range, and
+    /// return a reference
+    pub fn find(sections: &Vec<Section>, address: u32) -> Option<&Section> {
+        sections.binary_search_by(|sec| {
+            sec.compare_address(address)
+        }).ok().map(|i| &sections[i])
+    }
+
+    /// Find the section containing the given address within its range, and
+    /// return a mutable reference.
+    pub fn find_mut(sections: &mut Vec<Section>, address: u32) -> Option<&mut Section> {
+        sections.binary_search_by(|sec| {
+            sec.compare_address(address)
+        }).ok().map(move |i| &mut sections[i])
+    }
+}
+
 /// A symbol table entry.
 #[derive(Debug)]
 pub struct SymbolTableEntry {
@@ -66,17 +96,6 @@ pub type SymbolTable = HashMap<String, SymbolTableEntry>;
 pub struct ObjectFile {
     pub(crate) symbols: SymbolTable,    // We want to expose the fields to this
     pub(crate) sections: Vec<Section>,  // crate, but not beyond.
-}
-
-impl ObjectFile {
-    pub(crate) fn length(&self) -> u32 {
-        // We depend on the invariant that sections are kept sorted.
-        match self.sections.last() {
-            None => 0,
-            Some(last_section) => last_section.start
-                + last_section.length,
-        }
-    }
 }
 
 impl Display for ObjectFile {

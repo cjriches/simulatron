@@ -5,9 +5,10 @@ use std::fmt::{Display, Formatter};
 
 use crate::data::{DISK_ALIGN, FLAG_ENTRYPOINT, FLAG_EXECUTE,
                   FLAG_WRITE, INVALID_FLAGS,
-                  ObjectFile, OFError, OFResult,
-                  ROM_SIZE, SYMBOL_TYPE_EXTERNAL,
+                  ObjectFile, ROM_SIZE, Section,
+                  SYMBOL_TYPE_EXTERNAL,
                   SYMBOL_TYPE_INTERNAL, SYMBOL_TYPE_PUBLIC};
+use crate::error::{OFError, OFResult};
 
 // Is an image read-only or not?
 type ImageAccess = bool;
@@ -37,8 +38,12 @@ impl Linker {
     pub fn add(mut self, mut of: ObjectFile) -> OFResult<Self> {
         let data = &mut self.data;
 
-        // We will need to offset all the references in `other`.
-        let offset = data.length();
+        // We will need to offset all the sections, symbol values, and
+        // symbol references in `other`.
+        let offset = match data.sections.last() {
+            None => 0,
+            Some(last_section) => last_section.start + last_section.length,
+        };
         debug!("Offsetting other by {:#010X}", offset);
         // Offset the other sections.
         for section in of.sections.iter_mut() {
@@ -51,6 +56,8 @@ impl Linker {
         // Add the other symbols.
         data.symbols.reserve(of.symbols.len());
         for (name, mut new_entry) in of.symbols.into_iter() {
+            // Relocate the value.
+            new_entry.value = new_entry.value.map(|v| v + offset);
             // Relocate the references.
             for reference in new_entry.references.iter_mut() {
                 *reference += offset;
@@ -112,7 +119,6 @@ impl Linker {
                 }
             }
         }
-
         Ok(self)
     }
 
@@ -187,43 +193,43 @@ impl Linker {
         }
         move_to_start(&mut data.sections, entrypoint_index);
 
+        // Define a closure for relocating a value relative to how the
+        // entrypoint section moved.
+        let relocate = |v: u32| {
+            if v < cutoff {
+                // This was before the entrypoint before, so add the offset.
+                v + offset
+            } else if v < cutoff + offset {
+                // This was in the entrypoint before, so subtract the cutoff.
+                v - cutoff
+            } else {
+                // This was after the entrypoint, so no change.
+                v
+            }
+        };
+
         // Resolve all symbol references.
         for (name, symbol) in data.symbols.iter() {
             debug!("Linking symbol {}", name);
             assert_or_error!(symbol.value.is_some(),
                 format!("Unresolved symbol: {}", name));
-            let value = symbol.value.unwrap().to_be_bytes();
+            // Relocate the value.
+            let value = relocate(symbol.value.unwrap()).to_be_bytes();
+            // Resolve the references.
             for reference in symbol.references.iter() {
-                // Account for relocating the entrypoint section.
-                let relocated = if *reference < cutoff {
-                    // This was before the entrypoint before, so add the offset.
-                    *reference + offset
-                } else if *reference < cutoff + offset {
-                    // This was in the entrypoint before, so subtract the cutoff.
-                    *reference - cutoff
-                } else {
-                    // This was after the entrypoint, so no change.
-                    *reference
-                };
+                // Relocate the reference.
+                let relocated = relocate(*reference);
                 trace!("Relocating reference from {:#010X} to {:#010X}",
                     reference, relocated);
                 // Resolve reference.
-                let mut resolved = false;
-                for section in data.sections.iter_mut() {
-                    if relocated < section.start + section.length {
-                        // Splice into the section.
-                        let section_offset: usize = (relocated - section.start)
-                            .try_into().unwrap();
-                        for i in 0..4 {
-                            // Sanity check.
-                            assert_eq!(section.data[section_offset + i], 0);
-                            section.data[section_offset + i] = value[i];
-                        }
-                        resolved = true;
-                        break;
-                    }
+                let section = Section::find_mut(&mut data.sections, relocated)
+                    .expect("BUG: an invalid reference escaped the parsing stage.");
+                let section_offset: usize = (relocated - section.start).try_into().unwrap();
+                for i in 0..4 {
+                    // Sanity check.
+                    assert_eq!(section.data[section_offset + i], 0);
+                    section.data[section_offset + i] = value[i];
                 }
-                assert!(resolved);  // Sanity check.
             }
         }
 

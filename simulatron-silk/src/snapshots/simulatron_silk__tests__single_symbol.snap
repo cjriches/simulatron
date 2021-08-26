@@ -1,13 +1,13 @@
 ---
-source: src/lib.rs
+source: src/tests.rs
 expression: parsed
 
 ---
 ---Symbols---
-foo I 0x12345678 
-  0x0000003B
-  0x00000045
+foo I 0x00000006 
+  0x00000002
+  0x0000000C
 ---Sections---
-Section 0 flags: 00010001 start: 0x00000039 length: 0x00000010
+Section 0 flags: 00010001 start: 0x00000000 length: 0x00000010
 0x00000000    FF FF 00 00  00 00 FF FF  FF FF FF FF  00 00 00 00
 

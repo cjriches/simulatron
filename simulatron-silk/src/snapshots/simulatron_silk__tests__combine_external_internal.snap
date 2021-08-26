@@ -1,16 +1,16 @@
 ---
-source: src/lib.rs
+source: src/tests.rs
 expression: parsed
 
 ---
 ---Symbols---
 foobaz E
-  0x00000076
-foobaz0 I 0x00000000 
-  0x00000038
+  0x00000008
+foobaz0 I 0x00000004 
+  0x00000000
 ---Sections---
-Section 0 flags: 00010001 start: 0x00000038 length: 0x00000006
-0x00000000    00 00 00 00  42 42
-Section 1 flags: 00010001 start: 0x00000076 length: 0x00000004
+Section 0 flags: 00010001 start: 0x00000000 length: 0x00000008
+0x00000000    00 00 00 00  42 42 42 42
+Section 1 flags: 00010001 start: 0x00000008 length: 0x00000004
 0x00000000    00 00 00 00
 

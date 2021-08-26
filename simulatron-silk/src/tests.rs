@@ -286,19 +286,6 @@ fn test_too_small() {
     assert_eq!(error.message(), "IO error: Unexpected EOF.");
 }
 
-/// Try a file with random padding around the important bits.
-#[test]
-fn test_gaps() {
-    init();
-    let parsed = parse_files!("examples/multi-section-with-gaps.simobj").unwrap();
-    let rom1 = parsed.link_as_rom().unwrap();
-
-    // It should result in the same image as the no-gaps version.
-    let parsed = parse_files!("examples/multi-section.simobj").unwrap();
-    let rom2 = parsed.link_as_rom().unwrap();
-    assert_eq!(rom1, rom2);
-}
-
 /// Try a file where section references don't point to zeros.
 #[test]
 fn test_bad_reference() {

@@ -1,9 +1,9 @@
 ---
-source: src/lib.rs
+source: src/tests.rs
 expression: pretty_print_hex_block(&rom)
 
 ---
-0x00000000    FF FF 12 34  56 78 FF FF  FF FF FF FF  12 34 56 78
+0x00000000    FF FF 00 00  00 06 FF FF  FF FF FF FF  00 00 00 06
 0x00000010    00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00
 0x00000020    00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00
 0x00000030    00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00
