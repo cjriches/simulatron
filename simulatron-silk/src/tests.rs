@@ -309,3 +309,19 @@ fn test_zero_length_name() {
     let error = parse_files!("examples/zero-length-name.simobj").unwrap_err();
     assert_eq!(error.message(), "Symbol name cannot be the empty string.");
 }
+
+/// Ensure names with illegal characters are rejected.
+#[test]
+fn test_invalid_name() {
+    init();
+    let error = parse_files!("examples/invalid-name.simobj").unwrap_err();
+    assert_eq!(error.message(), "Invalid symbol name: !yeet$");
+}
+
+/// Ensure unprintable names with illegal characters are rejected.
+#[test]
+fn test_really_invalid_name() {
+    init();
+    let error = parse_files!("examples/really-invalid-name.simobj").unwrap_err();
+    assert_eq!(error.message(), "Invalid symbol name (unprintable).");
+}

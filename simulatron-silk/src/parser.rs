@@ -231,15 +231,14 @@ fn validate_symbol_name(name: Vec<u8>) -> OFResult<String> {
         match byte {
             48..=57 | 65..=90 | 95 | 97..=122 => {},
             _ => {
-                match String::from_utf8(name) {
+                return match String::from_utf8(name) {
                     Ok(s) => {
-                        debug!("Invalid name: {}", s);
+                        Err(OFError::new(format!("Invalid symbol name: {}", s)))
                     },
                     Err(_) => {
-                        debug!("Invalid name (unprintable).");
+                        Err(OFError::new("Invalid symbol name (unprintable)."))
                     },
                 }
-                return Err(OFError::new("Invalid symbol name."));
             },
         }
     }
