@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Write};
 
@@ -46,7 +47,8 @@ impl Display for Section {
         writeln!(f, "flags: {:08b} start: {:#010X} length: {:#010X}",
                  self.flags, self.start, self.length)?;
         // Write data.
-        write!(f, "{}", pretty_print_hex_block(&self.data))
+        write!(f, "{}", pretty_print_hex_block(&self.data,
+                                               self.start.try_into().unwrap()))
     }
 }
 
@@ -122,8 +124,9 @@ impl Display for ObjectFile {
     }
 }
 
-/// Nicely format the given Vec<u8> as a hex block.
-pub fn pretty_print_hex_block(image: &Vec<u8>) -> String {
+/// Nicely format the given Vec<u8> as a hex block. The listed addresses
+/// will start from `start`.
+pub fn pretty_print_hex_block(image: &Vec<u8>, start: usize) -> String {
     // Each 16 bytes of the input produces a line consisting of:
     // - a 10-character address
     // - 32 characters of bytes
@@ -135,7 +138,7 @@ pub fn pretty_print_hex_block(image: &Vec<u8>) -> String {
         match i % 16 {
             0 => {
                 // At the start of each 16 bytes, print an address header.
-                write!(str, "{:#010X}    ", i).unwrap();
+                write!(str, "{:#010X}    ", start + i).unwrap();
             }
             4 | 8 | 12 => {
                 // After each 4 bytes, print a double space.

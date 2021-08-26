@@ -52,7 +52,7 @@ macro_rules! parse_files {
 
 /// Format the given Vec<u8> nicely and then snapshot it.
 macro_rules! assert_image_snapshot {
-    ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img)) }
+    ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img, 0)) }
 }
 
 /// The simplest possible file: no symbols, one entrypoint section

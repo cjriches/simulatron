@@ -177,7 +177,8 @@ impl<S: ReadBE> Parser<S> {
             let section_start = self.bytes_read;
             let mut data = vec![0; header.length.try_into().unwrap()];
             self.read_buffer(&mut data)?;
-            trace!("Section data:\n{}", pretty_print_hex_block(&data));
+            trace!("Section data:\n{}", pretty_print_hex_block(&data,
+                section_start.try_into().unwrap()));
             // Add the section to the vector.
             sections.push(Section {
                 flags: header.flags,
