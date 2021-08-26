@@ -49,7 +49,7 @@ The symbol type takes one of the following values:
 
 If an external symbol cannot be found, linking will fail. The linking process means replacing the listed offsets with the value of the symbol. As a symbol's value is its address, values are always 4 bytes.
 
-A symbol's name is a string of characters encoded in the Simulatron character set. Valid characters are alphanumeric or an underscore.
+A symbol's name is a non-null string of characters encoded in the Simulatron character set. Valid characters are alphanumeric or an underscore.
 
 ## Section Header Format
 | Offset | Size    | Description                             |

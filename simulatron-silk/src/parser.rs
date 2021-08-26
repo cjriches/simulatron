@@ -141,6 +141,8 @@ impl<S> Parser<S>
             // Read the name.
             let name_len = self.source.read_u8()?.into();
             debug!("Symbol name length: {}", name_len);
+            assert_or_error!(name_len > 0,
+                "Symbol name cannot be the empty string.");
             let mut name_buf = vec![0; name_len];
             self.source.read_exact(&mut name_buf)?;
             let name = validate_symbol_name(name_buf)?;

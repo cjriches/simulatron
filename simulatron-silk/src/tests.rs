@@ -314,3 +314,11 @@ fn test_invalid_symbol_type() {
     let error = parse_files!("examples/invalid-symbol-type.simobj").unwrap_err();
     assert_eq!(error.message(), "Invalid symbol type.");
 }
+
+/// Ensure zero-length symbol names are rejected.
+#[test]
+fn test_zero_length_name() {
+    init();
+    let error = parse_files!("examples/zero-length-name.simobj").unwrap_err();
+    assert_eq!(error.message(), "Symbol name cannot be the empty string.");
+}
