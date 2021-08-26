@@ -325,3 +325,23 @@ fn test_really_invalid_name() {
     let error = parse_files!("examples/really-invalid-name.simobj").unwrap_err();
     assert_eq!(error.message(), "Invalid symbol name (unprintable).");
 }
+
+/// Ensure symbol values outside of a section are rejected.
+#[test]
+fn test_symbol_value_range() {
+    init();
+    let error = parse_files!("examples/sym-val-too-small.simobj").unwrap_err();
+    assert_eq!(error.message(), "Address too small: 0x00000000");
+    let error = parse_files!("examples/sym-val-too-big.simobj").unwrap_err();
+    assert_eq!(error.message(), "Address too large: 0x00000080");
+}
+
+/// Ensure symbol references outside of a section are rejected.
+#[test]
+fn test_symbol_reference_range() {
+    init();
+    let error = parse_files!("examples/sym-ref-too-small.simobj").unwrap_err();
+    assert_eq!(error.message(), "Address too small: 0x00000008");
+    let error = parse_files!("examples/sym-ref-too-big.simobj").unwrap_err();
+    assert_eq!(error.message(), "Address too large: 0x0000003A");
+}

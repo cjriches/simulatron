@@ -265,7 +265,7 @@ fn relocate_and_verify_symbol(symbol: (&String, &mut SymbolTableEntry),
                 Some(last_section) => last_section.start + last_section.length,
             };
             assert_or_error!(relocated < file_length,
-                format!("Address too large: {:#010X}", relocated));
+                format!("Address too large: {:#010X}", val));
             Some(relocated)
         },
     };
@@ -278,7 +278,8 @@ fn relocate_and_verify_symbol(symbol: (&String, &mut SymbolTableEntry),
         *reference = try_sub(*reference, sections_start)?;
         // Verify it points to zero.
         let section = Section::find(sections, *reference)
-            .ok_or(OFError::new(format!("Address too large: {:#010X}", reference)))?;
+            .ok_or(OFError::new(
+                format!("Address too large: {:#010X}", *reference + sections_start)))?;
         let section_offset = *reference - section.start;
         for i in 0..4 {
             assert_or_error!(section.data[usize::try_from(section_offset).unwrap() + i] == 0,
