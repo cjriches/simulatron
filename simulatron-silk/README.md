@@ -7,7 +7,7 @@ Silk links together one or more object code files (`*.simobj`) into various form
 For a definition of the object code format, see [Object Code](../Documentation/object-code.md).
 
 ## Usage
-`silk -t <link_target> -o <out_path> OBJECT_FILES...`
+`silk --help`
 
 ## Link Targets
 ### Disk Image
@@ -16,7 +16,7 @@ Silk can create a disk image when passed `-t 'DISK'`. This produces a Simulatron
 ### ROM Image
 Silk can create ROM images when passed `-t 'ROM'`. This produces a Simulatron-executable file exactly 512 bytes in size, padding with zero if too small and failing if too large. Since ROM is by definition read-only, any section with the write permission set will also produce an error.
 
-Note that the only difference between creating a disk image and a ROM image is the length/padding behaviour. Both create a directly executable image that is otherwise identical.
+Note that the only difference between creating a disk image and a ROM image is the length/padding/permissions behaviour. Both create a directly executable image that is otherwise identical.
 
 ## Build Prerequisites
 None; a simple `cargo build` should succeed.
