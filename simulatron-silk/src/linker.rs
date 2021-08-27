@@ -27,10 +27,22 @@ impl Display for Linker {
 }
 
 impl Linker {
-    /// Construct a new linker starting with the given object file.
-    pub fn new(data: ObjectFile) -> Self {
+    /// Construct a new empty linker.
+    pub fn new() -> Self {
+        // Start with a completely empty object file.
         Self {
-            data,
+            data: ObjectFile {
+                symbols: HashMap::new(),
+                sections: Vec::new(),
+            },
+        }
+    }
+
+    /// Construct a new linker starting with the given object file.
+    pub fn from(of: ObjectFile) -> Self {
+        // Start with a completely empty object file.
+        Self {
+            data: of,
         }
     }
 

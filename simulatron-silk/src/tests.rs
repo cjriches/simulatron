@@ -27,7 +27,7 @@ macro_rules! parse_files {
     ($f:expr) => {{
         let f = File::open($f).unwrap();
         info!("Parsing '{}'", $f);
-        Parser::parse(f).map(Linker::new)
+        Parser::parse(f).map(Linker::from)
     }};
 
     // Multiple files.
@@ -37,7 +37,7 @@ macro_rules! parse_files {
         info!("Parsing '{}'", $f0);
         Parser::parse(f0).and_then(|parsed0| {
             // Add it to a linker.
-            let mut linker = Linker::new(parsed0);
+            let mut linker = Linker::from(parsed0);
             // Add the remaining files.
             for path in [$($fs),*].iter() {
                 let f = File::open(path).unwrap();
