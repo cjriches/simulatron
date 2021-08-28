@@ -1,12 +1,14 @@
+mod error;
 mod file_utils;
 
 use clap::{App, app_from_crate, Arg, arg_enum, ArgMatches,
            crate_authors, crate_description,
            crate_name, crate_version, value_t_or_exit};
 use log::{info, error, LevelFilter};
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, BufReader, Write};
 
+use crate::error::LinkError;
 use crate::file_utils::{Output, TransientFile};
 
 const LINK_TARGET: &str = "link-target";
@@ -68,66 +70,72 @@ fn init_logging(level: LevelFilter) {
 
 /// Main run function; returns an exit code.
 fn run(args: ArgMatches) -> u8 {
-    /// Unwrap the given result or print the error and exit the process.
-    macro_rules! unwrap_or_error {
-        ($result:expr) => {{
-            match $result {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("{:?}", e);
-                    return 1;
-                }
-            }
-        }}
-    }
-
-    // Set up logging.
-    let log_level = match args.occurrences_of(VERBOSITY) {
-        0 => LevelFilter::Warn,
-        1 => LevelFilter::Info,
-        2 => LevelFilter::Debug,
-        3 | _ => LevelFilter::Trace,
-    };
-    init_logging(log_level);
-
-    // Open output path.
-    let mut output = match args.value_of(OUTPUT_PATH) {
-        None => {
-            info!("Silk will write the linked result to stdout.");
-            Output::Stdout(io::stdout())
-        },
-        Some(path) => {
-            info!("Silk will write the linked result to '{}'.", path);
-            let f = unwrap_or_error!(TransientFile::create(path));
-            Output::File(f)
+    return match _run(args) {
+        Ok(()) => 0,
+        Err(e) => {
+            error!("{}", e.0);
+            1
         }
     };
 
-    // Open input files.
-    let inputs = unwrap_or_error!(args.values_of(OBJECT_FILES).unwrap()
-        .map(|path| File::open(path)
-                               .map(BufReader::new))
-        .collect::<Result<Vec<_>, _>>());
-    info!("Opened all input files successfully.");
+    fn _run(args: ArgMatches) -> Result<(), LinkError> {
+        // Set up logging.
+        let log_level = match args.occurrences_of(VERBOSITY) {
+            0 => LevelFilter::Warn,
+            1 => LevelFilter::Info,
+            2 => LevelFilter::Debug,
+            3 | _ => LevelFilter::Trace,
+        };
+        init_logging(log_level);
 
-    // Run the linker.
-    let linker = unwrap_or_error!(simulatron_silk::parse_and_combine(inputs));
-    info!("Parsed all inputs.");
-    let link_target = value_t_or_exit!(args, LINK_TARGET, LinkTarget);
-    let result = unwrap_or_error!(match link_target {
-        LinkTarget::ROM => linker.link_as_rom(),
-        LinkTarget::DISK => linker.link_as_disk(),
-    });
-    info!("Linking complete.");
+        // Open output path.
+        let mut output = match args.value_of(OUTPUT_PATH) {
+            None => {
+                info!("Silk will write the linked result to stdout.");
+                Output::Stdout(io::stdout())
+            },
+            Some(path) => {
+                info!("Silk will write the linked result to '{}'.", path);
+                let f = TransientFile::create(path)
+                    .map_err(|e| {
+                        LinkError(format!("Failed to create output file: {}", e))
+                    })?;
+                Output::File(f)
+            }
+        };
 
-    // Write the result.
-    unwrap_or_error!(output.write_all(&result));
-    if let Output::File(f) = &mut output {
-        f.set_persist(true);
+        // Open input files.
+        let inputs = args.values_of(OBJECT_FILES).unwrap()
+            .map(|path| File::open(path)
+                                   .map(BufReader::new))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| {
+                LinkError(format!("Couldn't open input file: {}", e))
+            })?;
+        info!("Opened all input files successfully.");
+
+        // Run the linker.
+        let linker = simulatron_silk::parse_and_combine(inputs)?;
+        info!("Parsed all inputs.");
+        let link_target = value_t_or_exit!(args, LINK_TARGET, LinkTarget);
+        let result = match link_target {
+            LinkTarget::ROM => linker.link_as_rom(),
+            LinkTarget::DISK => linker.link_as_disk(),
+        }?;
+        info!("Linking complete.");
+
+        // Write the result.
+        output.write_all(&result)
+            .map_err(|e| {
+                LinkError(format!("Failed to write output: {}", e))
+            })?;
+        if let Output::File(f) = &mut output {
+            f.set_persist(true);
+        }
+        info!("Result written.");
+
+        Ok(())
     }
-    info!("Result written.");
-
-    return 0;
 }
 
 fn main() {
@@ -139,6 +147,7 @@ fn main() {
 mod tests {
     use super::*;
 
+    use std::fs;
     use tempfile;
 
     macro_rules! invoke {
