@@ -284,7 +284,7 @@ fn relocate_and_verify_symbol(symbol: (&String, &mut SymbolTableEntry),
         let section_offset = *reference - section.start;
         for i in 0..4 {
             assert_or_error!(section.data[usize::try_from(section_offset).unwrap() + i] == 0,
-                "Symbol reference was non-zero.");
+                "Symbol reference target was non-zero.");
         }
     }
     info!("Relocated and verified symbol {}", symbol.0);

@@ -57,15 +57,18 @@ fn cli() -> App<'static, 'static> {
             .multiple(true))
 }
 
+fn logging_format(formatter: &mut env_logger::fmt::Formatter,
+                  record: &log::Record) -> io::Result<()> {
+    let style = formatter.default_level_style(record.level());
+    writeln!(formatter, "{:>7}  {}", style.value(record.level()), record.args())
+}
+
 /// Logging setup for normal build (not testing).
 #[cfg(not(test))]
 fn init_logging(level: LevelFilter) {
     env_logger::Builder::new()
         .filter_level(level)
-        .format(|formatter, record| {
-            let style = formatter.default_level_style(record.level());
-            writeln!(formatter, "{:>7} {}", style.value(record.level()), record.args())
-        })
+        .format(logging_format)
         .init();
 }
 
@@ -75,10 +78,7 @@ fn init_logging(level: LevelFilter) {
 fn init_logging(level: LevelFilter) {
     let _ = env_logger::Builder::new()
         .filter_level(level)
-        .format(|formatter, record| {
-            let style = formatter.default_level_style(record.level());
-            writeln!(formatter, "{:>7} {}", style.value(record.level()), record.args())
-        })
+        .format(logging_format)
         .is_test(true)
         .try_init();
 }
@@ -113,7 +113,8 @@ fn run(args: ArgMatches) -> u8 {
                 info!("Silk will write the linked result to '{}'.", path);
                 let f = TransientFile::create(path)
                     .map_err(|e| {
-                        LinkError(format!("Failed to create output file: {}", e))
+                        LinkError(format!(
+                            "Failed to create output file '{}': {}", path, e))
                     })?;
                 Output::File(f)
             }
@@ -122,11 +123,12 @@ fn run(args: ArgMatches) -> u8 {
         // Open input files.
         let inputs = args.values_of(OBJECT_FILES).unwrap()
             .map(|path| File::open(path)
-                                   .map(BufReader::new))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| {
-                LinkError(format!("Couldn't open input file: {}", e))
-            })?;
+                .map(BufReader::new)
+                .map_err(|e| {
+                    LinkError(format!(
+                        "Couldn't open input file '{}': {}", path, e))
+                }))
+            .collect::<Result<Vec<_>, _>>()?;
         info!("Opened all input files successfully.");
 
         // Run the linker.

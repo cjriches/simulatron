@@ -291,7 +291,7 @@ fn test_too_small() {
 fn test_bad_reference() {
     init();
     let error = parse_files!("examples/bad-reference.simobj").unwrap_err();
-    assert_eq!(error.message(), "Symbol reference was non-zero.");
+    assert_eq!(error.message(), "Symbol reference target was non-zero.");
 }
 
 /// Ensure invalid symbol types are rejected.
