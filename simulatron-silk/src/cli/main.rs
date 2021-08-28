@@ -57,14 +57,29 @@ fn cli() -> App<'static, 'static> {
             .multiple(true))
 }
 
+/// Logging setup for normal build (not testing).
+#[cfg(not(test))]
 fn init_logging(level: LevelFilter) {
-    // May be called multiple times in tests, so ignore the error.
+    env_logger::Builder::new()
+        .filter_level(level)
+        .format(|formatter, record| {
+            let style = formatter.default_level_style(record.level());
+            writeln!(formatter, "{:>7} {}", style.value(record.level()), record.args())
+        })
+        .init();
+}
+
+/// Logging setup for testing build (properly captures stdout and ignores
+/// multiple invocations).
+#[cfg(test)]
+fn init_logging(level: LevelFilter) {
     let _ = env_logger::Builder::new()
         .filter_level(level)
         .format(|formatter, record| {
             let style = formatter.default_level_style(record.level());
             writeln!(formatter, "{:>7} {}", style.value(record.level()), record.args())
         })
+        .is_test(true)
         .try_init();
 }
 
