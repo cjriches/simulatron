@@ -18,3 +18,4 @@ log = "0.4.14"
 
 [dev-dependencies]
 insta = "1.7.2"
+tempfile = "3.2.0"
