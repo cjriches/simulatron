@@ -1,0 +1,35 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Identifier 'somelabel'
+Colon ':'
+Newline
+Identifier 'copy'
+Whitespace ' '
+Identifier 'r0'
+Whitespace ' '
+DecLiteral '5'
+Newline
+Identifier 'sconvert'
+Whitespace ' '
+Identifier 'f0'
+Whitespace ' '
+Identifier 'r0'
+Newline
+Identifier 'copy'
+Whitespace ' '
+Identifier 'f1'
+Whitespace ' '
+DecLiteral '6'
+Period '.'
+DecLiteral '0'
+Newline
+Identifier 'add'
+Whitespace ' '
+Identifier 'f0'
+Whitespace ' '
+Identifier 'f1'
+Newline
+

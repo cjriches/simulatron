@@ -1,0 +1,8 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Identifier 'halt'
+Newline
+

@@ -1,0 +1,5 @@
+somelabel:
+copy r0 5
+sconvert f0 r0
+copy f1 6.0
+add f0 f1
