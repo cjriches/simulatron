@@ -7,7 +7,7 @@ Salt transforms assembly language files (`*.simasm`) into object code files (`*.
 For a definition of the assembly language, see [Assembly Language](../Documentation/assembly-language.md).
 
 ## Usage
-TODO
+`salt --help`
 
 ## Build Prerequisites
-None; a simple `cargo build` should succeed.
+None; a simple `cargo build --release` should succeed.
