@@ -39,9 +39,9 @@ pub enum TokenType {
     BinLiteral,
     #[regex(r"0x[A-Fa-f0-9]+")]
     HexLiteral,
-    #[regex("'\\\\n|\\\\\"|\\\\\\\\|[^\\n\\\\]'")]  // https://xkcd.com/1638/
+    #[regex(r"'(\\[^\n]|[^\n\\'])'")]
     CharLiteral,
-    #[regex("\"(\\\\n|\\\\\"|\\\\\\\\|[^\\n\\\\])*\"")]
+    #[regex(r#""(\\[^\n]|[^\n\\"])*""#)]
     StringLiteral,
 
     // Identifiers
@@ -77,7 +77,7 @@ mod tests {
             if let TokenType::Newline = t {
                 writeln!(output, "{:?}", t).unwrap();
             } else {
-                writeln!(output, "{:?} '{}'", t, lexer.slice()).unwrap();
+                writeln!(output, "{:?} `{}`", t, lexer.slice()).unwrap();
             }
         }
         assert_snapshot!(output);
@@ -93,5 +93,17 @@ mod tests {
     #[test]
     fn test_instruction_block() {
         assert_tokens_snapshot("examples/instruction-block.simasm");
+    }
+
+    /// Test character literals.
+    #[test]
+    fn test_char_literal() {
+        assert_tokens_snapshot("examples/char-literal.simasm");
+    }
+
+    /// Test string literals.
+    #[test]
+    fn test_string_literal() {
+        assert_tokens_snapshot("examples/string-literal.simasm");
     }
 }

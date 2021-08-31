@@ -1,0 +1,15 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Const `const`
+Whitespace ` `
+Identifier `FIRST_LETTER`
+Whitespace ` `
+CharLiteral `'A'`
+Newline
+Newline
+Identifier `halt`
+Newline
+

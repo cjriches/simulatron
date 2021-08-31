@@ -1,0 +1,20 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Static `static`
+Whitespace ` `
+Byte `byte`
+OpenSquare `[`
+DecLiteral `5`
+CloseSquare `]`
+Whitespace ` `
+Identifier `greeting`
+Whitespace ` `
+StringLiteral `"Hello"`
+Newline
+Newline
+Identifier `halt`
+Newline
+
