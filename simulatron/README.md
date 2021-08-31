@@ -8,7 +8,7 @@ Simulatron is a virtual machine with its own custom architecture, designed to ai
 TODO
 
 ## Build Prerequisites
-For `web-view` to build, various other things may need to be installed. Running on Kubuntu 18.04 LTS, the following additional packages were required:
+For `web-view` to build, various other things may need to be installed. Running on Kubuntu 20.04 LTS, the following additional packages were required:
 * `libcairo2-dev`
 * `libpango1.0-dev`
 * `libatk1.0-dev`
