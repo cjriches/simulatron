@@ -1,4 +1,4 @@
-use logos::Logos;
+pub use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TokenType {
@@ -58,6 +58,7 @@ pub enum TokenType {
     #[regex(r"[^\S\n\r]+")]
     Whitespace,
 
+    // Unrecognised tokens.
     #[error]
     Error,
 }
@@ -105,5 +106,17 @@ mod tests {
     #[test]
     fn test_string_literal() {
         assert_tokens_snapshot("examples/string-literal.simasm");
+    }
+
+    /// Test comments.
+    #[test]
+    fn test_comments() {
+        assert_tokens_snapshot("examples/comments.simasm");
+    }
+
+    /// Test a simple hello world program.
+    #[test]
+    fn test_hello_world() {
+        assert_tokens_snapshot("examples/hello-world.simasm");
     }
 }

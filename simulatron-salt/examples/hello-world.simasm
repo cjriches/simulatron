@@ -1,0 +1,19 @@
+// Number of columns in display.
+const COLS 80
+
+// Row and column to start message at.
+const ROW 12
+const COL 32
+
+// Base address of display characters.
+const DISPLAY 0x240
+
+static byte[13] greeting "Hello, World!"
+
+main:
+copy r0b ROW        // Calculate the address.
+mult r0 COLS
+add r0 COL
+add r0 DISPLAY
+blockcopy 13 r0 greeting
+halt

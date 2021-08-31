@@ -1,0 +1,90 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Comment `// Number of columns in display.`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `COLS`
+Whitespace ` `
+DecLiteral `80`
+Newline
+Newline
+Comment `// Row and column to start message at.`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `ROW`
+Whitespace ` `
+DecLiteral `12`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `COL`
+Whitespace ` `
+DecLiteral `32`
+Newline
+Newline
+Comment `// Base address of display characters.`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `DISPLAY`
+Whitespace ` `
+HexLiteral `0x240`
+Newline
+Newline
+Static `static`
+Whitespace ` `
+Byte `byte`
+OpenSquare `[`
+DecLiteral `13`
+CloseSquare `]`
+Whitespace ` `
+Identifier `greeting`
+Whitespace ` `
+StringLiteral `"Hello, World!"`
+Newline
+Newline
+Identifier `main`
+Colon `:`
+Newline
+Identifier `copy`
+Whitespace ` `
+Identifier `r0b`
+Whitespace ` `
+Identifier `ROW`
+Whitespace `        `
+Comment `// Calculate the address.`
+Newline
+Identifier `mult`
+Whitespace ` `
+Identifier `r0`
+Whitespace ` `
+Identifier `COLS`
+Newline
+Identifier `add`
+Whitespace ` `
+Identifier `r0`
+Whitespace ` `
+Identifier `COL`
+Newline
+Identifier `add`
+Whitespace ` `
+Identifier `r0`
+Whitespace ` `
+Identifier `DISPLAY`
+Newline
+Identifier `blockcopy`
+Whitespace ` `
+DecLiteral `13`
+Whitespace ` `
+Identifier `r0`
+Whitespace ` `
+Identifier `greeting`
+Newline
+Identifier `halt`
+Newline
+

@@ -1,0 +1,6 @@
+halt  // some comment
+pause//this-one-has-no-spaces
+halt // this one has trailing spaces    
+// This one is the first thing on a line, and contains something that looks like a "string literal"
+// This one has the word const in it.
+static byte[66] msg "This looks like it has a //comment in it but it's a string literal"

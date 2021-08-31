@@ -1,0 +1,32 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Identifier `halt`
+Whitespace `  `
+Comment `// some comment`
+Newline
+Identifier `pause`
+Comment `//this-one-has-no-spaces`
+Newline
+Identifier `halt`
+Whitespace ` `
+Comment `// this one has trailing spaces    `
+Newline
+Comment `// This one is the first thing on a line, and contains something that looks like a "string literal"`
+Newline
+Comment `// This one has the word const in it.`
+Newline
+Static `static`
+Whitespace ` `
+Byte `byte`
+OpenSquare `[`
+DecLiteral `66`
+CloseSquare `]`
+Whitespace ` `
+Identifier `msg`
+Whitespace ` `
+StringLiteral `"This looks like it has a //comment in it but it's a string literal"`
+Newline
+
