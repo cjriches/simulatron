@@ -60,7 +60,7 @@ pub enum TokenType {
 
     // Unrecognised tokens.
     #[error]
-    Error,
+    Unknown,
 }
 
 #[cfg(test)]
@@ -118,5 +118,11 @@ mod tests {
     #[test]
     fn test_hello_world() {
         assert_tokens_snapshot("examples/hello-world.simasm");
+    }
+
+    /// Test a program full of invalid tokens.
+    #[test]
+    fn test_bad_tokens() {
+        assert_tokens_snapshot("examples/bad-tokens.simasm");
     }
 }

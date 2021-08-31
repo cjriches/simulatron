@@ -1,0 +1,16 @@
+This is _really_ wrong for a *.simasm file. There are all sorts of incorrect tokens, generating lots of errors.
+
+int main(int argc, char **argv)
+{
+    /* Don't you love this comment style? */
+    printf("Hello, World!");
+}
+
+main :: IO ()
+main = putStrLn "Hello, World!"  -- We're writing Haskell, right?
+
+if __name__ == "__main__":
+    print("Hello, world!")  # Say hello.
+
+// The next bit is almost correct!
+const YEET (42)

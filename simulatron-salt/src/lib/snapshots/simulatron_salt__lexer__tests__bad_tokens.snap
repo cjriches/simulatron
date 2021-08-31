@@ -1,0 +1,168 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Identifier `This`
+Whitespace ` `
+Identifier `is`
+Whitespace ` `
+Identifier `_really_`
+Whitespace ` `
+Identifier `wrong`
+Whitespace ` `
+Identifier `for`
+Whitespace ` `
+Identifier `a`
+Whitespace ` `
+Unknown `*`
+Period `.`
+Identifier `simasm`
+Whitespace ` `
+Identifier `file`
+Period `.`
+Whitespace ` `
+Identifier `There`
+Whitespace ` `
+Identifier `are`
+Whitespace ` `
+Identifier `all`
+Whitespace ` `
+Identifier `sorts`
+Whitespace ` `
+Identifier `of`
+Whitespace ` `
+Identifier `incorrect`
+Whitespace ` `
+Identifier `tokens`
+Comma `,`
+Whitespace ` `
+Identifier `generating`
+Whitespace ` `
+Identifier `lots`
+Whitespace ` `
+Identifier `of`
+Whitespace ` `
+Identifier `errors`
+Period `.`
+Newline
+Newline
+Identifier `int`
+Whitespace ` `
+Identifier `main`
+Unknown `(`
+Identifier `int`
+Whitespace ` `
+Identifier `argc`
+Comma `,`
+Whitespace ` `
+Identifier `char`
+Whitespace ` `
+Unknown `*`
+Unknown `*`
+Identifier `argv`
+Unknown `)`
+Newline
+Unknown `{`
+Newline
+Whitespace `    `
+Unknown `/`
+Unknown `*`
+Whitespace ` `
+Identifier `Don`
+Unknown `'`
+Identifier `t`
+Whitespace ` `
+Identifier `you`
+Whitespace ` `
+Identifier `love`
+Whitespace ` `
+Identifier `this`
+Whitespace ` `
+Identifier `comment`
+Whitespace ` `
+Identifier `style`
+Unknown `?`
+Whitespace ` `
+Unknown `*`
+Unknown `/`
+Newline
+Whitespace `    `
+Identifier `printf`
+Unknown `(`
+StringLiteral `"Hello, World!"`
+Unknown `)`
+Unknown `;`
+Newline
+Unknown `}`
+Newline
+Newline
+Identifier `main`
+Whitespace ` `
+Colon `:`
+Colon `:`
+Whitespace ` `
+Identifier `IO`
+Whitespace ` `
+Unknown `(`
+Unknown `)`
+Newline
+Identifier `main`
+Whitespace ` `
+Unknown `=`
+Whitespace ` `
+Identifier `putStrLn`
+Whitespace ` `
+StringLiteral `"Hello, World!"`
+Whitespace `  `
+Minus `-`
+Minus `-`
+Whitespace ` `
+Identifier `We`
+Unknown `'`
+Identifier `re`
+Whitespace ` `
+Identifier `writing`
+Whitespace ` `
+Identifier `Haskell`
+Comma `,`
+Whitespace ` `
+Identifier `right`
+Unknown `?`
+Newline
+Newline
+Identifier `if`
+Whitespace ` `
+Identifier `__name__`
+Whitespace ` `
+Unknown `=`
+Unknown `=`
+Whitespace ` `
+StringLiteral `"__main__"`
+Colon `:`
+Newline
+Whitespace `    `
+Identifier `print`
+Unknown `(`
+StringLiteral `"Hello, world!"`
+Unknown `)`
+Whitespace `  `
+Unknown `#`
+Whitespace ` `
+Identifier `Say`
+Whitespace ` `
+Identifier `hello`
+Period `.`
+Newline
+Newline
+Comment `// The next bit is almost correct!`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `YEET`
+Whitespace ` `
+Unknown `(`
+DecLiteral `42`
+Unknown `)`
+Newline
+
