@@ -12,7 +12,7 @@ An assembly file contains a combination of four types of element:
 
 A file must contain at least one instruction.
 
-It is conventional to place all constant declarations at the top of the file, followed by data declarations, and then instruction blocks. Each instruction block should be preceded by a label, and labels may also appear in the middle of instruction blocks. However, these are just conventions, and any ordering is legal.
+It is conventional to place all constant declarations at the top of the file, followed by data declarations, and then instruction blocks. Each instruction block (except optionally the first) should be preceded by a label, and labels may also appear in the middle of instruction blocks. However, these are just conventions, and any ordering is legal.
 
 Comments are started by a double forward slash (`//`) and continue to the end of the line. These are ignored by the assembler.
 
@@ -145,6 +145,18 @@ add r0 5
 
 ### Addressing Modes
 Many operands can take either a literal value or a register reference; in the case of a register reference, the value in that register will be used. Register references are specified as the lowercase register name (see the register list in the [instruction set](instruction-set.md#Registers-Available)).
+
+### Calling Convention
+Calling a subroutine:
+1. The caller saves any registers they care about, typically by pushing them to the stack.
+2. The caller pushes parameters onto the stack in reverse order, so the first parameter is pushed last.
+3. The caller executes the `CALL` instruction, pushing the return address onto the stack and jumping to the callee.
+4. The callee begins executing and can write to any register.
+
+Returning from a subroutine:
+1. The callee removes all of its local data and parameters from the stack.
+2. The callee executes the `RETURN` instruction, popping the return address off the stack and jumping to it.
+3. The caller restores the values of any registers it saved.
 
 ### Instruction Set
 The main instruction set listing can be found [here](instruction-set.md#Instructions); Simulatron assembly uses the same set of instruction names. This document provides an additional summary of the available addressing modes for each instruction. Each operand's available modes are specified by a flag string of the following format:
