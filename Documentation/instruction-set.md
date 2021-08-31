@@ -235,9 +235,9 @@ Note that long `BLKCMP` operations may be inefficient; see `BLOCKCOPY` and `BLOC
 
 `UJLESSEREQ address`: Like SJLESSEREQ but unsigned, i.e. `C=1` or `Z=1`.
 
-`CALL address`: Push the address of the next instruction followed by the current flags to the stack, and unconditionally jump to the given address.
+`CALL address`: Push the address of the next instruction to the stack and unconditionally jump to the given address.
 
-`RETURN`: Pop flags from the stack, then pop the return address from the stack and unconditionally jump to it.
+`RETURN`: Pop the return address from the stack and unconditionally jump to it.
 
 `SYSCALL`: Raise a syscall interrupt.
 

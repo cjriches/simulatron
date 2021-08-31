@@ -1308,15 +1308,7 @@ impl<D: DiskController> CPUInternal<D> {
             }
             0x6A => {  // RETURN
                 debug!("RETURN");
-                let flags: u16 = tv_into_v!(self.pop(ValueType::Half)?);
-                let address: u32 = tv_into_v!(self.pop(ValueType::Word).map_err(|e| {
-                    // Ensure this operation is atomic by undoing any changes.
-                    // If the pop worked, push should too.
-                    self.push(TypedValue::Half(flags))
-                        .expect("Failed to clean up partially-failed RETURN.");
-                    e
-                })?);
-                self.flags = flags & 0b0111111111111111;  // Ignore bit 15.
+                let address: u32 = tv_into_v!(self.pop(ValueType::Word)?);
                 self.program_counter = address;
             }
             0x6B => {  // SYSCALL
@@ -1719,15 +1711,8 @@ impl<D: DiskController> CPUInternal<D> {
 
     fn instruction_call(&mut self, address: u32) -> CPUResult<()> {
         self.push(TypedValue::Word(self.program_counter))?;
-        self.push(TypedValue::Half(self.flags)).map(|success| {
-            self.program_counter = address;
-            success
-        }).map_err(|error| {
-            // Ensure this is atomic: don't leave the PC on the stack.
-            // If the push succeeded, the pop should always too.
-            self.pop(ValueType::Word).expect("Failed to clean up CALL that died halfway.");
-            error
-        })
+        self.program_counter = address;
+        Ok(())
     }
 
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {

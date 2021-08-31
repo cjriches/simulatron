@@ -2718,7 +2718,7 @@ fn test_call_return() {
     assert_eq!(internal!(cpu).r[5], 0x29);
     assert_eq!(internal!(cpu).r[6], 0xCA);
     assert_eq!(internal!(cpu).r[7], 0x56);
-    assert_eq!(internal!(cpu).flags, FLAG_ZERO);
+    assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
     // The return address of the last subroutine should still be on the stack.
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004FFF), Ok(0x56));
 }
@@ -2749,7 +2749,7 @@ fn test_call_modify_return() {
     rom[66] = 0x00;
     rom[67] = 0x00;
     rom[68] = 0x00;
-    rom[69] = 0x06; // 6 bytes.
+    rom[69] = 0x04; // 4 bytes.
 
     // Replace it with our own.
     rom[70] = 0x0A; // Copy literal
@@ -2759,14 +2759,7 @@ fn test_call_modify_return() {
     rom[73] = 0x0E; // Push
     rom[74] = 0x00; // r0.
 
-    rom[75] = 0x0A; // Copy literal
-    rom[76] = 0x10; // into r0b
-    rom[77] = 0x03; // ZERO and NEGATIVE flags (normally impossible to co-occur).
-
-    rom[78] = 0x0E; // Push
-    rom[79] = 0x08; // r0h.
-
-    rom[80] = 0x6A; // RETURN.
+    rom[75] = 0x6A; // RETURN.
 
     // Return point
     rom[128] = 0x0A; // Copy literal
@@ -2778,7 +2771,6 @@ fn test_call_modify_return() {
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 2);
     assert_eq!(internal!(cpu).r[7], 0x33);
-    assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_NEGATIVE);
     // The return address of the last subroutine should still be on the stack.
     assert_eq!(internal!(cpu).mmu.load_physical_8(0x00004FFF), Ok(0xC0));
 }
