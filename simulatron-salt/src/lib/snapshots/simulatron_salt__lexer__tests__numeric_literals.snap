@@ -1,0 +1,57 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Const `const`
+Whitespace ` `
+Identifier `BIN`
+Whitespace ` `
+IntLiteral `0b01001`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `DEC`
+Whitespace ` `
+IntLiteral `42`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `DEC_EXP`
+Whitespace ` `
+IntLiteral `42e6`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `HEX`
+Whitespace ` `
+IntLiteral `0xdeadB00F`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `FLOAT`
+Whitespace ` `
+FloatLiteral `1.0`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `FLOAT_EXP`
+Whitespace ` `
+FloatLiteral `42.0e-12`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `NEG`
+Whitespace ` `
+IntLiteral `-5`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `NEG_FLOAT`
+Whitespace ` `
+FloatLiteral `-9.9432`
+Newline
+Newline
+Identifier `halt`
+Newline
+

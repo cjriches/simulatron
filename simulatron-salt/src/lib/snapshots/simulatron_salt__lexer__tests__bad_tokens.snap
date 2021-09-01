@@ -16,11 +16,11 @@ Whitespace ` `
 Identifier `a`
 Whitespace ` `
 Unknown `*`
-Period `.`
+Unknown `.`
 Identifier `simasm`
 Whitespace ` `
 Identifier `file`
-Period `.`
+Unknown `.`
 Whitespace ` `
 Identifier `There`
 Whitespace ` `
@@ -44,7 +44,7 @@ Whitespace ` `
 Identifier `of`
 Whitespace ` `
 Identifier `errors`
-Period `.`
+Unknown `.`
 Newline
 Newline
 Identifier `int`
@@ -115,8 +115,8 @@ Identifier `putStrLn`
 Whitespace ` `
 StringLiteral `"Hello, World!"`
 Whitespace `  `
-Minus `-`
-Minus `-`
+Unknown `-`
+Unknown `-`
 Whitespace ` `
 Identifier `We`
 Unknown `'`
@@ -152,7 +152,7 @@ Whitespace ` `
 Identifier `Say`
 Whitespace ` `
 Identifier `hello`
-Period `.`
+Unknown `.`
 Newline
 Newline
 Comment `// The next bit is almost correct!`
@@ -162,7 +162,7 @@ Whitespace ` `
 Identifier `YEET`
 Whitespace ` `
 Unknown `(`
-DecLiteral `42`
+IntLiteral `42`
 Unknown `)`
 Newline
 

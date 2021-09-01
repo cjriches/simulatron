@@ -1,0 +1,10 @@
+const BIN 0b01001
+const DEC 42
+const DEC_EXP 42e6
+const HEX 0xdeadB00F
+const FLOAT 1.0
+const FLOAT_EXP 42.0e-12
+const NEG -5
+const NEG_FLOAT -9.9432
+
+halt

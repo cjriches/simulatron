@@ -10,7 +10,7 @@ Identifier `copy`
 Whitespace ` `
 Identifier `r0`
 Whitespace ` `
-DecLiteral `5`
+IntLiteral `5`
 Newline
 Identifier `sconvert`
 Whitespace ` `
@@ -22,9 +22,7 @@ Identifier `copy`
 Whitespace ` `
 Identifier `f1`
 Whitespace ` `
-DecLiteral `6`
-Period `.`
-DecLiteral `0`
+FloatLiteral `6.0`
 Newline
 Identifier `add`
 Whitespace ` `

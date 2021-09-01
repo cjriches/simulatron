@@ -31,10 +31,9 @@ If you do not specify the all the bits of the number in binary or hex, the numbe
 -0x2A
 0xD6
 ```
-Scientific notation is also allowed:
+Scientific notation is also allowed on decimal literals:
 ```
 1e3
-1000
 ```
 
 Floating point literals must be in decimal and have a decimal point:
@@ -249,7 +248,7 @@ Const = "const" WS Identifier WS Literal ;
 Data = "static" WS [ "mut" WS ] Type WS Identifier WS ArrayLiteral ;
 
 Type = "byte" | "half" | "word"
-    | Type "[" DecLiteral "]" ;
+    | Type "[" IntLiteral "]" ;
 
 Label = Identifier ":" ;
 

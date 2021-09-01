@@ -21,24 +21,16 @@ pub enum TokenType {
     OpenSquare,
     #[token("]")]
     CloseSquare,
-    #[token(":")]
-    Colon,
     #[token(",")]
     Comma,
-    #[token("-")]
-    Minus,
-    #[token(".")]
-    Period,
+    #[token(":")]
+    Colon,
 
     // Literal components
-    #[regex(r"e-?[0-9]+")]
-    Exponent,
-    #[regex(r"[0-9]+")]
-    DecLiteral,
-    #[regex(r"0b[01]+")]
-    BinLiteral,
-    #[regex(r"0x[A-Fa-f0-9]+")]
-    HexLiteral,
+    #[regex(r"-?([0-9]+(e-?[0-9]+)?|0b[01]+|0x[A-Fa-f0-9]+)")]
+    IntLiteral,
+    #[regex(r"-?[0-9]+\.[0-9]+(e-?[0-9]+)?")]
+    FloatLiteral,
     #[regex(r"'(\\[^\n]|[^\n\\'])'")]
     CharLiteral,
     #[regex(r#""(\\[^\n]|[^\n\\"])*""#)]
@@ -106,6 +98,12 @@ mod tests {
     #[test]
     fn test_string_literal() {
         assert_tokens_snapshot("examples/string-literal.simasm");
+    }
+
+    /// Test numeric literals
+    #[test]
+    fn test_numeric_literals() {
+        assert_tokens_snapshot("examples/numeric-literals.simasm");
     }
 
     /// Test comments.

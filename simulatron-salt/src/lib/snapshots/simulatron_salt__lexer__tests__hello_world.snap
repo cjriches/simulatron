@@ -9,7 +9,7 @@ Const `const`
 Whitespace ` `
 Identifier `COLS`
 Whitespace ` `
-DecLiteral `80`
+IntLiteral `80`
 Newline
 Newline
 Comment `// Row and column to start message at.`
@@ -18,13 +18,13 @@ Const `const`
 Whitespace ` `
 Identifier `ROW`
 Whitespace ` `
-DecLiteral `12`
+IntLiteral `12`
 Newline
 Const `const`
 Whitespace ` `
 Identifier `COL`
 Whitespace ` `
-DecLiteral `32`
+IntLiteral `32`
 Newline
 Newline
 Comment `// Base address of display characters.`
@@ -33,14 +33,14 @@ Const `const`
 Whitespace ` `
 Identifier `DISPLAY`
 Whitespace ` `
-HexLiteral `0x240`
+IntLiteral `0x240`
 Newline
 Newline
 Static `static`
 Whitespace ` `
 Byte `byte`
 OpenSquare `[`
-DecLiteral `13`
+IntLiteral `13`
 CloseSquare `]`
 Whitespace ` `
 Identifier `greeting`
@@ -79,7 +79,7 @@ Identifier `DISPLAY`
 Newline
 Identifier `blockcopy`
 Whitespace ` `
-DecLiteral `13`
+IntLiteral `13`
 Whitespace ` `
 Identifier `r0`
 Whitespace ` `

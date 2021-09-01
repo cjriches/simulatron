@@ -22,7 +22,7 @@ Static `static`
 Whitespace ` `
 Byte `byte`
 OpenSquare `[`
-DecLiteral `66`
+IntLiteral `66`
 CloseSquare `]`
 Whitespace ` `
 Identifier `msg`
