@@ -237,11 +237,11 @@ BHWF - any register reference.
 
 ## Language Grammar (EBNF)
 ```
-Program = { Line "\n" } [ Line ] ;
+Program = { Line "\n" } [ Line ] EOF ;
 
-Line = ( Const | Data | Label | Instruction ) [ Comment ] ;
+Line = OWS [ Const | Data | Label | Instruction ] OWS [ Comment ] ;
 
-Comment = WS "//" { ? Any non-newline character ? } ; 
+Comment = "//" { ? Any non-newline character ? } ;
 
 Const = "const" WS Identifier WS Literal ;
 
@@ -263,8 +263,10 @@ Alphanumeric = Alphabetic | Digit ;
 Alphabetic = "A" | "B" | ... | "Z" | "a" | "b" | ... | "z" | "_" ;
 
 ArrayLiteral = Literal
-    | "[" OWS [ ArrayLiteral OWS { "," OWS ArrayLiteral OWS } ] "]"
-    | Quote { Character } Quote ;
+    | StringLiteral
+    | "[" OWS [ ArrayLiteral OWS { "," OWS ArrayLiteral OWS } ] "]" ;
+
+StringLiteral = Quote { Character } Quote ;
 
 Quote = ? Literal " ? ;
 

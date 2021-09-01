@@ -1,0 +1,8 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..0
+  Line@0..0
+

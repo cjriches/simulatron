@@ -1,4 +1,4 @@
-pub use logos::Logos;
+use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TokenType {
@@ -55,6 +55,58 @@ pub enum TokenType {
     Unknown,
 }
 
+#[derive(Debug, Clone)]
+pub struct Token<'a> {
+    pub tt: TokenType,
+    pub span: logos::Span,
+    pub slice: &'a str,
+}
+
+/// Wrap the Logos implementation with some extra buffering.
+pub struct Lexer<'a> {
+    inner: logos::Lexer<'a, TokenType>,
+    pushed_back: Vec<Token<'a>>,
+}
+
+impl<'a> Lexer<'a> {
+    /// Create a new token stream from the given source.
+    pub fn new(source: &'a str) -> Self {
+        Self {
+            inner: TokenType::lexer(source),
+            pushed_back: Vec::with_capacity(1),
+        }
+    }
+
+    /// Push a token back onto the front of the stream.
+    pub fn push_back(&mut self, token: Token<'a>) {
+        self.pushed_back.push(token)
+    }
+}
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token<'a>;
+
+    /// Get the next token.
+    fn next(&mut self) -> Option<Self::Item> {
+        // Use the pushed back tokens first.
+        if !self.pushed_back.is_empty() {
+            return self.pushed_back.pop();
+        }
+
+        // Otherwise, get from the lexer.
+        return match self.inner.next() {
+            Some(tt) => {
+                Some(Token {
+                    tt,
+                    span: self.inner.span(),
+                    slice: self.inner.slice(),
+                })
+            },
+            None => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,13 +116,13 @@ mod tests {
 
     fn assert_tokens_snapshot(path: &str) {
         let input = std::fs::read_to_string(path).unwrap();
-        let mut lexer = TokenType::lexer(&input);
+        let mut lexer = Lexer::new(&input);
         let mut output = String::new();
         while let Some(t) = lexer.next() {
-            if let TokenType::Newline = t {
-                writeln!(output, "{:?}", t).unwrap();
+            if let TokenType::Newline = t.tt {
+                writeln!(output, "{:?}", t.tt).unwrap();
             } else {
-                writeln!(output, "{:?} `{}`", t, lexer.slice()).unwrap();
+                writeln!(output, "{:?} `{}`", t.tt, t.slice).unwrap();
             }
         }
         assert_snapshot!(output);
