@@ -1,7 +1,6 @@
 use log::{trace, debug, info};
 use rowan::{GreenNodeBuilder, Language};
 use std::borrow::Cow;
-use std::convert::{TryFrom, TryInto};
 use std::ops::Range;
 
 use crate::error::SaltError;
@@ -9,33 +8,11 @@ use crate::language::{SimAsmLanguage, SyntaxKind::{self, *}, SyntaxNode};
 use crate::lexer::{Lexer, Token, TokenType};
 
 /// A failure due to token mismatch or EOF.
-enum Failure<'a> {
-    WrongToken(Token<'a>),
+enum Failure {
+    WrongToken,
     EOF,
 }
-type ParseResult<'a, T> = Result<T, Failure<'a>>;
-
-/// A failure due just to EOF.
-struct EOF;
-type EOFResult<T> = Result<T, EOF>;
-
-impl<'a> From<EOF> for Failure<'a> {
-    fn from(_: EOF) -> Self {
-        Failure::EOF
-    }
-}
-
-impl<'a> TryFrom<Failure<'a>> for EOF {
-    type Error = ();
-
-    fn try_from(value: Failure<'a>) -> Result<Self, Self::Error> {
-        if let Failure::EOF = value {
-            Ok(EOF)
-        } else {
-            Err(())
-        }
-    }
-}
+type ParseResult<'a, T> = Result<T, Failure>;
 
 /// Return codes from parsing a single line.
 enum LineResult {
@@ -49,43 +26,6 @@ pub struct Parser<'a> {
     tokens: Lexer<'a>,
     last_span: Range<usize>,
     errors: Vec<SaltError>,
-}
-
-/// Unwrap a ParseResult. On WrongToken, produce the given error, end the
-/// node, and return Ok(()). On EOF, return EOF.
-macro_rules! unwrap_or_err {
-    ($self:ident, $result:expr, $msg:expr) => {{
-        match $result {
-            Ok(t) => t,
-            Err(Failure::WrongToken(t)) => {
-                $self.error(t, $msg.into());
-                $self.finish_node();
-                return Ok(());
-            },
-            Err(Failure::EOF) => return Err(EOF),
-        }
-    }}
-}
-
-/// Shortcut for required whitespace.
-macro_rules! after_ws {
-    ($self:ident) => {{
-        unwrap_or_err!($self, $self.eat_ws(), "Expected whitespace.")
-    }}
-}
-
-/// Ensure a token is of the correct type; if not, the given error will be
-/// produced, the node ended, and Ok(()) returned.
-macro_rules! check_tt {
-    ($self:ident, $token:expr, $target:ident, $msg:expr) => {{
-        if let TokenType::$target = $token.tt {
-            // no-op
-        } else {
-            $self.error($token, $msg.into());
-            $self.finish_node();
-            return Ok(());
-        }
-    }}
 }
 
 impl<'a> Parser<'a> {
@@ -125,94 +65,99 @@ impl<'a> Parser<'a> {
         self.builder.finish_node()
     }
 
-    /// Wrapper for `tokens.push_back`.
-    fn push_back(&mut self, token: Token<'a>) {
-        self.tokens.push_back(token)
+    /// Wrapper for `tokens.peek`.
+    fn peek(&mut self) -> ParseResult<TokenType> {
+        self.tokens.peek().ok_or(Failure::EOF)
     }
 
-    /// Consume the next token from the stream.
-    fn eat(&mut self) -> EOFResult<Token<'a>> {
-        debug!("Eating any token.");
-        match self.tokens.next() {
-            Some(t) => {
-                debug!("Ate {:?}", t);
-                self.last_span = t.span.clone();
-                Ok(t)
-            },
-            None => Err(EOF),
-        }
+    /// Consume the next token and add it to the current position.
+    fn consume(&mut self) -> ParseResult<()> {
+        let token = self.tokens.consume().ok_or(Failure::EOF)?;
+        debug!("Consuming {:?}", token);
+        self.last_span = token.span.clone();
+        self.add_token(token);
+        Ok(())
     }
 
-    /// Consume the next token from the stream, ensuring it's of the given type.
-    /// The token is automatically added to the tree at the current position
-    /// if it was correct.
-    fn eat_exact(&mut self, target_type: TokenType) -> ParseResult<'a, ()> {
-        debug!("Trying to eat {:?}.", target_type);
-        match self.tokens.next() {
-            Some(t) => {
-                if t.tt == target_type {
-                    debug!("Ate (exact) {:?}", t);
-                    self.last_span = t.span.clone();
-                    self.add_token(t);
-                    Ok(())
-                } else {
-                    debug!("Ate (wrong) {:?}", t);
-                    Err(Failure::WrongToken(t))
-                }
-            },
-            None => Err(Failure::EOF),
+    /// Try and consume the specified token. If the token is wrong, it will
+    /// not be consumed.
+    fn try_consume_exact(&mut self, target: TokenType) -> ParseResult<()> {
+        debug!("Trying to consume {:?}.", target);
+        if self.peek()? == target {
+            self.consume()?;
+            Ok(())
+        } else {
+            Err(Failure::WrongToken)
         }
     }
 
-    /// Consume optional whitespace and return the next token after.
-    fn eat_ows(&mut self) -> EOFResult<Token<'a>> {
-        debug!("Eating optional whitespace.");
-        let mut token = self.eat_exact(TokenType::Whitespace);
-        while let Ok(()) = token {
-            token = self.eat_exact(TokenType::Whitespace);
-        }
-        return match token {
-            Err(Failure::WrongToken(t)) => Ok(t),
-            Err(Failure::EOF) => Err(EOF),
-            Ok(()) => unreachable!(),
-        }
-    }
-
-    /// Consume required whitespace and return the next token after.
-    fn eat_ws(&mut self) -> ParseResult<'a, Token<'a>> {
-        debug!("Eating required whitespace.");
-        let mut token = self.eat_exact(TokenType::Whitespace);
-        if let Err(Failure::WrongToken(t)) = token {
-            return Err(Failure::WrongToken(t));
-        }
-        while let Ok(()) = token {
-            token = self.eat_exact(TokenType::Whitespace);
-        }
-        return match token {
-            Err(Failure::WrongToken(t)) => Ok(t),
-            Err(Failure::EOF) => Err(Failure::EOF),
-            Ok(()) => unreachable!(),
+    /// Try and consume the specified token. If the token is wrong, the given
+    /// error will be generated and the token consumed.
+    fn consume_exact<M>(&mut self, target: TokenType, msg: M) -> ParseResult<()>
+        where M: Into<Cow<'static, str>>
+    {
+        debug!("Needing to consume {:?}.", target);
+        if self.peek()? == target {
+            self.consume()?;
+            Ok(())
+        } else {
+            self.error_consume(msg);
+            Err(Failure::WrongToken)
         }
     }
 
-    /// Consume everything till a newline, which also gets eaten.
-    fn consume_till_nl(&mut self) -> EOFResult<()> {
+    /// Greedily consume consecutive whitespace tokens. If required whitespace
+    /// is not found, an error will be generated and failure returned. Note that
+    /// this error will consume the offending token.
+    fn consume_whitespace(&mut self, required: bool) -> ParseResult<()> {
+        debug!("Consuming {} whitespace.",
+            if required {"required"} else {"optional"});
+        let mut consumed = false;
+        loop {
+            match self.try_consume_exact(TokenType::Whitespace) {
+                Ok(()) => consumed = true,
+                Err(Failure::WrongToken) => break,
+                Err(Failure::EOF) => return Err(Failure::EOF),
+            }
+        }
+        if consumed || !required {
+            Ok(())
+        } else {
+            self.error_consume("Expected whitespace.");
+            Err(Failure::WrongToken)
+        }
+    }
+
+    /// Consume everything up to and including a newline.
+    fn consume_till_nl(&mut self) -> ParseResult<()> {
         debug!("Consuming till the next newline.");
-        let mut token = self.eat_exact(TokenType::Newline);
-        while let Err(Failure::WrongToken(t)) = token {
-            self.add_token(t);
-            token = self.eat_exact(TokenType::Newline);
+        loop {
+            match self.try_consume_exact(TokenType::Newline) {
+                Ok(()) => return Ok(()),
+                Err(Failure::WrongToken) => self.consume()?,
+                Err(Failure::EOF) => return Err(Failure::EOF),
+            }
         }
-        token.map_err(|e| e.try_into().unwrap())  // WrongToken is impossible.
     }
 
-    /// Generate a parsing error.
-    fn error(&mut self, token: Token<'a>, message: Cow<'static, str>) {
+    /// Generate a parsing error for the current token, consuming it. If there
+    /// is no current token due to EOF, `self.last_span` will be used for the
+    /// error.
+    fn error_consume<M>(&mut self, message: M)
+        where M: Into<Cow<'static, str>>
+    {
+        let message = message.into();
         debug!("Generating error: {}", message);
-        self.errors.push(SaltError::new(
-            token.span,
-            message
-        ))
+        let token = self.tokens.consume();
+        let span = match token {
+            Some(t) => {
+                let span = t.span.clone();
+                self.add_token(t);
+                span
+            },
+            None => self.last_span.clone(),
+        };
+        self.errors.push(SaltError {span, message});
     }
 
     /// Program non-terminal.
@@ -225,96 +170,107 @@ impl<'a> Parser<'a> {
             match self.parse_line() {
                 Ok(LineResult::GoAgain) => {},
                 Ok(LineResult::GracefulEOF) => break,
-                Err(_) => {  // Unexpected EOF.
+                Err(Failure::EOF) => {
                     debug!("Unexpected EOF.");
-                    self.errors.push(SaltError::new(self.last_span.clone(),
-                                                    "Unexpected EOF.".into()));
+                    self.error_consume("Unexpected EOF");
                     break;
-                }
+                },
+                Err(_) => panic!("Invalid return from parse_line()"),
             }
         }
 
         // We must be at the end of the file now.
-        assert!(self.tokens.next().is_none(), "Reached end of PROGRAM before EOF.");
+        assert!(self.tokens.peek().is_none(), "Reached end of PROGRAM before EOF.");
 
         info!("...Finished Program.");
         self.finish_node();
     }
 
     /// Line non-terminal.
-    fn parse_line(&mut self) -> EOFResult<LineResult> {
+    fn parse_line(&mut self) -> ParseResult<LineResult> {
         self.start_node(Line);
         info!("Parsing Line...");
 
-        // We might have reached the end of the file.
-        let token = match self.eat_ows() {
-            Ok(t) => t,
-            Err(_) => {
-                info!("...Finished line with EOF.");
-                self.finish_node();
-                return Ok(LineResult::GracefulEOF);
-            }
-        };
-        // Branch based on next token.
-        match token.tt {
+        // There might be leading whitespace, or we might have gracefully
+        // reached the end of the file.
+        if let Err(Failure::EOF) = self.consume_whitespace(false) {
+            info!("...Finished line with EOF.");
+            self.finish_node();
+            return Ok(LineResult::GracefulEOF);
+        }
+
+        // Lookahead.
+        let line_result = match self.peek()? {
             TokenType::Const => {
                 // Constant declaration.
-                self.parse_const_decl(token)?;
+                self.parse_const_decl()
             },
             TokenType::Static => {
                 // Data declaration.
-                self.data_decl(token)?;
+                self.parse_data_decl()
             },
             TokenType::Identifier => {
                 // Label or instruction: currently ambiguous.
-                self.label_or_instruction(token)?;
+                self.parse_label_or_instruction()
             },
             TokenType::Comment => {
-                self.add_token(token);
+                self.consume()
             },
             TokenType::Newline => {
-                self.add_token(token);
-                info!("...Finished Line.");
-                self.finish_node();
-                return Ok(LineResult::GoAgain);
+                // Empty line.
+                Ok(())
             },
             _ => {
-                // Report the error and eat the rest of the line.
-                self.error(token, "Unexpected token at start of line: expected \
+                // Invalid token.
+                self.error_consume("Unexpected token at start of line: expected \
                                    const declaration, data declaration, label, \
-                                   instruction, or comment.".into());
+                                   instruction, or comment.");
+                Err(Failure::WrongToken)
+            }
+        };
+
+        // Handle possible failures.
+        match line_result {
+            Ok(()) => {},
+            Err(Failure::WrongToken) => {
+                // Eat the rest of the line and carry on parsing.
                 self.consume_till_nl()?;
                 info!("...Finished Line with error.");
                 self.finish_node();
                 return Ok(LineResult::GoAgain);
-            }
+            },
+            Err(Failure::EOF) => return Err(Failure::EOF),
         }
 
         // There may be whitespace and/or a comment after the line.
         // We may have also reached the end of the file.
-        let token = match self.eat_ows() {
-            Ok(t) => t,
-            Err(_) => {
-                info!("...Finished Line with EOF.");
-                return Ok(LineResult::GracefulEOF);
-            },
-        };
-        match token.tt {
+        if let Err(Failure::EOF) = self.consume_whitespace(false) {
+            info!("...Finished line with EOF.");
+            self.finish_node();
+            return Ok(LineResult::GracefulEOF);
+        }
+        match self.peek()? {
             TokenType::Comment => {
                 // Consume the comment and the following newline.
-                self.add_token(token);
-                if let Err(Failure::WrongToken(_)) = self.eat_exact(TokenType::Newline) {
+                self.consume()?;
+                if let Err(Failure::WrongToken) =
+                        self.try_consume_exact(TokenType::Newline) {
                     panic!("Comment didn't end with a newline!");
                 }
+                // If the newline fails due to EOF, this will fall through and
+                // be caught at the start of the next `parse_line`.
             }
             TokenType::Newline => {
-                self.add_token(token);
+                self.consume()?;
             }
             _ => {
                 // Report the error and eat the rest of the line.
-                self.error(token, "Unexpected token after end \
-                                   of line; expected newline.".into());
+                self.error_consume("Unexpected token after end \
+                                   of line; expected newline.");
                 self.consume_till_nl()?;
+                info!("...Finished Line with error.");
+                self.finish_node();
+                return Ok(LineResult::GoAgain);
             }
         }
 
@@ -324,22 +280,19 @@ impl<'a> Parser<'a> {
     }
 
     /// ConstDecl non-terminal.
-    fn parse_const_decl(&mut self, const_tok: Token) -> EOFResult<()> {
+    fn parse_const_decl(&mut self) -> ParseResult<()> {
         self.start_node(ConstDecl);
         info!("Parsing ConstDecl...");
 
-        // Add the const keyword token.
-        assert_eq!(const_tok.tt, TokenType::Const);
-        self.add_token(const_tok);
+        // Const keyword.
+        self.consume_exact(TokenType::Const, "Expected const keyword.")?;
 
-        // Required whitespace followed by an identifier.
-        let ident = after_ws!(self);
-        check_tt!(self, ident, Identifier, "Expected constant name.");
-        self.add_token(ident);
+        // Whitespace then identifier.
+        self.consume_whitespace(true)?;
+        self.consume_exact(TokenType::Identifier, "Expected constant name.")?;
 
-        // Required whitespace followed by a literal.
-        let next = after_ws!(self);
-        self.push_back(next);
+        // Whitespace then literal.
+        self.consume_whitespace(true)?;
         self.parse_literal()?;
 
         info!("...Finished ConstDecl.");
@@ -347,34 +300,30 @@ impl<'a> Parser<'a> {
     }
 
     /// DataDecl non-terminal.
-    fn data_decl(&mut self, static_tok: Token) -> EOFResult<()> {
+    fn parse_data_decl(&mut self) -> ParseResult<()> {
         self.start_node(DataDecl);
         info!("Parsing DataDecl...");
 
-        // Add the static keyword token.
-        assert_eq!(static_tok.tt, TokenType::Static);
-        self.add_token(static_tok);
+        // Static keyword.
+        self.consume_exact(TokenType::Static, "Expected static keyword.")?;
 
-        // Optional mut.
-        let mut next = after_ws!(self);
-        if let TokenType::Mut = next.tt {
+        // Whitespace then optional mut.
+        self.consume_whitespace(true)?;
+        if let TokenType::Mut = self.peek()? {
             // Add and eat the next whitespace.
-            self.add_token(next);
-            next = after_ws!(self);
+            self.consume()?;
+            self.consume_whitespace(true)?;
         }
-        self.push_back(next);
 
         // Required type.
         self.parse_data_type()?;
 
-        // Required identifier.
-        let ident = after_ws!(self);
-        check_tt!(self, ident, Identifier, "Expected static data name.");
-        self.add_token(ident);
+        // Whitespace then identifier.
+        self.consume_whitespace(true)?;
+        self.consume_exact(TokenType::Identifier, "Expected constant name.")?;
 
-        // Required (array) literal.
-        let next = after_ws!(self);
-        self.tokens.push_back(next);
+        // Whitespace then (array) literal.
+        self.consume_whitespace(true)?;
         self.parse_array_literal()?;
 
         info!("...Finished DataDecl.");
@@ -382,7 +331,7 @@ impl<'a> Parser<'a> {
     }
 
     /// DataType non-terminal.
-    fn parse_data_type(&mut self) -> EOFResult<()> {
+    fn parse_data_type(&mut self) -> ParseResult<()> {
         self.start_node(DataType);
         info!("Parsing DataType...");
 
@@ -393,12 +342,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Either a label or an instruction.
-    fn label_or_instruction(&mut self, ident_tok: Token) -> EOFResult<()> {
+    fn parse_label_or_instruction(&mut self) -> ParseResult<()> {
         todo!()
     }
 
     /// Label non-terminal.
-    fn parse_label(&mut self) -> EOFResult<()> {
+    fn parse_label(&mut self) -> ParseResult<()> {
         self.start_node(Label);
         info!("Parsing Label...");
 
@@ -409,7 +358,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Instruction non-terminal.
-    fn parse_instruction(&mut self) -> EOFResult<()> {
+    fn parse_instruction(&mut self) -> ParseResult<()> {
         self.start_node(Instruction);
         info!("Parsing Instruction...");
 
@@ -420,7 +369,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Operand non-terminal.
-    fn parse_operand(&mut self) -> EOFResult<()> {
+    fn parse_operand(&mut self) -> ParseResult<()> {
         self.start_node(Operand);
         info!("Parsing Operand...");
 
@@ -431,7 +380,7 @@ impl<'a> Parser<'a> {
     }
 
     /// ArrayLiteral non-terminal.
-    fn parse_array_literal(&mut self) -> EOFResult<()> {
+    fn parse_array_literal(&mut self) -> ParseResult<()> {
         self.start_node(ArrayLiteral);
         info!("Parsing ArrayLiteral...");
 
@@ -442,7 +391,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Literal non-terminal.
-    fn parse_literal(&mut self) -> EOFResult<()> {
+    fn parse_literal(&mut self) -> ParseResult<()> {
         self.start_node(Literal);
         info!("Parsing Literal...");
 

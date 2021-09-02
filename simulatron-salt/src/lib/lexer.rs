@@ -1,5 +1,6 @@
 use log::trace;
 use logos::Logos;
+use std::collections::VecDeque;
 
 #[derive(Logos, Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TokenType {
@@ -42,7 +43,7 @@ pub enum TokenType {
     Identifier,
 
     // Comments
-    #[regex(r"//[^\n]*")]
+    #[regex(r"//[^\r\n]*")]
     Comment,
 
     // Whitespace
@@ -66,7 +67,7 @@ pub struct Token<'a> {
 /// Wrap the Logos implementation with some extra buffering.
 pub struct Lexer<'a> {
     inner: logos::Lexer<'a, TokenType>,
-    pushed_back: Vec<Token<'a>>,
+    buffer: VecDeque<Token<'a>>,
 }
 
 impl<'a> Lexer<'a> {
@@ -74,45 +75,37 @@ impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             inner: TokenType::lexer(source),
-            pushed_back: Vec::with_capacity(1),
+            buffer: VecDeque::with_capacity(4),
         }
     }
 
-    /// Push a token back onto the front of the stream.
-    pub fn push_back(&mut self, token: Token<'a>) {
-        trace!("Pushing back {:?}", token);
-        self.pushed_back.push(token);
+    /// Check the type of the next token.
+    pub fn peek(&mut self) -> Option<TokenType> {
+        if self.buffer.is_empty() {
+            self.read_next()
+        } else {
+            Some(self.buffer.front().unwrap().tt)
+        }
     }
-}
 
-impl<'a> Iterator for Lexer<'a> {
-    type Item = Token<'a>;
-
-    /// Get the next token.
-    fn next(&mut self) -> Option<Self::Item> {
-        // Use the pushed back tokens first.
-        if !self.pushed_back.is_empty() {
-            let token = self.pushed_back.pop().unwrap();
-            trace!("Returning pushbacked {:?}", token);
-            return Some(token);
+    /// Consume the next token.
+    pub fn consume(&mut self) -> Option<Token<'a>> {
+        if self.buffer.is_empty() {
+            self.read_next()?;
         }
+        self.buffer.pop_front()
+    }
 
-        // Otherwise, get from the lexer.
-        return match self.inner.next() {
-            Some(tt) => {
-                let token = Token {
-                    tt,
-                    span: self.inner.span(),
-                    slice: self.inner.slice(),
-                };
-                trace!("Lexer produced {:?}", token);
-                Some(token)
-            },
-            None => {
-                trace!("Lexer hit EOF.");
-                None
-            },
-        }
+    /// Read the next token from the lexer, place it in the buffer, and
+    /// return its type.
+    fn read_next(&mut self) -> Option<TokenType> {
+        let tt = self.inner.next()?;
+        let span = self.inner.span();
+        let slice = self.inner.slice();
+        let token = Token { tt, span, slice };
+        trace!("Lexer produced {:?}", token);
+        self.buffer.push_back(token);
+        Some(tt)
     }
 }
 
@@ -145,7 +138,7 @@ mod tests {
         let input = std::fs::read_to_string(path).unwrap();
         let mut lexer = Lexer::new(&input);
         let mut output = String::new();
-        while let Some(t) = lexer.next() {
+        while let Some(t) = lexer.consume() {
             if let TokenType::Newline = t.tt {
                 writeln!(output, "{:?}", t.tt).unwrap();
             } else {
