@@ -51,6 +51,43 @@ pub struct Parser<'a> {
     errors: Vec<SaltError>,
 }
 
+/// Unwrap a ParseResult. On WrongToken, produce the given error, end the
+/// node, and return Ok(()). On EOF, return EOF.
+macro_rules! unwrap_or_err {
+    ($self:ident, $result:expr, $msg:expr) => {{
+        match $result {
+            Ok(t) => t,
+            Err(Failure::WrongToken(t)) => {
+                $self.error(t, $msg.into());
+                $self.finish_node();
+                return Ok(());
+            },
+            Err(Failure::EOF) => return Err(EOF),
+        }
+    }}
+}
+
+/// Shortcut for required whitespace.
+macro_rules! after_ws {
+    ($self:ident) => {{
+        unwrap_or_err!($self, $self.eat_ws(), "Expected whitespace.")
+    }}
+}
+
+/// Ensure a token is of the correct type; if not, the given error will be
+/// produced, the node ended, and Ok(()) returned.
+macro_rules! check_tt {
+    ($self:ident, $token:expr, $target:ident, $msg:expr) => {{
+        if let TokenType::$target = $token.tt {
+            // no-op
+        } else {
+            $self.error($token, $msg.into());
+            $self.finish_node();
+            return Ok(());
+        }
+    }}
+}
+
 impl<'a> Parser<'a> {
     /// Construct a new parser from the given token stream.
     pub fn new(tokens: Lexer<'a>) -> Self {
@@ -64,7 +101,7 @@ impl<'a> Parser<'a> {
 
     /// Run the parser, producing either a SyntaxNode tree or a vector of errors.
     pub fn run(mut self) -> Result<SyntaxNode, Vec<SaltError>> {
-        self.program();
+        self.parse_program();
 
         if self.errors.is_empty() {
             Ok(SyntaxNode::new_root(self.builder.finish()))
@@ -86,6 +123,11 @@ impl<'a> Parser<'a> {
     /// Wrapper for `builder.finish_node`.
     fn finish_node(&mut self) {
         self.builder.finish_node()
+    }
+
+    /// Wrapper for `tokens.push_back`.
+    fn push_back(&mut self, token: Token<'a>) {
+        self.tokens.push_back(token)
     }
 
     /// Consume the next token from the stream.
@@ -137,7 +179,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Consume required whitespace and return the next token after.
-    fn eat_ws(&mut self) -> ParseResult<Token<'a>> {
+    fn eat_ws(&mut self) -> ParseResult<'a, Token<'a>> {
         debug!("Eating required whitespace.");
         let mut token = self.eat_exact(TokenType::Whitespace);
         if let Err(Failure::WrongToken(t)) = token {
@@ -174,13 +216,13 @@ impl<'a> Parser<'a> {
     }
 
     /// Program non-terminal.
-    fn program(&mut self) {
+    fn parse_program(&mut self) {
         self.start_node(Program);
         info!("Parsing Program...");
 
         // Parse the next line until EOF.
         loop {
-            match self.line() {
+            match self.parse_line() {
                 Ok(LineResult::GoAgain) => {},
                 Ok(LineResult::GracefulEOF) => break,
                 Err(_) => {  // Unexpected EOF.
@@ -200,7 +242,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Line non-terminal.
-    fn line(&mut self) -> EOFResult<LineResult> {
+    fn parse_line(&mut self) -> EOFResult<LineResult> {
         self.start_node(Line);
         info!("Parsing Line...");
 
@@ -217,7 +259,7 @@ impl<'a> Parser<'a> {
         match token.tt {
             TokenType::Const => {
                 // Constant declaration.
-                self.const_decl(token)?;
+                self.parse_const_decl(token)?;
             },
             TokenType::Static => {
                 // Data declaration.
@@ -282,18 +324,132 @@ impl<'a> Parser<'a> {
     }
 
     /// ConstDecl non-terminal.
-    fn const_decl(&mut self, const_tok: Token) -> EOFResult<()> {
-        todo!()
+    fn parse_const_decl(&mut self, const_tok: Token) -> EOFResult<()> {
+        self.start_node(ConstDecl);
+        info!("Parsing ConstDecl...");
+
+        // Add the const keyword token.
+        assert_eq!(const_tok.tt, TokenType::Const);
+        self.add_token(const_tok);
+
+        // Required whitespace followed by an identifier.
+        let ident = after_ws!(self);
+        check_tt!(self, ident, Identifier, "Expected constant name.");
+        self.add_token(ident);
+
+        // Required whitespace followed by a literal.
+        let next = after_ws!(self);
+        self.push_back(next);
+        self.parse_literal()?;
+
+        info!("...Finished ConstDecl.");
+        Ok(())
     }
 
     /// DataDecl non-terminal.
     fn data_decl(&mut self, static_tok: Token) -> EOFResult<()> {
-        todo!()
+        self.start_node(DataDecl);
+        info!("Parsing DataDecl...");
+
+        // Add the static keyword token.
+        assert_eq!(static_tok.tt, TokenType::Static);
+        self.add_token(static_tok);
+
+        // Optional mut.
+        let mut next = after_ws!(self);
+        if let TokenType::Mut = next.tt {
+            // Add and eat the next whitespace.
+            self.add_token(next);
+            next = after_ws!(self);
+        }
+        self.push_back(next);
+
+        // Required type.
+        self.parse_data_type()?;
+
+        // Required identifier.
+        let ident = after_ws!(self);
+        check_tt!(self, ident, Identifier, "Expected static data name.");
+        self.add_token(ident);
+
+        // Required (array) literal.
+        let next = after_ws!(self);
+        self.tokens.push_back(next);
+        self.parse_array_literal()?;
+
+        info!("...Finished DataDecl.");
+        Ok(())
+    }
+
+    /// DataType non-terminal.
+    fn parse_data_type(&mut self) -> EOFResult<()> {
+        self.start_node(DataType);
+        info!("Parsing DataType...");
+
+        todo!();
+
+        info!("...Finished DataType.");
+        Ok(())
     }
 
     /// Either a label or an instruction.
     fn label_or_instruction(&mut self, ident_tok: Token) -> EOFResult<()> {
         todo!()
+    }
+
+    /// Label non-terminal.
+    fn parse_label(&mut self) -> EOFResult<()> {
+        self.start_node(Label);
+        info!("Parsing Label...");
+
+        todo!();
+
+        info!("...Finished Label.");
+        Ok(())
+    }
+
+    /// Instruction non-terminal.
+    fn parse_instruction(&mut self) -> EOFResult<()> {
+        self.start_node(Instruction);
+        info!("Parsing Instruction...");
+
+        todo!();
+
+        info!("...Finished Instruction.");
+        Ok(())
+    }
+
+    /// Operand non-terminal.
+    fn parse_operand(&mut self) -> EOFResult<()> {
+        self.start_node(Operand);
+        info!("Parsing Operand...");
+
+        todo!();
+
+        info!("...Finished Operand.");
+        Ok(())
+    }
+
+    /// ArrayLiteral non-terminal.
+    fn parse_array_literal(&mut self) -> EOFResult<()> {
+        self.start_node(ArrayLiteral);
+        info!("Parsing ArrayLiteral...");
+
+        todo!();
+
+        info!("...Finished ArrayLiteral.");
+        Ok(())
+    }
+
+    /// Literal non-terminal.
+    fn parse_literal(&mut self) -> EOFResult<()> {
+        self.start_node(Literal);
+        info!("Parsing Literal...");
+
+        todo!();
+
+        info!("...Finished Literal.");
+        Ok(())
     }
 }
 
