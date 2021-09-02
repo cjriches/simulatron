@@ -1,3 +1,4 @@
+use log::trace;
 use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq, Eq, Copy, Clone)]
@@ -79,7 +80,8 @@ impl<'a> Lexer<'a> {
 
     /// Push a token back onto the front of the stream.
     pub fn push_back(&mut self, token: Token<'a>) {
-        self.pushed_back.push(token)
+        trace!("Pushing back {:?}", token);
+        self.pushed_back.push(token);
     }
 }
 
@@ -90,19 +92,26 @@ impl<'a> Iterator for Lexer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         // Use the pushed back tokens first.
         if !self.pushed_back.is_empty() {
-            return self.pushed_back.pop();
+            let token = self.pushed_back.pop().unwrap();
+            trace!("Returning pushbacked {:?}", token);
+            return Some(token);
         }
 
         // Otherwise, get from the lexer.
         return match self.inner.next() {
             Some(tt) => {
-                Some(Token {
+                let token = Token {
                     tt,
                     span: self.inner.span(),
                     slice: self.inner.slice(),
-                })
+                };
+                trace!("Lexer produced {:?}", token);
+                Some(token)
             },
-            None => None,
+            None => {
+                trace!("Lexer hit EOF.");
+                None
+            },
         }
     }
 }
@@ -112,9 +121,27 @@ mod tests {
     use super::*;
 
     use insta::assert_snapshot;
-    use std::fmt::Write;
+
+    /// Initialise logging.
+    pub fn init() {
+        use std::io::Write;
+
+        // The logger can only be initialised once, but we don't know the order of
+        // tests. Therefore we use `try_init` and ignore the result.
+        let _ = env_logger::Builder::from_env(
+            env_logger::Env::default().default_filter_or("trace"))
+            .format(|out, record| {
+                writeln!(out, "{:>7} {}", record.level(), record.args())
+            })
+            .is_test(true)
+            .try_init();
+    }
 
     fn assert_tokens_snapshot(path: &str) {
+        use std::fmt::Write;
+
+        init();
+
         let input = std::fs::read_to_string(path).unwrap();
         let mut lexer = Lexer::new(&input);
         let mut output = String::new();

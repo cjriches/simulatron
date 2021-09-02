@@ -1,4 +1,4 @@
 mod error;
 mod language;
-mod lexer;
-mod parser;
+pub mod lexer;
+pub mod parser;

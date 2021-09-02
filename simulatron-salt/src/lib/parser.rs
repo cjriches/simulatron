@@ -1,3 +1,4 @@
+use log::{trace, debug, info};
 use rowan::{GreenNodeBuilder, Language};
 use std::borrow::Cow;
 use std::convert::{TryFrom, TryInto};
@@ -89,9 +90,10 @@ impl<'a> Parser<'a> {
 
     /// Consume the next token from the stream.
     fn eat(&mut self) -> EOFResult<Token<'a>> {
+        debug!("Eating any token.");
         match self.tokens.next() {
             Some(t) => {
-                println!("Ate {:?}", t.tt);
+                debug!("Ate {:?}", t);
                 self.last_span = t.span.clone();
                 Ok(t)
             },
@@ -103,15 +105,16 @@ impl<'a> Parser<'a> {
     /// The token is automatically added to the tree at the current position
     /// if it was correct.
     fn eat_exact(&mut self, target_type: TokenType) -> ParseResult<'a, ()> {
+        debug!("Trying to eat {:?}.", target_type);
         match self.tokens.next() {
             Some(t) => {
                 if t.tt == target_type {
-                    println!("Ate (exact) {:?}", t.tt);
+                    debug!("Ate (exact) {:?}", t);
                     self.last_span = t.span.clone();
                     self.add_token(t);
                     Ok(())
                 } else {
-                    println!("Ate (wrong) {:?}", t.tt);
+                    debug!("Ate (wrong) {:?}", t);
                     Err(Failure::WrongToken(t))
                 }
             },
@@ -121,6 +124,7 @@ impl<'a> Parser<'a> {
 
     /// Consume optional whitespace and return the next token after.
     fn eat_ows(&mut self) -> EOFResult<Token<'a>> {
+        debug!("Eating optional whitespace.");
         let mut token = self.eat_exact(TokenType::Whitespace);
         while let Ok(()) = token {
             token = self.eat_exact(TokenType::Whitespace);
@@ -134,6 +138,7 @@ impl<'a> Parser<'a> {
 
     /// Consume required whitespace and return the next token after.
     fn eat_ws(&mut self) -> ParseResult<Token<'a>> {
+        debug!("Eating required whitespace.");
         let mut token = self.eat_exact(TokenType::Whitespace);
         if let Err(Failure::WrongToken(t)) = token {
             return Err(Failure::WrongToken(t));
@@ -150,16 +155,18 @@ impl<'a> Parser<'a> {
 
     /// Consume everything till a newline, which also gets eaten.
     fn consume_till_nl(&mut self) -> EOFResult<()> {
+        debug!("Consuming till the next newline.");
         let mut token = self.eat_exact(TokenType::Newline);
         while let Err(Failure::WrongToken(t)) = token {
             self.add_token(t);
             token = self.eat_exact(TokenType::Newline);
         }
-        token.map_err(|e| e.try_into().unwrap())
+        token.map_err(|e| e.try_into().unwrap())  // WrongToken is impossible.
     }
 
     /// Generate a parsing error.
     fn error(&mut self, token: Token<'a>, message: Cow<'static, str>) {
+        debug!("Generating error: {}", message);
         self.errors.push(SaltError::new(
             token.span,
             message
@@ -169,6 +176,7 @@ impl<'a> Parser<'a> {
     /// Program non-terminal.
     fn program(&mut self) {
         self.start_node(Program);
+        info!("Parsing Program...");
 
         // Parse the next line until EOF.
         loop {
@@ -176,6 +184,7 @@ impl<'a> Parser<'a> {
                 Ok(LineResult::GoAgain) => {},
                 Ok(LineResult::GracefulEOF) => break,
                 Err(_) => {  // Unexpected EOF.
+                    debug!("Unexpected EOF.");
                     self.errors.push(SaltError::new(self.last_span.clone(),
                                                     "Unexpected EOF.".into()));
                     break;
@@ -186,17 +195,20 @@ impl<'a> Parser<'a> {
         // We must be at the end of the file now.
         assert!(self.tokens.next().is_none(), "Reached end of PROGRAM before EOF.");
 
+        info!("...Finished Program.");
         self.finish_node();
     }
 
     /// Line non-terminal.
     fn line(&mut self) -> EOFResult<LineResult> {
         self.start_node(Line);
+        info!("Parsing Line...");
 
         // We might have reached the end of the file.
         let token = match self.eat_ows() {
             Ok(t) => t,
             Err(_) => {
+                info!("...Finished line with EOF.");
                 self.finish_node();
                 return Ok(LineResult::GracefulEOF);
             }
@@ -205,21 +217,22 @@ impl<'a> Parser<'a> {
         match token.tt {
             TokenType::Const => {
                 // Constant declaration.
-                self.const_decl()?;
+                self.const_decl(token)?;
             },
             TokenType::Static => {
                 // Data declaration.
-                self.data_decl()?;
+                self.data_decl(token)?;
             },
             TokenType::Identifier => {
                 // Label or instruction: currently ambiguous.
-                self.label_or_instruction()?;
+                self.label_or_instruction(token)?;
             },
             TokenType::Comment => {
                 self.add_token(token);
             },
             TokenType::Newline => {
                 self.add_token(token);
+                info!("...Finished Line.");
                 self.finish_node();
                 return Ok(LineResult::GoAgain);
             },
@@ -229,6 +242,7 @@ impl<'a> Parser<'a> {
                                    const declaration, data declaration, label, \
                                    instruction, or comment.".into());
                 self.consume_till_nl()?;
+                info!("...Finished Line with error.");
                 self.finish_node();
                 return Ok(LineResult::GoAgain);
             }
@@ -238,7 +252,10 @@ impl<'a> Parser<'a> {
         // We may have also reached the end of the file.
         let token = match self.eat_ows() {
             Ok(t) => t,
-            Err(_) => return Ok(LineResult::GracefulEOF),
+            Err(_) => {
+                info!("...Finished Line with EOF.");
+                return Ok(LineResult::GracefulEOF);
+            },
         };
         match token.tt {
             TokenType::Comment => {
@@ -259,22 +276,23 @@ impl<'a> Parser<'a> {
             }
         }
 
+        info!("...Finished Line.");
         self.finish_node();
         Ok(LineResult::GoAgain)
     }
 
     /// ConstDecl non-terminal.
-    fn const_decl(&mut self) -> EOFResult<()> {
+    fn const_decl(&mut self, const_tok: Token) -> EOFResult<()> {
         todo!()
     }
 
     /// DataDecl non-terminal.
-    fn data_decl(&mut self) -> EOFResult<()> {
+    fn data_decl(&mut self, static_tok: Token) -> EOFResult<()> {
         todo!()
     }
 
     /// Either a label or an instruction.
-    fn label_or_instruction(&mut self) -> EOFResult<()> {
+    fn label_or_instruction(&mut self, ident_tok: Token) -> EOFResult<()> {
         todo!()
     }
 }
@@ -285,7 +303,24 @@ mod tests {
 
     use insta::assert_debug_snapshot;
 
+    /// Initialise logging.
+    pub fn init() {
+        use std::io::Write;
+
+        // The logger can only be initialised once, but we don't know the order of
+        // tests. Therefore we use `try_init` and ignore the result.
+        let _ = env_logger::Builder::from_env(
+            env_logger::Env::default().default_filter_or("info"))
+            .format(|out, record| {
+                writeln!(out, "{:>7} {}", record.level(), record.args())
+            })
+            .is_test(true)
+            .try_init();
+    }
+
     fn assert_syntax_tree_snapshot(path: &str) {
+        init();
+
         let input = std::fs::read_to_string(path).unwrap();
         let parser = Parser::new(Lexer::new(&input));
         let output = parser.run().unwrap();
