@@ -3,18 +3,44 @@ source: src/lib/parser.rs
 expression: output
 
 ---
-Program@0..124
-  Line@0..37
-    Comment@0..36 "// This file only con ..."
-    Newline@36..37 "\n"
-  Line@37..38
-    Newline@37..38 "\n"
-  Line@38..75
-    Comment@38..74 "// This makes it very ..."
-    Newline@74..75 "\n"
-  Line@75..124
-    Whitespace@75..77 "  "
-    Comment@77..123 "// This comment has w ..."
-    Newline@123..124 "\n"
-  Line@124..124
+Program@0..320
+  Line@0..22
+    Instruction@0..4
+      Identifier@0..4 "halt"
+    Whitespace@4..6 "  "
+    Comment@6..21 "// some comment"
+    Newline@21..22 "\n"
+  Line@22..52
+    Instruction@22..27
+      Identifier@22..27 "pause"
+    Comment@27..51 "//this-one-has-no-spaces"
+    Newline@51..52 "\n"
+  Line@52..93
+    Instruction@52..56
+      Identifier@52..56 "halt"
+    Whitespace@56..57 " "
+    Comment@57..92 "// this one has trail ..."
+    Newline@92..93 "\n"
+  Line@93..193
+    Comment@93..192 "// This one is the fi ..."
+    Newline@192..193 "\n"
+  Line@193..231
+    Comment@193..230 "// This one has the w ..."
+    Newline@230..231 "\n"
+  Line@231..320
+    DataDecl@231..319
+      KwStatic@231..237 "static"
+      DataType@237..246
+        Whitespace@237..238 " "
+        KwByte@238..242 "byte"
+        OpenSquare@242..243 "["
+        IntLiteral@243..245 "66"
+        CloseSquare@245..246 "]"
+      Whitespace@246..247 " "
+      Identifier@247..250 "msg"
+      ArrayLiteral@250..319
+        Whitespace@250..251 " "
+        StringLiteral@251..319 "\"This looks like it h ..."
+    Newline@319..320 "\n"
+  Line@320..320
 

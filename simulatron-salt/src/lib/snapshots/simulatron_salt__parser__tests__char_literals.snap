@@ -1,0 +1,23 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..29
+  Line@0..23
+    ConstDecl@0..22
+      KwConst@0..5 "const"
+      Whitespace@5..6 " "
+      Identifier@6..18 "FIRST_LETTER"
+      Literal@18..22
+        Whitespace@18..19 " "
+        CharLiteral@19..22 "'A'"
+    Newline@22..23 "\n"
+  Line@23..24
+    Newline@23..24 "\n"
+  Line@24..29
+    Instruction@24..28
+      Identifier@24..28 "halt"
+    Newline@28..29 "\n"
+  Line@29..29
+

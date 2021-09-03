@@ -1,0 +1,20 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..124
+  Line@0..37
+    Comment@0..36 "// This file only con ..."
+    Newline@36..37 "\n"
+  Line@37..38
+    Newline@37..38 "\n"
+  Line@38..75
+    Comment@38..74 "// This makes it very ..."
+    Newline@74..75 "\n"
+  Line@75..124
+    Whitespace@75..77 "  "
+    Comment@77..123 "// This comment has w ..."
+    Newline@123..124 "\n"
+  Line@124..124
+

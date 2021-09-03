@@ -1,0 +1,55 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..58
+  Line@0..11
+    Label@0..10
+      Identifier@0..9 "somelabel"
+      Colon@9..10 ":"
+    Newline@10..11 "\n"
+  Line@11..21
+    Instruction@11..20
+      Identifier@11..15 "copy"
+      Operand@15..18
+        Whitespace@15..16 " "
+        Identifier@16..18 "r0"
+      Operand@18..20
+        Literal@18..20
+          Whitespace@18..19 " "
+          IntLiteral@19..20 "5"
+    Newline@20..21 "\n"
+  Line@21..36
+    Instruction@21..35
+      Identifier@21..29 "sconvert"
+      Operand@29..32
+        Whitespace@29..30 " "
+        Identifier@30..32 "f0"
+      Operand@32..35
+        Whitespace@32..33 " "
+        Identifier@33..35 "r0"
+    Newline@35..36 "\n"
+  Line@36..48
+    Instruction@36..47
+      Identifier@36..40 "copy"
+      Operand@40..43
+        Whitespace@40..41 " "
+        Identifier@41..43 "f1"
+      Operand@43..47
+        Literal@43..47
+          Whitespace@43..44 " "
+          FloatLiteral@44..47 "6.0"
+    Newline@47..48 "\n"
+  Line@48..58
+    Instruction@48..57
+      Identifier@48..51 "add"
+      Operand@51..54
+        Whitespace@51..52 " "
+        Identifier@52..54 "f0"
+      Operand@54..57
+        Whitespace@54..55 " "
+        Identifier@55..57 "f1"
+    Newline@57..58 "\n"
+  Line@58..58
+

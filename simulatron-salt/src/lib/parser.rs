@@ -551,6 +551,10 @@ mod tests {
         let input = std::fs::read_to_string(path).unwrap();
         let parser = Parser::new(Lexer::new(&input));
         let output = parser.run().unwrap();
+        let reconstructed = output.text().to_string();
+        // Ensure the concrete syntax tree is lossless.
+        assert_eq!(input, reconstructed.as_str());
+        // Ensure it is correct.
         assert_debug_snapshot!(output);
     }
 
@@ -562,18 +566,34 @@ mod tests {
         parser.parse_program();
         let tree = SyntaxNode::new_root(parser.builder.finish());
         let errors = parser.errors;
+        let reconstructed = tree.text().to_string();
+        // Ensure the concrete syntax tree is lossless.
+        assert_eq!(input, reconstructed.as_str());
+        // Ensure there were errors.
         assert!(!errors.is_empty());
+        // Ensure the tree and errors are correct.
         assert_debug_snapshot!(tree);
         assert_debug_snapshot!(errors);
     }
 
     #[test]
-    fn test_empty() {
-        assert_syntax_tree_snapshot("examples/empty-file.simasm");
+    fn test_arrays() {
+        assert_syntax_tree_snapshot("examples/array-literals.simasm");
+    }
+
+    #[test]
+    fn test_bad_tokens() {
+        assert_error_snapshot("examples/bad-tokens.simasm");
+    }
+
+    #[test]
+    fn test_char_literals() {
+        assert_syntax_tree_snapshot("examples/char-literal.simasm");
     }
 
     #[test]
     fn test_comments() {
+        assert_syntax_tree_snapshot("examples/comments.simasm");
         assert_syntax_tree_snapshot("examples/comments-only.simasm");
     }
 
@@ -583,18 +603,8 @@ mod tests {
     }
 
     #[test]
-    fn test_statics() {
-        assert_syntax_tree_snapshot("examples/statics-only.simasm");
-    }
-
-    #[test]
-    fn test_arrays() {
-        assert_syntax_tree_snapshot("examples/array-literals.simasm");
-    }
-
-    #[test]
-    fn test_hello_world() {
-        assert_syntax_tree_snapshot("examples/hello-world.simasm");
+    fn test_empty() {
+        assert_syntax_tree_snapshot("examples/empty-file.simasm");
     }
 
     #[test]
@@ -603,7 +613,32 @@ mod tests {
     }
 
     #[test]
-    fn test_bad_tokens() {
-        assert_error_snapshot("examples/bad-tokens.simasm");
+    fn test_hello_world() {
+        assert_syntax_tree_snapshot("examples/hello-world.simasm");
+    }
+
+    #[test]
+    fn test_instruction_block() {
+        assert_syntax_tree_snapshot("examples/instruction-block.simasm");
+    }
+
+    #[test]
+    fn test_minimal() {
+        assert_syntax_tree_snapshot("examples/minimal.simasm");
+    }
+
+    #[test]
+    fn test_numeric_literals() {
+        assert_syntax_tree_snapshot("examples/numeric-literals.simasm");
+    }
+
+    #[test]
+    fn test_statics() {
+        assert_syntax_tree_snapshot("examples/statics-only.simasm");
+    }
+
+    #[test]
+    fn test_strings() {
+        assert_syntax_tree_snapshot("examples/string-literal.simasm");
     }
 }

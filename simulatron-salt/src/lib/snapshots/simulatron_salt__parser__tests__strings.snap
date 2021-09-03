@@ -1,0 +1,29 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..38
+  Line@0..32
+    DataDecl@0..31
+      KwStatic@0..6 "static"
+      DataType@6..14
+        Whitespace@6..7 " "
+        KwByte@7..11 "byte"
+        OpenSquare@11..12 "["
+        IntLiteral@12..13 "5"
+        CloseSquare@13..14 "]"
+      Whitespace@14..15 " "
+      Identifier@15..23 "greeting"
+      ArrayLiteral@23..31
+        Whitespace@23..24 " "
+        StringLiteral@24..31 "\"Hello\""
+    Newline@31..32 "\n"
+  Line@32..33
+    Newline@32..33 "\n"
+  Line@33..38
+    Instruction@33..37
+      Identifier@33..37 "halt"
+    Newline@37..38 "\n"
+  Line@38..38
+
