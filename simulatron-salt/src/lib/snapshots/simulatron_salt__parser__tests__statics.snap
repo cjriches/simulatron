@@ -1,0 +1,51 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..67
+  Line@0..18
+    DataDecl@0..17
+      KwStatic@0..6 "static"
+      Whitespace@6..7 " "
+      DataType@7..11
+        KwWord@7..11 "word"
+      Whitespace@11..12 " "
+      Identifier@12..15 "foo"
+      Whitespace@15..16 " "
+      ArrayLiteral@16..17
+        Literal@16..17
+          IntLiteral@16..17 "5"
+    Newline@17..18 "\n"
+  Line@18..40
+    DataDecl@18..39
+      KwStatic@18..24 "static"
+      Whitespace@24..25 " "
+      KwMut@25..28 "mut"
+      Whitespace@28..29 " "
+      DataType@29..33
+        KwHalf@29..33 "half"
+      Whitespace@33..34 " "
+      Identifier@34..37 "bar"
+      Whitespace@37..38 " "
+      ArrayLiteral@38..39
+        Literal@38..39
+          IntLiteral@38..39 "6"
+    Newline@39..40 "\n"
+  Line@40..67
+    DataDecl@40..66
+      KwStatic@40..46 "static"
+      Whitespace@46..47 " "
+      DataType@47..54
+        KwByte@47..51 "byte"
+        OpenSquare@51..52 "["
+        IntLiteral@52..53 "5"
+        CloseSquare@53..54 "]"
+      Whitespace@54..55 " "
+      Identifier@55..58 "baz"
+      Whitespace@58..59 " "
+      ArrayLiteral@59..66
+        StringLiteral@59..66 "\"Hello\""
+    Newline@66..67 "\n"
+  Line@67..67
+

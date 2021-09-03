@@ -1,0 +1,207 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..222
+  Line@0..46
+    DataDecl@0..45
+      KwStatic@0..6 "static"
+      Whitespace@6..7 " "
+      DataType@7..14
+        KwByte@7..11 "byte"
+        OpenSquare@11..12 "["
+        IntLiteral@12..13 "6"
+        CloseSquare@13..14 "]"
+      Whitespace@14..15 " "
+      Identifier@15..18 "arr"
+      Whitespace@18..19 " "
+      ArrayLiteral@19..45
+        OpenSquare@19..20 "["
+        Whitespace@20..21 " "
+        ArrayLiteral@21..24
+          Literal@21..24
+            CharLiteral@21..24 "'a'"
+        Comma@24..25 ","
+        Whitespace@25..26 " "
+        ArrayLiteral@26..29
+          Literal@26..29
+            CharLiteral@26..29 "'b'"
+        Comma@29..30 ","
+        Whitespace@30..31 " "
+        ArrayLiteral@31..34
+          Literal@31..34
+            CharLiteral@31..34 "'c'"
+        Comma@34..35 ","
+        Whitespace@35..36 " "
+        ArrayLiteral@36..37
+          Literal@36..37
+            IntLiteral@36..37 "1"
+        Comma@37..38 ","
+        Whitespace@38..39 " "
+        ArrayLiteral@39..40
+          Literal@39..40
+            IntLiteral@39..40 "2"
+        Comma@40..41 ","
+        Whitespace@41..42 " "
+        ArrayLiteral@42..43
+          Literal@42..43
+            IntLiteral@42..43 "3"
+        Whitespace@43..44 " "
+        CloseSquare@44..45 "]"
+    Newline@45..46 "\n"
+  Line@46..122
+    DataDecl@46..121
+      KwStatic@46..52 "static"
+      Whitespace@52..53 " "
+      DataType@53..63
+        KwWord@53..57 "word"
+        OpenSquare@57..58 "["
+        IntLiteral@58..59 "5"
+        CloseSquare@59..60 "]"
+        OpenSquare@60..61 "["
+        IntLiteral@61..62 "2"
+        CloseSquare@62..63 "]"
+      Whitespace@63..64 " "
+      Identifier@64..82 "primes_and_doubles"
+      Whitespace@82..83 " "
+      ArrayLiteral@83..121
+        OpenSquare@83..84 "["
+        ArrayLiteral@84..89
+          OpenSquare@84..85 "["
+          ArrayLiteral@85..86
+            Literal@85..86
+              IntLiteral@85..86 "2"
+          Comma@86..87 ","
+          ArrayLiteral@87..88
+            Literal@87..88
+              IntLiteral@87..88 "4"
+          CloseSquare@88..89 "]"
+        Comma@89..90 ","
+        Whitespace@90..91 " "
+        ArrayLiteral@91..96
+          OpenSquare@91..92 "["
+          ArrayLiteral@92..93
+            Literal@92..93
+              IntLiteral@92..93 "3"
+          Comma@93..94 ","
+          ArrayLiteral@94..95
+            Literal@94..95
+              IntLiteral@94..95 "6"
+          CloseSquare@95..96 "]"
+        Comma@96..97 ","
+        Whitespace@97..98 " "
+        ArrayLiteral@98..104
+          OpenSquare@98..99 "["
+          ArrayLiteral@99..100
+            Literal@99..100
+              IntLiteral@99..100 "5"
+          Comma@100..101 ","
+          ArrayLiteral@101..103
+            Literal@101..103
+              IntLiteral@101..103 "10"
+          CloseSquare@103..104 "]"
+        Comma@104..105 ","
+        Whitespace@105..106 " "
+        ArrayLiteral@106..112
+          OpenSquare@106..107 "["
+          ArrayLiteral@107..108
+            Literal@107..108
+              IntLiteral@107..108 "7"
+          Comma@108..109 ","
+          ArrayLiteral@109..111
+            Literal@109..111
+              IntLiteral@109..111 "14"
+          CloseSquare@111..112 "]"
+        Comma@112..113 ","
+        Whitespace@113..114 " "
+        ArrayLiteral@114..120
+          OpenSquare@114..115 "["
+          ArrayLiteral@115..116
+            Literal@115..116
+              IntLiteral@115..116 "9"
+          Comma@116..117 ","
+          ArrayLiteral@117..119
+            Literal@117..119
+              IntLiteral@117..119 "18"
+          CloseSquare@119..120 "]"
+        CloseSquare@120..121 "]"
+    Newline@121..122 "\n"
+  Line@122..146
+    DataDecl@122..145
+      KwStatic@122..128 "static"
+      Whitespace@128..129 " "
+      DataType@129..136
+        KwHalf@129..133 "half"
+        OpenSquare@133..134 "["
+        IntLiteral@134..135 "0"
+        CloseSquare@135..136 "]"
+      Whitespace@136..137 " "
+      Identifier@137..142 "empty"
+      Whitespace@142..143 " "
+      ArrayLiteral@143..145
+        OpenSquare@143..144 "["
+        CloseSquare@144..145 "]"
+    Newline@145..146 "\n"
+  Line@146..222
+    DataDecl@146..221
+      KwStatic@146..152 "static"
+      Whitespace@152..153 " "
+      KwMut@153..156 "mut"
+      Whitespace@156..157 " "
+      DataType@157..170
+        KwByte@157..161 "byte"
+        OpenSquare@161..162 "["
+        IntLiteral@162..163 "2"
+        CloseSquare@163..164 "]"
+        OpenSquare@164..165 "["
+        IntLiteral@165..166 "2"
+        CloseSquare@166..167 "]"
+        OpenSquare@167..168 "["
+        IntLiteral@168..169 "2"
+        CloseSquare@169..170 "]"
+      Whitespace@170..171 " "
+      Identifier@171..182 "mega_nested"
+      Whitespace@182..183 " "
+      ArrayLiteral@183..221
+        OpenSquare@183..184 "["
+        ArrayLiteral@184..201
+          OpenSquare@184..185 "["
+          ArrayLiteral@185..194
+            OpenSquare@185..186 "["
+            ArrayLiteral@186..189
+              Literal@186..189
+                CharLiteral@186..189 "'a'"
+            Comma@189..190 ","
+            ArrayLiteral@190..193
+              Literal@190..193
+                CharLiteral@190..193 "'b'"
+            CloseSquare@193..194 "]"
+          Comma@194..195 ","
+          Whitespace@195..196 " "
+          ArrayLiteral@196..200
+            StringLiteral@196..200 "\"cd\""
+          CloseSquare@200..201 "]"
+        Comma@201..202 ","
+        Whitespace@202..203 " "
+        ArrayLiteral@203..220
+          OpenSquare@203..204 "["
+          ArrayLiteral@204..208
+            StringLiteral@204..208 "\"ef\""
+          Comma@208..209 ","
+          Whitespace@209..210 " "
+          ArrayLiteral@210..219
+            OpenSquare@210..211 "["
+            ArrayLiteral@211..214
+              Literal@211..214
+                CharLiteral@211..214 "'g'"
+            Comma@214..215 ","
+            ArrayLiteral@215..218
+              Literal@215..218
+                CharLiteral@215..218 "'h'"
+            CloseSquare@218..219 "]"
+          CloseSquare@219..220 "]"
+        CloseSquare@220..221 "]"
+    Newline@221..222 "\n"
+  Line@222..222
+

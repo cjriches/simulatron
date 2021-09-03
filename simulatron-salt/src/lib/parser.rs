@@ -22,7 +22,8 @@ enum LineResult {
     GracefulEOF,
 }
 
-/// A recursive descent parser for SimAsm.
+/// An LL(1) mostly recursive descent parser for SimAsm, with bits of iterative
+/// Pratt-like parsing to deal with left recursion.
 pub struct Parser<'a> {
     builder: SafeNodeBuilder,
     tokens: Lexer<'a>,
@@ -311,7 +312,7 @@ impl<'a> Parser<'a> {
 
         // Whitespace then identifier.
         self.consume_whitespace(true)?;
-        self.consume_exact(TokenType::Identifier, "Expected constant name.")?;
+        self.consume_exact(TokenType::Identifier, "Expected data name.")?;
 
         // Whitespace then (array) literal.
         self.consume_whitespace(true)?;
@@ -326,7 +327,29 @@ impl<'a> Parser<'a> {
         let _guard = self.start_node(DataType);
         info!("Parsing DataType...");
 
-        todo!();
+        // Byte, Half, or Word.
+        match self.peek()? {
+            TokenType::Byte
+            | TokenType::Half
+            | TokenType::Word => {
+                self.consume()?;
+            },
+            _ => {
+                self.error_consume("Expected data type.");
+                info!("...Finished DataType with error.");
+                return Err(Failure::WrongToken);
+            }
+        }
+
+        // Optional sequence of array length specifiers.
+        while let TokenType::OpenSquare = self.peek()? {
+            self.consume()?;
+            self.consume_whitespace(false)?;
+            self.consume_exact(TokenType::IntLiteral,
+                               "Expected array length literal.")?;
+            self.consume_whitespace(false)?;
+            self.consume_exact(TokenType::CloseSquare, "Expected ']'.")?;
+        }
 
         info!("...Finished DataType.");
         Ok(())
@@ -375,7 +398,53 @@ impl<'a> Parser<'a> {
         let _guard = self.start_node(ArrayLiteral);
         info!("Parsing ArrayLiteral...");
 
-        todo!();
+        // Lookahead.
+        match self.peek()? {
+            TokenType::IntLiteral
+            | TokenType::FloatLiteral
+            | TokenType::CharLiteral => {
+                // Scalar literal.
+                self.parse_literal()?;
+            },
+            TokenType::StringLiteral => {
+                // String literal.
+                self.consume()?;
+            },
+            TokenType::OpenSquare => {
+                // Full array literal.
+                self.consume()?;
+
+                // Array might be empty.
+                if self.peek()? != TokenType::CloseSquare {
+                    loop {
+                        // Expect an element, which is also an ArrayLiteral.
+                        self.consume_whitespace(false)?;
+                        self.parse_array_literal()?;
+                        self.consume_whitespace(false)?;
+                        // Must be either a comma or a close bracket next.
+                        match self.peek()? {
+                            TokenType::Comma => {
+                                self.consume()?;
+                            },
+                            TokenType::CloseSquare => {
+                                break;
+                            },
+                            _ => {
+                                self.error_consume("Expected ',' or ']'");
+                                info!("...Finishing ArrayLiteral with error.");
+                                return Err(Failure::WrongToken);
+                            }
+                        }
+                    }
+                }
+                self.consume()?;  // Eat the close bracket.
+            }
+            _ => {
+                self.error_consume("Expected literal.");
+                info!("...Finishing ArrayLiteral with error.");
+                return Err(Failure::WrongToken);
+            }
+        }
 
         info!("...Finished ArrayLiteral.");
         Ok(())
@@ -445,6 +514,16 @@ mod tests {
     #[test]
     fn test_consts() {
         assert_syntax_tree_snapshot("examples/consts-only.simasm");
+    }
+
+    #[test]
+    fn test_statics() {
+        assert_syntax_tree_snapshot("examples/statics-only.simasm");
+    }
+
+    #[test]
+    fn test_arrays() {
+        assert_syntax_tree_snapshot("examples/array-literals.simasm");
     }
 
     #[test]

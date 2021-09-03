@@ -248,7 +248,7 @@ Const = "const" WS Identifier WS Literal ;
 Data = "static" WS [ "mut" WS ] Type WS Identifier WS ArrayLiteral ;
 
 Type = "byte" | "half" | "word"
-    | Type "[" IntLiteral "]" ;
+    | Type "[" OWS IntLiteral OWS "]" ;
 
 Label = Identifier ":" ;
 

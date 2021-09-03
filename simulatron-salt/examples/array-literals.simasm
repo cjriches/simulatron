@@ -1,0 +1,4 @@
+static byte[6] arr [ 'a', 'b', 'c', 1, 2, 3 ]
+static word[5][2] primes_and_doubles [[2,4], [3,6], [5,10], [7,14], [9,18]]
+static half[0] empty []
+static mut byte[2][2][2] mega_nested [[['a','b'], "cd"], ["ef", ['g','h']]]

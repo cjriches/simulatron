@@ -1,0 +1,3 @@
+static word foo 5
+static mut half bar 6
+static byte[5] baz "Hello"
