@@ -1,0 +1,11 @@
+---
+source: src/lib/parser.rs
+expression: errors
+
+---
+[
+    SaltError {
+        span: 6..7,
+        message: "Expected constant name.",
+    },
+]

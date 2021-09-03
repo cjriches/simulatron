@@ -1,0 +1,25 @@
+---
+source: src/lib/parser.rs
+expression: tree
+
+---
+Program@0..29
+  Line@0..16
+    ConstDecl@0..7
+      KwConst@0..5 "const"
+      Whitespace@5..6 " "
+      Unknown@6..7 "#"
+    Whitespace@7..8 " "
+    IntLiteral@8..15 "0b01001"
+    Newline@15..16 "\n"
+  Line@16..29
+    ConstDecl@16..28
+      KwConst@16..21 "const"
+      Whitespace@21..22 " "
+      Identifier@22..25 "DEC"
+      Whitespace@25..26 " "
+      Literal@26..28
+        IntLiteral@26..28 "42"
+    Newline@28..29 "\n"
+  Line@29..29
+

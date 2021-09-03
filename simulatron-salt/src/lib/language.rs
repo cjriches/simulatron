@@ -37,6 +37,7 @@ pub enum SyntaxKind {
     Comment,
     Newline,
     Whitespace,
+    Unknown,
 
     // Marker for conversion: DO NOT MOVE.
     __LAST,
@@ -64,7 +65,7 @@ impl From<TokenType> for SyntaxKind {
             TokenType::Comment => SyntaxKind::Comment,
             TokenType::Newline => SyntaxKind::Newline,
             TokenType::Whitespace => SyntaxKind::Whitespace,
-            TokenType::Unknown => panic!("Cannot convert an unknown token to SyntaxKind!"),
+            TokenType::Unknown => SyntaxKind::Unknown,
         }
     }
 }

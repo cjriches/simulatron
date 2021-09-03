@@ -1,11 +1,13 @@
+mod node_builder;
+
 use log::{trace, debug, info};
-use rowan::{GreenNodeBuilder, Language};
 use std::borrow::Cow;
 use std::ops::Range;
 
 use crate::error::SaltError;
-use crate::language::{SimAsmLanguage, SyntaxKind::{self, *}, SyntaxNode};
+use crate::language::{SyntaxKind::{self, *}, SyntaxNode};
 use crate::lexer::{Lexer, Token, TokenType};
+use node_builder::{NodeGuard, SafeNodeBuilder};
 
 /// A failure due to token mismatch or EOF.
 enum Failure {
@@ -22,7 +24,7 @@ enum LineResult {
 
 /// A recursive descent parser for SimAsm.
 pub struct Parser<'a> {
-    builder: GreenNodeBuilder<'static>,
+    builder: SafeNodeBuilder,
     tokens: Lexer<'a>,
     last_span: Range<usize>,
     errors: Vec<SaltError>,
@@ -32,7 +34,7 @@ impl<'a> Parser<'a> {
     /// Construct a new parser from the given token stream.
     pub fn new(tokens: Lexer<'a>) -> Self {
         Self {
-            builder: GreenNodeBuilder::new(),
+            builder: SafeNodeBuilder::new(),
             tokens,
             last_span: 0..0,
             errors: Vec::new(),
@@ -51,18 +53,13 @@ impl<'a> Parser<'a> {
     }
 
     /// Wrapper for `builder.start_node`.
-    fn start_node(&mut self, kind: SyntaxKind) {
-        self.builder.start_node(SimAsmLanguage::kind_to_raw(kind))
+    fn start_node(&mut self, kind: SyntaxKind) -> NodeGuard {
+        self.builder.start_node(kind)
     }
 
-    /// Wrapper for `builder.token`.
+    /// Wrapper for `builder.add_token`.
     fn add_token(&mut self, t: Token) {
-        self.builder.token(SimAsmLanguage::kind_to_raw(t.tt.into()), t.slice)
-    }
-
-    /// Wrapper for `builder.finish_node`.
-    fn finish_node(&mut self) {
-        self.builder.finish_node()
+        self.builder.add_token(t)
     }
 
     /// Wrapper for `tokens.peek`.
@@ -162,7 +159,7 @@ impl<'a> Parser<'a> {
 
     /// Program non-terminal.
     fn parse_program(&mut self) {
-        self.start_node(Program);
+        let _guard = self.start_node(Program);
         info!("Parsing Program...");
 
         // Parse the next line until EOF.
@@ -183,19 +180,17 @@ impl<'a> Parser<'a> {
         assert!(self.tokens.peek().is_none(), "Reached end of PROGRAM before EOF.");
 
         info!("...Finished Program.");
-        self.finish_node();
     }
 
     /// Line non-terminal.
     fn parse_line(&mut self) -> ParseResult<LineResult> {
-        self.start_node(Line);
+        let _guard = self.start_node(Line);
         info!("Parsing Line...");
 
         // There might be leading whitespace, or we might have gracefully
         // reached the end of the file.
         if let Err(Failure::EOF) = self.consume_whitespace(false) {
             info!("...Finished line with EOF.");
-            self.finish_node();
             return Ok(LineResult::GracefulEOF);
         }
 
@@ -236,7 +231,6 @@ impl<'a> Parser<'a> {
                 // Eat the rest of the line and carry on parsing.
                 self.consume_till_nl()?;
                 info!("...Finished Line with error.");
-                self.finish_node();
                 return Ok(LineResult::GoAgain);
             },
             Err(Failure::EOF) => return Err(Failure::EOF),
@@ -246,7 +240,6 @@ impl<'a> Parser<'a> {
         // We may have also reached the end of the file.
         if let Err(Failure::EOF) = self.consume_whitespace(false) {
             info!("...Finished line with EOF.");
-            self.finish_node();
             return Ok(LineResult::GracefulEOF);
         }
         match self.peek()? {
@@ -269,19 +262,17 @@ impl<'a> Parser<'a> {
                                    of line; expected newline.");
                 self.consume_till_nl()?;
                 info!("...Finished Line with error.");
-                self.finish_node();
                 return Ok(LineResult::GoAgain);
             }
         }
 
         info!("...Finished Line.");
-        self.finish_node();
         Ok(LineResult::GoAgain)
     }
 
     /// ConstDecl non-terminal.
     fn parse_const_decl(&mut self) -> ParseResult<()> {
-        self.start_node(ConstDecl);
+        let _guard = self.start_node(ConstDecl);
         info!("Parsing ConstDecl...");
 
         // Const keyword.
@@ -296,13 +287,12 @@ impl<'a> Parser<'a> {
         self.parse_literal()?;
 
         info!("...Finished ConstDecl.");
-        self.finish_node();
         Ok(())
     }
 
     /// DataDecl non-terminal.
     fn parse_data_decl(&mut self) -> ParseResult<()> {
-        self.start_node(DataDecl);
+        let _guard = self.start_node(DataDecl);
         info!("Parsing DataDecl...");
 
         // Static keyword.
@@ -328,19 +318,17 @@ impl<'a> Parser<'a> {
         self.parse_array_literal()?;
 
         info!("...Finished DataDecl.");
-        self.finish_node();
         Ok(())
     }
 
     /// DataType non-terminal.
     fn parse_data_type(&mut self) -> ParseResult<()> {
-        self.start_node(DataType);
+        let _guard = self.start_node(DataType);
         info!("Parsing DataType...");
 
         todo!();
 
         info!("...Finished DataType.");
-        self.finish_node();
         Ok(())
     }
 
@@ -351,55 +339,51 @@ impl<'a> Parser<'a> {
 
     /// Label non-terminal.
     fn parse_label(&mut self) -> ParseResult<()> {
-        self.start_node(Label);
+        let _guard = self.start_node(Label);
         info!("Parsing Label...");
 
         todo!();
 
         info!("...Finished Label.");
-        self.finish_node();
         Ok(())
     }
 
     /// Instruction non-terminal.
     fn parse_instruction(&mut self) -> ParseResult<()> {
-        self.start_node(Instruction);
+        let _guard = self.start_node(Instruction);
         info!("Parsing Instruction...");
 
         todo!();
 
         info!("...Finished Instruction.");
-        self.finish_node();
         Ok(())
     }
 
     /// Operand non-terminal.
     fn parse_operand(&mut self) -> ParseResult<()> {
-        self.start_node(Operand);
+        let _guard = self.start_node(Operand);
         info!("Parsing Operand...");
 
         todo!();
 
         info!("...Finished Operand.");
-        self.finish_node();
         Ok(())
     }
 
     /// ArrayLiteral non-terminal.
     fn parse_array_literal(&mut self) -> ParseResult<()> {
-        self.start_node(ArrayLiteral);
+        let _guard = self.start_node(ArrayLiteral);
         info!("Parsing ArrayLiteral...");
 
         todo!();
 
         info!("...Finished ArrayLiteral.");
-        self.finish_node();
         Ok(())
     }
 
     /// Literal non-terminal.
     fn parse_literal(&mut self) -> ParseResult<()> {
-        self.start_node(Literal);
+        let _guard = self.start_node(Literal);
         info!("Parsing Literal...");
 
         match self.peek()? {
@@ -408,13 +392,11 @@ impl<'a> Parser<'a> {
             | TokenType::CharLiteral => {
                 self.consume()?;
                 info!("...Finished Literal.");
-                self.finish_node();
                 Ok(())
             },
             _ => {
                 self.error_consume("Expected integer, float, or character literal.");
                 info!("...Finished literal with error.");
-                self.finish_node();
                 Err(Failure::WrongToken)
             }
         }
@@ -437,6 +419,19 @@ mod tests {
         assert_debug_snapshot!(output);
     }
 
+    fn assert_error_snapshot(path: &str) {
+        init_test_logging();
+
+        let input = std::fs::read_to_string(path).unwrap();
+        let mut parser = Parser::new(Lexer::new(&input));
+        parser.parse_program();
+        let tree = SyntaxNode::new_root(parser.builder.finish());
+        let errors = parser.errors;
+        assert!(!errors.is_empty());
+        assert_debug_snapshot!(tree);
+        assert_debug_snapshot!(errors);
+    }
+
     #[test]
     fn test_empty() {
         assert_syntax_tree_snapshot("examples/empty-file.simasm");
@@ -450,5 +445,10 @@ mod tests {
     #[test]
     fn test_consts() {
         assert_syntax_tree_snapshot("examples/consts-only.simasm");
+    }
+
+    #[test]
+    fn test_error_recovery() {
+        assert_error_snapshot("examples/first-line-bad.simasm");
     }
 }
