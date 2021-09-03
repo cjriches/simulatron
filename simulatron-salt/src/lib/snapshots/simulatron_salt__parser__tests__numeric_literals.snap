@@ -82,5 +82,4 @@ Program@0..155
     Instruction@150..154
       Identifier@150..154 "halt"
     Newline@154..155 "\n"
-  Line@155..155
 

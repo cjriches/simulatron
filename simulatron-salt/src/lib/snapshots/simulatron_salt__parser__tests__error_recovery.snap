@@ -21,5 +21,4 @@ Program@0..29
         Whitespace@25..26 " "
         IntLiteral@26..28 "42"
     Newline@28..29 "\n"
-  Line@29..29
 

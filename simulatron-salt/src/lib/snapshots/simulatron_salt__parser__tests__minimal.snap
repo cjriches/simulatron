@@ -3,10 +3,8 @@ source: src/lib/parser.rs
 expression: output
 
 ---
-Program@0..5
-  Line@0..5
+Program@0..4
+  Line@0..4
     Instruction@0..4
       Identifier@0..4 "halt"
-    Newline@4..5 "\n"
-  Line@5..5
 

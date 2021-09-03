@@ -19,5 +19,4 @@ Program@0..29
     Instruction@24..28
       Identifier@24..28 "halt"
     Newline@28..29 "\n"
-  Line@29..29
 

@@ -47,5 +47,4 @@ Program@0..67
         Whitespace@58..59 " "
         StringLiteral@59..66 "\"Hello\""
     Newline@66..67 "\n"
-  Line@67..67
 

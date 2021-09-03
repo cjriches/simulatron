@@ -137,5 +137,4 @@ Program@0..337
     Instruction@332..336
       Identifier@332..336 "halt"
     Newline@336..337 "\n"
-  Line@337..337
 

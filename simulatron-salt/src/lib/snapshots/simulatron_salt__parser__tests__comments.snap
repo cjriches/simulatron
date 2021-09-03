@@ -42,5 +42,4 @@ Program@0..320
         Whitespace@250..251 " "
         StringLiteral@251..319 "\"This looks like it h ..."
     Newline@319..320 "\n"
-  Line@320..320
 

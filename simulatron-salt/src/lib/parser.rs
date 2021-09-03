@@ -234,7 +234,6 @@ impl<'a> Parser<'a> {
 
     /// Line non-terminal.
     fn parse_line(&mut self) -> ParseResult<SequenceResult> {
-        let _guard = self.start_node(Line);
         info!("Parsing Line...");
 
         // We might have gracefully reached the end of the file.
@@ -242,6 +241,8 @@ impl<'a> Parser<'a> {
             info!("...Finished line with EOF.");
             return Ok(SequenceResult::GracefulEnd);
         }
+
+        let _guard = self.start_node(Line);
 
         // Lookahead.
         let line_result = match self.peek()? {
