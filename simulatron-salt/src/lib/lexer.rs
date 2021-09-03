@@ -75,7 +75,7 @@ impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             inner: TokenType::lexer(source),
-            buffer: VecDeque::with_capacity(4),
+            buffer: VecDeque::with_capacity(1),
         }
     }
 
@@ -112,28 +112,14 @@ impl<'a> Lexer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::init_test_logging;
 
     use insta::assert_snapshot;
-
-    /// Initialise logging.
-    pub fn init() {
-        use std::io::Write;
-
-        // The logger can only be initialised once, but we don't know the order of
-        // tests. Therefore we use `try_init` and ignore the result.
-        let _ = env_logger::Builder::from_env(
-            env_logger::Env::default().default_filter_or("trace"))
-            .format(|out, record| {
-                writeln!(out, "{:>7} {}", record.level(), record.args())
-            })
-            .is_test(true)
-            .try_init();
-    }
 
     fn assert_tokens_snapshot(path: &str) {
         use std::fmt::Write;
 
-        init();
+        init_test_logging();
 
         let input = std::fs::read_to_string(path).unwrap();
         let mut lexer = Lexer::new(&input);

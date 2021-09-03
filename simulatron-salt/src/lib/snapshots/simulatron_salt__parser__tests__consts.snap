@@ -1,0 +1,80 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..149
+  Line@0..18
+    ConstDecl@0..17
+      KwConst@0..5 "const"
+      Whitespace@5..6 " "
+      Identifier@6..9 "BIN"
+      Whitespace@9..10 " "
+      Literal@10..17
+        IntLiteral@10..17 "0b01001"
+    Newline@17..18 "\n"
+  Line@18..31
+    ConstDecl@18..30
+      KwConst@18..23 "const"
+      Whitespace@23..24 " "
+      Identifier@24..27 "DEC"
+      Whitespace@27..28 " "
+      Literal@28..30
+        IntLiteral@28..30 "42"
+    Newline@30..31 "\n"
+  Line@31..50
+    ConstDecl@31..49
+      KwConst@31..36 "const"
+      Whitespace@36..37 " "
+      Identifier@37..44 "DEC_EXP"
+      Whitespace@44..45 " "
+      Literal@45..49
+        IntLiteral@45..49 "42e6"
+    Newline@49..50 "\n"
+  Line@50..71
+    ConstDecl@50..70
+      KwConst@50..55 "const"
+      Whitespace@55..56 " "
+      Identifier@56..59 "HEX"
+      Whitespace@59..60 " "
+      Literal@60..70
+        IntLiteral@60..70 "0xdeadB00F"
+    Newline@70..71 "\n"
+  Line@71..87
+    ConstDecl@71..86
+      KwConst@71..76 "const"
+      Whitespace@76..77 " "
+      Identifier@77..82 "FLOAT"
+      Whitespace@82..83 " "
+      Literal@83..86
+        FloatLiteral@83..86 "1.0"
+    Newline@86..87 "\n"
+  Line@87..112
+    ConstDecl@87..111
+      KwConst@87..92 "const"
+      Whitespace@92..93 " "
+      Identifier@93..102 "FLOAT_EXP"
+      Whitespace@102..103 " "
+      Literal@103..111
+        FloatLiteral@103..111 "42.0e-12"
+    Newline@111..112 "\n"
+  Line@112..125
+    ConstDecl@112..124
+      KwConst@112..117 "const"
+      Whitespace@117..118 " "
+      Identifier@118..121 "NEG"
+      Whitespace@121..122 " "
+      Literal@122..124
+        IntLiteral@122..124 "-5"
+    Newline@124..125 "\n"
+  Line@125..149
+    ConstDecl@125..148
+      KwConst@125..130 "const"
+      Whitespace@130..131 " "
+      Identifier@131..140 "NEG_FLOAT"
+      Whitespace@140..141 " "
+      Literal@141..148
+        FloatLiteral@141..148 "-9.9432"
+    Newline@148..149 "\n"
+  Line@149..149
+

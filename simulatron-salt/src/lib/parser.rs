@@ -296,6 +296,7 @@ impl<'a> Parser<'a> {
         self.parse_literal()?;
 
         info!("...Finished ConstDecl.");
+        self.finish_node();
         Ok(())
     }
 
@@ -327,6 +328,7 @@ impl<'a> Parser<'a> {
         self.parse_array_literal()?;
 
         info!("...Finished DataDecl.");
+        self.finish_node();
         Ok(())
     }
 
@@ -338,6 +340,7 @@ impl<'a> Parser<'a> {
         todo!();
 
         info!("...Finished DataType.");
+        self.finish_node();
         Ok(())
     }
 
@@ -354,6 +357,7 @@ impl<'a> Parser<'a> {
         todo!();
 
         info!("...Finished Label.");
+        self.finish_node();
         Ok(())
     }
 
@@ -365,6 +369,7 @@ impl<'a> Parser<'a> {
         todo!();
 
         info!("...Finished Instruction.");
+        self.finish_node();
         Ok(())
     }
 
@@ -376,6 +381,7 @@ impl<'a> Parser<'a> {
         todo!();
 
         info!("...Finished Operand.");
+        self.finish_node();
         Ok(())
     }
 
@@ -387,6 +393,7 @@ impl<'a> Parser<'a> {
         todo!();
 
         info!("...Finished ArrayLiteral.");
+        self.finish_node();
         Ok(())
     }
 
@@ -395,36 +402,34 @@ impl<'a> Parser<'a> {
         self.start_node(Literal);
         info!("Parsing Literal...");
 
-        todo!();
-
-        info!("...Finished Literal.");
-        Ok(())
+        match self.peek()? {
+            TokenType::IntLiteral
+            | TokenType::FloatLiteral
+            | TokenType::CharLiteral => {
+                self.consume()?;
+                info!("...Finished Literal.");
+                self.finish_node();
+                Ok(())
+            },
+            _ => {
+                self.error_consume("Expected integer, float, or character literal.");
+                info!("...Finished literal with error.");
+                self.finish_node();
+                Err(Failure::WrongToken)
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::init_test_logging;
 
     use insta::assert_debug_snapshot;
 
-    /// Initialise logging.
-    pub fn init() {
-        use std::io::Write;
-
-        // The logger can only be initialised once, but we don't know the order of
-        // tests. Therefore we use `try_init` and ignore the result.
-        let _ = env_logger::Builder::from_env(
-            env_logger::Env::default().default_filter_or("info"))
-            .format(|out, record| {
-                writeln!(out, "{:>7} {}", record.level(), record.args())
-            })
-            .is_test(true)
-            .try_init();
-    }
-
     fn assert_syntax_tree_snapshot(path: &str) {
-        init();
+        init_test_logging();
 
         let input = std::fs::read_to_string(path).unwrap();
         let parser = Parser::new(Lexer::new(&input));
@@ -440,5 +445,10 @@ mod tests {
     #[test]
     fn test_comments() {
         assert_syntax_tree_snapshot("examples/comments-only.simasm");
+    }
+
+    #[test]
+    fn test_consts() {
+        assert_syntax_tree_snapshot("examples/consts-only.simasm");
     }
 }
