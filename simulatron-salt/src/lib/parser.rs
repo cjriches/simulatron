@@ -371,7 +371,11 @@ impl<'a> Parser<'a> {
         let _guard = self.start_node(Label);
         info!("Parsing Label...");
 
-        todo!();
+        // Label identifier.
+        self.consume_exact(TokenType::Identifier, "Expected label name.")?;
+
+        // Colon.
+        self.consume_exact(TokenType::Colon, "Expected ':'")?;
 
         info!("...Finished Label.");
         Ok(())
@@ -398,10 +402,39 @@ impl<'a> Parser<'a> {
 
     /// Operand non-terminal.
     fn parse_operand(&mut self) -> ParseResult<SequenceResult> {
-        let _guard = self.start_node(Operand);
         info!("Parsing Operand...");
+        // Since operand lists have no terminator, we must be aware of
+        // potential EOFs.
+        match self.peek() {
+            Ok(TokenType::Whitespace) => {
+                // Maybe another operand.
+                self.consume()?;
+            },
+            _ => {
+                // No more operands.
+                info!("...Finished Operand.");
+                return Ok(SequenceResult::GracefulEnd);
+            }
+        }
 
-        todo!();
+        let _guard = self.start_node(Operand);
+
+        // An operand is either an identifier or a literal.
+        match self.peek()? {
+            TokenType::Identifier => {
+                self.consume()?;
+            },
+            TokenType::IntLiteral
+            | TokenType::FloatLiteral
+            | TokenType::CharLiteral => {
+                self.parse_literal()?;
+            },
+            _ => {
+                // No more operands.
+                info!("...Finished Operand.");
+                return Ok(SequenceResult::GracefulEnd);
+            }
+        }
 
         info!("...Finished Operand.");
         Ok(SequenceResult::GoAgain)
@@ -541,7 +574,17 @@ mod tests {
     }
 
     #[test]
+    fn test_hello_world() {
+        assert_syntax_tree_snapshot("examples/hello-world.simasm");
+    }
+
+    #[test]
     fn test_error_recovery() {
         assert_error_snapshot("examples/first-line-bad.simasm");
+    }
+
+    #[test]
+    fn test_bad_tokens() {
+        assert_error_snapshot("examples/bad-tokens.simasm");
     }
 }

@@ -1,0 +1,51 @@
+---
+source: src/lib/parser.rs
+expression: errors
+
+---
+[
+    SaltError {
+        span: 29..30,
+        message: "Unexpected token after end of line; expected newline.",
+    },
+    SaltError {
+        span: 121..122,
+        message: "Unexpected token after end of line; expected newline.",
+    },
+    SaltError {
+        span: 145..146,
+        message: "Unexpected token at start of line: expected const declaration, data declaration, label, instruction, or comment.",
+    },
+    SaltError {
+        span: 151..152,
+        message: "Unexpected token at start of line: expected const declaration, data declaration, label, instruction, or comment.",
+    },
+    SaltError {
+        span: 202..203,
+        message: "Unexpected token after end of line; expected newline.",
+    },
+    SaltError {
+        span: 221..222,
+        message: "Unexpected token at start of line: expected const declaration, data declaration, label, instruction, or comment.",
+    },
+    SaltError {
+        span: 229..230,
+        message: "Unexpected token after end of line; expected newline.",
+    },
+    SaltError {
+        span: 243..244,
+        message: "Unexpected token after end of line; expected newline.",
+    },
+    SaltError {
+        span: 317..318,
+        message: "Unexpected token after end of line; expected newline.",
+    },
+    SaltError {
+        span: 341..342,
+        message: "Unexpected token after end of line; expected newline.",
+    },
+    SaltError {
+        span: 420..421,
+        message: "Expected integer, float, or character literal.",
+    },
+]

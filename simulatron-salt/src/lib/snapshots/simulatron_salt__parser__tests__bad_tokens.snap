@@ -1,0 +1,206 @@
+---
+source: src/lib/parser.rs
+expression: tree
+
+---
+Program@0..425
+  Line@0..112
+    Instruction@0..29
+      Identifier@0..4 "This"
+      Whitespace@4..5 " "
+      Operand@5..7
+        Identifier@5..7 "is"
+      Whitespace@7..8 " "
+      Operand@8..16
+        Identifier@8..16 "_really_"
+      Whitespace@16..17 " "
+      Operand@17..22
+        Identifier@17..22 "wrong"
+      Whitespace@22..23 " "
+      Operand@23..26
+        Identifier@23..26 "for"
+      Whitespace@26..27 " "
+      Operand@27..28
+        Identifier@27..28 "a"
+      Whitespace@28..29 " "
+      Operand@29..29
+    Unknown@29..30 "*"
+    Unknown@30..31 "."
+    Identifier@31..37 "simasm"
+    Whitespace@37..38 " "
+    Identifier@38..42 "file"
+    Unknown@42..43 "."
+    Whitespace@43..44 " "
+    Identifier@44..49 "There"
+    Whitespace@49..50 " "
+    Identifier@50..53 "are"
+    Whitespace@53..54 " "
+    Identifier@54..57 "all"
+    Whitespace@57..58 " "
+    Identifier@58..63 "sorts"
+    Whitespace@63..64 " "
+    Identifier@64..66 "of"
+    Whitespace@66..67 " "
+    Identifier@67..76 "incorrect"
+    Whitespace@76..77 " "
+    Identifier@77..83 "tokens"
+    Comma@83..84 ","
+    Whitespace@84..85 " "
+    Identifier@85..95 "generating"
+    Whitespace@95..96 " "
+    Identifier@96..100 "lots"
+    Whitespace@100..101 " "
+    Identifier@101..103 "of"
+    Whitespace@103..104 " "
+    Identifier@104..110 "errors"
+    Unknown@110..111 "."
+    Newline@111..112 "\n"
+  Line@112..113
+    Newline@112..113 "\n"
+  Line@113..145
+    Instruction@113..121
+      Identifier@113..116 "int"
+      Whitespace@116..117 " "
+      Operand@117..121
+        Identifier@117..121 "main"
+    Unknown@121..122 "("
+    Identifier@122..125 "int"
+    Whitespace@125..126 " "
+    Identifier@126..130 "argc"
+    Comma@130..131 ","
+    Whitespace@131..132 " "
+    Identifier@132..136 "char"
+    Whitespace@136..137 " "
+    Unknown@137..138 "*"
+    Unknown@138..139 "*"
+    Identifier@139..143 "argv"
+    Unknown@143..144 ")"
+    Newline@144..145 "\n"
+  Line@145..147
+    Unknown@145..146 "{"
+    Newline@146..147 "\n"
+  Line@147..192
+    Whitespace@147..151 "    "
+    Unknown@151..152 "/"
+    Unknown@152..153 "*"
+    Whitespace@153..154 " "
+    Identifier@154..157 "Don"
+    Unknown@157..158 "'"
+    Identifier@158..159 "t"
+    Whitespace@159..160 " "
+    Identifier@160..163 "you"
+    Whitespace@163..164 " "
+    Identifier@164..168 "love"
+    Whitespace@168..169 " "
+    Identifier@169..173 "this"
+    Whitespace@173..174 " "
+    Identifier@174..181 "comment"
+    Whitespace@181..182 " "
+    Identifier@182..187 "style"
+    Unknown@187..188 "?"
+    Whitespace@188..189 " "
+    Unknown@189..190 "*"
+    Unknown@190..191 "/"
+    Newline@191..192 "\n"
+  Line@192..221
+    Whitespace@192..196 "    "
+    Instruction@196..202
+      Identifier@196..202 "printf"
+    Unknown@202..203 "("
+    StringLiteral@203..218 "\"Hello, World!\""
+    Unknown@218..219 ")"
+    Unknown@219..220 ";"
+    Newline@220..221 "\n"
+  Line@221..223
+    Unknown@221..222 "}"
+    Newline@222..223 "\n"
+  Line@223..224
+    Newline@223..224 "\n"
+  Line@224..238
+    Instruction@224..229
+      Identifier@224..228 "main"
+      Whitespace@228..229 " "
+      Operand@229..229
+    Colon@229..230 ":"
+    Colon@230..231 ":"
+    Whitespace@231..232 " "
+    Identifier@232..234 "IO"
+    Whitespace@234..235 " "
+    Unknown@235..236 "("
+    Unknown@236..237 ")"
+    Newline@237..238 "\n"
+  Line@238..304
+    Instruction@238..243
+      Identifier@238..242 "main"
+      Whitespace@242..243 " "
+      Operand@243..243
+    Unknown@243..244 "="
+    Whitespace@244..245 " "
+    Identifier@245..253 "putStrLn"
+    Whitespace@253..254 " "
+    StringLiteral@254..269 "\"Hello, World!\""
+    Whitespace@269..271 "  "
+    Unknown@271..272 "-"
+    Unknown@272..273 "-"
+    Whitespace@273..274 " "
+    Identifier@274..276 "We"
+    Unknown@276..277 "'"
+    Identifier@277..279 "re"
+    Whitespace@279..280 " "
+    Identifier@280..287 "writing"
+    Whitespace@287..288 " "
+    Identifier@288..295 "Haskell"
+    Comma@295..296 ","
+    Whitespace@296..297 " "
+    Identifier@297..302 "right"
+    Unknown@302..303 "?"
+    Newline@303..304 "\n"
+  Line@304..305
+    Newline@304..305 "\n"
+  Line@305..332
+    Instruction@305..317
+      Identifier@305..307 "if"
+      Whitespace@307..308 " "
+      Operand@308..316
+        Identifier@308..316 "__name__"
+      Whitespace@316..317 " "
+      Operand@317..317
+    Unknown@317..318 "="
+    Unknown@318..319 "="
+    Whitespace@319..320 " "
+    StringLiteral@320..330 "\"__main__\""
+    Colon@330..331 ":"
+    Newline@331..332 "\n"
+  Line@332..373
+    Whitespace@332..336 "    "
+    Instruction@336..341
+      Identifier@336..341 "print"
+    Unknown@341..342 "("
+    StringLiteral@342..357 "\"Hello, world!\""
+    Unknown@357..358 ")"
+    Whitespace@358..360 "  "
+    Unknown@360..361 "#"
+    Whitespace@361..362 " "
+    Identifier@362..365 "Say"
+    Whitespace@365..366 " "
+    Identifier@366..371 "hello"
+    Unknown@371..372 "."
+    Newline@372..373 "\n"
+  Line@373..374
+    Newline@373..374 "\n"
+  Line@374..409
+    Comment@374..408 "// The next bit is al ..."
+    Newline@408..409 "\n"
+  Line@409..425
+    ConstDecl@409..421
+      KwConst@409..414 "const"
+      Whitespace@414..415 " "
+      Identifier@415..419 "YEET"
+      Whitespace@419..420 " "
+      Literal@420..421
+        Unknown@420..421 "("
+    IntLiteral@421..423 "42"
+    Unknown@423..424 ")"
+    Newline@424..425 "\n"
+  Line@425..425
+
