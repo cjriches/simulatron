@@ -1,8 +1,8 @@
 mod node_builder;
 
-use log::{trace, debug, info};
+use log::{debug, info, error};
 use std::borrow::Cow;
-use std::num::NonZeroUsize;
+use std::collections::VecDeque;
 use std::ops::Range;
 
 use crate::error::SaltError;
@@ -29,8 +29,31 @@ enum SequenceResult {
 pub struct Parser<'a> {
     builder: SafeNodeBuilder,
     tokens: Lexer<'a>,
+    buffer: VecDeque<Token<'a>>,
     last_span: Range<usize>,
     errors: Vec<SaltError>,
+}
+
+/// A non-destructive iterator over a parser's token stream, yielding token types.
+struct TokenTypeIter<'a, 'b> {
+    parser: &'b mut Parser<'a>,
+    pos: usize,
+}
+
+impl<'a, 'b> Iterator for TokenTypeIter<'a, 'b> {
+    type Item = TokenType;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Ensure the buffer is full enough.
+        for _ in self.parser.buffer.len()..(self.pos+1) {
+            let token = self.parser.tokens.next()?;
+            self.parser.buffer.push_back(token);
+        }
+        // Return the next token type.
+        let ret = Some(self.parser.buffer.get(self.pos).unwrap().tt);
+        self.pos += 1;
+        ret
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -39,6 +62,7 @@ impl<'a> Parser<'a> {
         Self {
             builder: SafeNodeBuilder::new(),
             tokens,
+            buffer: VecDeque::with_capacity(8),
             last_span: 0..0,
             errors: Vec::new(),
         }
@@ -65,23 +89,71 @@ impl<'a> Parser<'a> {
         self.builder.add_token(t)
     }
 
-    /// Wrapper for `tokens.peek`.
+    /// Iterate non-destructively through the token stream.
+    fn iter_token_types<'b>(&'b mut self) -> TokenTypeIter<'a, 'b> {
+        TokenTypeIter {
+            parser: self,
+            pos: 0,
+        }
+    }
+
+    /// Peek at the type of the next non-whitespace token.
     fn peek(&mut self) -> ParseResult<TokenType> {
-        self.tokens.peek().ok_or(Failure::EOF)
+        for tt in self.iter_token_types() {
+            if tt != TokenType::Whitespace {
+                return Ok(tt);
+            }
+        }
+        Err(Failure::EOF)
     }
 
-    /// Wrapper for `tokens.lookahead`.
-    fn lookahead(&mut self, n: NonZeroUsize) -> ParseResult<TokenType> {
-        self.tokens.lookahead(n).ok_or(Failure::EOF)
+    /// Double lookahead, skipping whitespace.
+    fn double_lookahead(&mut self) -> ParseResult<TokenType> {
+        let mut seen: usize = 0;
+        for tt in self.iter_token_types() {
+            if tt != TokenType::Whitespace {
+                seen += 1;
+                if seen == 2 {
+                    return Ok(tt);
+                }
+            }
+        }
+        Err(Failure::EOF)
     }
 
-    /// Consume the next token and add it to the current position.
+    /// Consume the next non-whitespace token and all whitespace before it,
+    /// adding them to the current position.
     fn consume(&mut self) -> ParseResult<()> {
-        let token = self.tokens.consume().ok_or(Failure::EOF)?;
-        debug!("Consuming {:?}", token);
-        self.last_span = token.span.clone();
-        self.add_token(token);
-        Ok(())
+        // Helper function for DRY.
+        fn eat(self_: &mut Parser) -> TokenType {
+            let token = self_.buffer.pop_front().unwrap();
+            debug!("Consuming {:?}", token);
+            let tt = token.tt;
+            self_.last_span = token.span.clone();
+            self_.add_token(token);
+            tt
+        }
+
+        // Ensure the buffer has a non-whitespace item.
+        match self.peek() {
+            Ok(_) => {
+                // Eat up to and including the first non-whitespace token.
+                loop {
+                    let tt = eat(self);
+                    if tt != TokenType::Whitespace {
+                        return Ok(());
+                    }
+                }
+            },
+            Err(Failure::EOF) => {
+                // Eat any trailing whitespace.
+                for _ in 0..self.buffer.len() {
+                    eat(self);
+                }
+                return Err(Failure::EOF);
+            },
+            Err(Failure::WrongToken) => unreachable!(),
+        }
     }
 
     /// Try and consume the specified token. If the token is wrong, it will
@@ -111,28 +183,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Greedily consume consecutive whitespace tokens. If required whitespace
-    /// is not found, an error will be generated and failure returned. Note that
-    /// this error will consume the offending token.
-    fn consume_whitespace(&mut self, required: bool) -> ParseResult<()> {
-        debug!("Consuming {} whitespace.",
-            if required {"required"} else {"optional"});
-        let mut consumed = false;
-        loop {
-            match self.try_consume_exact(TokenType::Whitespace) {
-                Ok(()) => consumed = true,
-                Err(Failure::WrongToken) => break,
-                Err(Failure::EOF) => return Err(Failure::EOF),
-            }
-        }
-        if consumed || !required {
-            Ok(())
-        } else {
-            self.error_consume("Expected whitespace.");
-            Err(Failure::WrongToken)
-        }
-    }
-
     /// Consume everything up to and including a newline.
     fn consume_till_nl(&mut self) -> ParseResult<()> {
         debug!("Consuming till the next newline.");
@@ -145,24 +195,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Generate a parsing error for the current token, consuming it. If there
-    /// is no current token due to EOF, `self.last_span` will be used for the
-    /// error.
+    /// Consume the next non-whitespace token (and all whitespace before it),
+    /// generating the given error for the token. If no token can be found due
+    /// to EOF, `self.last_span` will be used for the error.
     fn error_consume<M>(&mut self, message: M)
         where M: Into<Cow<'static, str>>
     {
         let message = message.into();
-        debug!("Generating error: {}", message);
-        let token = self.tokens.consume();
-        let span = match token {
-            Some(t) => {
-                let span = t.span.clone();
-                self.add_token(t);
-                span
-            },
-            None => self.last_span.clone(),
-        };
-        self.errors.push(SaltError {span, message});
+        error!("Generating error: {}", message);
+        let _ = self.consume();  // We don't care about EOF.
+        self.errors.push(SaltError {span: self.last_span.clone(), message});
     }
 
     /// Program non-terminal.
@@ -185,7 +227,7 @@ impl<'a> Parser<'a> {
         }
 
         // We must be at the end of the file now.
-        assert!(self.tokens.peek().is_none(), "Reached end of PROGRAM before EOF.");
+        assert!(self.tokens.next().is_none(), "Reached end of PROGRAM before EOF.");
 
         info!("...Finished Program.");
     }
@@ -195,9 +237,8 @@ impl<'a> Parser<'a> {
         let _guard = self.start_node(Line);
         info!("Parsing Line...");
 
-        // There might be leading whitespace, or we might have gracefully
-        // reached the end of the file.
-        if let Err(Failure::EOF) = self.consume_whitespace(false) {
+        // We might have gracefully reached the end of the file.
+        if let Err(Failure::EOF) = self.peek() {
             info!("...Finished line with EOF.");
             return Ok(SequenceResult::GracefulEnd);
         }
@@ -214,7 +255,7 @@ impl<'a> Parser<'a> {
             },
             TokenType::Identifier => {
                 // Label or instruction: we need a second lookahead.
-                if let Ok(TokenType::Colon) = self.lookahead(nzu!(2)) {
+                if let Ok(TokenType::Colon) = self.double_lookahead() {
                     self.parse_label()
                 } else {
                     self.parse_instruction()
@@ -248,12 +289,13 @@ impl<'a> Parser<'a> {
             Err(Failure::EOF) => return Err(Failure::EOF),
         }
 
-        // There may be whitespace and/or a comment after the line.
-        // We may have also reached the end of the file.
-        if let Err(Failure::EOF) = self.consume_whitespace(false) {
+        // We may have reached the end of the file.
+        if let Err(Failure::EOF) = self.peek() {
             info!("...Finished line with EOF.");
             return Ok(SequenceResult::GracefulEnd);
         }
+
+        // There may be a comment after the line.
         match self.peek()? {
             TokenType::Comment => {
                 // Consume the comment and the following newline.
@@ -290,12 +332,10 @@ impl<'a> Parser<'a> {
         // Const keyword.
         self.consume_exact(TokenType::Const, "Expected const keyword.")?;
 
-        // Whitespace then identifier.
-        self.consume_whitespace(true)?;
+        // Identifier name.
         self.consume_exact(TokenType::Identifier, "Expected constant name.")?;
 
-        // Whitespace then literal.
-        self.consume_whitespace(true)?;
+        // Literal value.
         self.parse_literal()?;
 
         info!("...Finished ConstDecl.");
@@ -310,23 +350,18 @@ impl<'a> Parser<'a> {
         // Static keyword.
         self.consume_exact(TokenType::Static, "Expected static keyword.")?;
 
-        // Whitespace then optional mut.
-        self.consume_whitespace(true)?;
+        // Optional mut.
         if let TokenType::Mut = self.peek()? {
-            // Add and eat the next whitespace.
             self.consume()?;
-            self.consume_whitespace(true)?;
         }
 
-        // Required type.
+        // Data type.
         self.parse_data_type()?;
 
-        // Whitespace then identifier.
-        self.consume_whitespace(true)?;
+        // Identifier name.
         self.consume_exact(TokenType::Identifier, "Expected data name.")?;
 
-        // Whitespace then (array) literal.
-        self.consume_whitespace(true)?;
+        // (array) literal value.
         self.parse_array_literal()?;
 
         info!("...Finished DataDecl.");
@@ -355,10 +390,8 @@ impl<'a> Parser<'a> {
         // Optional sequence of array length specifiers.
         while let TokenType::OpenSquare = self.peek()? {
             self.consume()?;
-            self.consume_whitespace(false)?;
             self.consume_exact(TokenType::IntLiteral,
                                "Expected array length literal.")?;
-            self.consume_whitespace(false)?;
             self.consume_exact(TokenType::CloseSquare, "Expected ']'.")?;
         }
 
@@ -405,39 +438,27 @@ impl<'a> Parser<'a> {
         info!("Parsing Operand...");
         // Since operand lists have no terminator, we must be aware of
         // potential EOFs.
-        match self.peek() {
-            Ok(TokenType::Whitespace) => {
-                // Maybe another operand.
-                self.consume()?;
+        let tt = self.peek();
+        match tt {
+            Ok(TokenType::Identifier)
+            | Ok(TokenType::IntLiteral)
+            | Ok(TokenType::FloatLiteral)
+            | Ok(TokenType::CharLiteral) => {
+                let _guard = self.start_node(Operand);
+                if let Ok(TokenType::Identifier) = tt {
+                    self.consume()?;
+                } else {
+                    self.parse_literal()?;
+                }
+                info!("...Finished Operand.");
+                Ok(SequenceResult::GoAgain)
             },
             _ => {
                 // No more operands.
-                info!("...Finished Operand.");
-                return Ok(SequenceResult::GracefulEnd);
+                info!("...Finished last Operand.");
+                Ok(SequenceResult::GracefulEnd)
             }
         }
-
-        let _guard = self.start_node(Operand);
-
-        // An operand is either an identifier or a literal.
-        match self.peek()? {
-            TokenType::Identifier => {
-                self.consume()?;
-            },
-            TokenType::IntLiteral
-            | TokenType::FloatLiteral
-            | TokenType::CharLiteral => {
-                self.parse_literal()?;
-            },
-            _ => {
-                // No more operands.
-                info!("...Finished Operand.");
-                return Ok(SequenceResult::GracefulEnd);
-            }
-        }
-
-        info!("...Finished Operand.");
-        Ok(SequenceResult::GoAgain)
     }
 
     /// ArrayLiteral non-terminal.
@@ -465,9 +486,7 @@ impl<'a> Parser<'a> {
                 if self.peek()? != TokenType::CloseSquare {
                     loop {
                         // Expect an element, which is also an ArrayLiteral.
-                        self.consume_whitespace(false)?;
                         self.parse_array_literal()?;
-                        self.consume_whitespace(false)?;
                         // Must be either a comma or a close bracket next.
                         match self.peek()? {
                             TokenType::Comma => {

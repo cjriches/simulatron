@@ -17,8 +17,8 @@ Program@0..29
       KwConst@16..21 "const"
       Whitespace@21..22 " "
       Identifier@22..25 "DEC"
-      Whitespace@25..26 " "
-      Literal@26..28
+      Literal@25..28
+        Whitespace@25..26 " "
         IntLiteral@26..28 "42"
     Newline@28..29 "\n"
   Line@29..29

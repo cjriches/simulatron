@@ -1,7 +1,5 @@
 use log::trace;
 use logos::Logos;
-use std::collections::VecDeque;
-use std::num::NonZeroUsize;
 
 #[derive(Logos, Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TokenType {
@@ -58,7 +56,7 @@ pub enum TokenType {
     Unknown,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Token<'a> {
     pub tt: TokenType,
     pub span: logos::Span,
@@ -68,15 +66,6 @@ pub struct Token<'a> {
 /// Wrap the Logos implementation with some extra buffering.
 pub struct Lexer<'a> {
     inner: logos::Lexer<'a, TokenType>,
-    buffer: VecDeque<Token<'a>>,
-}
-
-/// Helper macro for creating NonZeroUsizes out of literals.
-macro_rules! nzu {
-    ($n:expr) => {{
-        static_assertions::const_assert_ne!($n, 0);
-        unsafe { NonZeroUsize::new_unchecked($n) }
-    }}
 }
 
 impl<'a> Lexer<'a> {
@@ -84,41 +73,17 @@ impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             inner: TokenType::lexer(source),
-            buffer: VecDeque::with_capacity(2),
         }
     }
 
-    /// Check the type of the next token.
-    pub fn peek(&mut self) -> Option<TokenType> {
-        self.lookahead(nzu!(1))
-    }
-
-    /// Check the type of the token N ahead.
-    pub fn lookahead(&mut self, n: NonZeroUsize) -> Option<TokenType> {
-        for _ in self.buffer.len()..n.get() {
-            self.read_next()?;
-        }
-        Some(self.buffer.get(n.get()-1).unwrap().tt)
-    }
-
-    /// Consume the next token.
-    pub fn consume(&mut self) -> Option<Token<'a>> {
-        if self.buffer.is_empty() {
-            self.read_next()?;
-        }
-        self.buffer.pop_front()
-    }
-
-    /// Read the next token from the lexer, place it in the buffer, and
-    /// return its type.
-    fn read_next(&mut self) -> Option<TokenType> {
+    /// Consume the next token from the stream.
+    pub fn next(&mut self) -> Option<Token<'a>> {
         let tt = self.inner.next()?;
         let span = self.inner.span();
         let slice = self.inner.slice();
         let token = Token { tt, span, slice };
         trace!("Lexer produced {:?}", token);
-        self.buffer.push_back(token);
-        Some(tt)
+        Some(token)
     }
 }
 
@@ -137,7 +102,7 @@ mod tests {
         let input = std::fs::read_to_string(path).unwrap();
         let mut lexer = Lexer::new(&input);
         let mut output = String::new();
-        while let Some(t) = lexer.consume() {
+        while let Some(t) = lexer.next() {
             if let TokenType::Newline = t.tt {
                 writeln!(output, "{:?}", t.tt).unwrap();
             } else {

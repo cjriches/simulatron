@@ -5,25 +5,24 @@ expression: tree
 ---
 Program@0..425
   Line@0..112
-    Instruction@0..29
+    Instruction@0..28
       Identifier@0..4 "This"
-      Whitespace@4..5 " "
-      Operand@5..7
+      Operand@4..7
+        Whitespace@4..5 " "
         Identifier@5..7 "is"
-      Whitespace@7..8 " "
-      Operand@8..16
+      Operand@7..16
+        Whitespace@7..8 " "
         Identifier@8..16 "_really_"
-      Whitespace@16..17 " "
-      Operand@17..22
+      Operand@16..22
+        Whitespace@16..17 " "
         Identifier@17..22 "wrong"
-      Whitespace@22..23 " "
-      Operand@23..26
+      Operand@22..26
+        Whitespace@22..23 " "
         Identifier@23..26 "for"
-      Whitespace@26..27 " "
-      Operand@27..28
+      Operand@26..28
+        Whitespace@26..27 " "
         Identifier@27..28 "a"
-      Whitespace@28..29 " "
-      Operand@29..29
+    Whitespace@28..29 " "
     Unknown@29..30 "*"
     Unknown@30..31 "."
     Identifier@31..37 "simasm"
@@ -60,8 +59,8 @@ Program@0..425
   Line@113..145
     Instruction@113..121
       Identifier@113..116 "int"
-      Whitespace@116..117 " "
-      Operand@117..121
+      Operand@116..121
+        Whitespace@116..117 " "
         Identifier@117..121 "main"
     Unknown@121..122 "("
     Identifier@122..125 "int"
@@ -103,8 +102,8 @@ Program@0..425
     Unknown@190..191 "/"
     Newline@191..192 "\n"
   Line@192..221
-    Whitespace@192..196 "    "
-    Instruction@196..202
+    Instruction@192..202
+      Whitespace@192..196 "    "
       Identifier@196..202 "printf"
     Unknown@202..203 "("
     StringLiteral@203..218 "\"Hello, World!\""
@@ -117,11 +116,10 @@ Program@0..425
   Line@223..224
     Newline@223..224 "\n"
   Line@224..238
-    Instruction@224..229
+    Label@224..230
       Identifier@224..228 "main"
       Whitespace@228..229 " "
-      Operand@229..229
-    Colon@229..230 ":"
+      Colon@229..230 ":"
     Colon@230..231 ":"
     Whitespace@231..232 " "
     Identifier@232..234 "IO"
@@ -130,10 +128,9 @@ Program@0..425
     Unknown@236..237 ")"
     Newline@237..238 "\n"
   Line@238..304
-    Instruction@238..243
+    Instruction@238..242
       Identifier@238..242 "main"
-      Whitespace@242..243 " "
-      Operand@243..243
+    Whitespace@242..243 " "
     Unknown@243..244 "="
     Whitespace@244..245 " "
     Identifier@245..253 "putStrLn"
@@ -158,13 +155,12 @@ Program@0..425
   Line@304..305
     Newline@304..305 "\n"
   Line@305..332
-    Instruction@305..317
+    Instruction@305..316
       Identifier@305..307 "if"
-      Whitespace@307..308 " "
-      Operand@308..316
+      Operand@307..316
+        Whitespace@307..308 " "
         Identifier@308..316 "__name__"
-      Whitespace@316..317 " "
-      Operand@317..317
+    Whitespace@316..317 " "
     Unknown@317..318 "="
     Unknown@318..319 "="
     Whitespace@319..320 " "
@@ -172,8 +168,8 @@ Program@0..425
     Colon@330..331 ":"
     Newline@331..332 "\n"
   Line@332..373
-    Whitespace@332..336 "    "
-    Instruction@336..341
+    Instruction@332..341
+      Whitespace@332..336 "    "
       Identifier@336..341 "print"
     Unknown@341..342 "("
     StringLiteral@342..357 "\"Hello, world!\""
@@ -196,8 +192,8 @@ Program@0..425
       KwConst@409..414 "const"
       Whitespace@414..415 " "
       Identifier@415..419 "YEET"
-      Whitespace@419..420 " "
-      Literal@420..421
+      Literal@419..421
+        Whitespace@419..420 " "
         Unknown@420..421 "("
     IntLiteral@421..423 "42"
     Unknown@423..424 ")"

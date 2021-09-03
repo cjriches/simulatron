@@ -239,20 +239,20 @@ BHWF - any register reference.
 ```
 Program = { Line "\n" } [ Line ] EOF ;
 
-Line = OWS [ Const | Data | Label | Instruction ] OWS [ Comment ] ;
+Line = [ Const | Data | Label | Instruction ] [ Comment ] ;
 
 Comment = "//" { ? Any non-newline character ? } ;
 
-Const = "const" WS Identifier WS Literal ;
+Const = "const" Identifier Literal ;
 
-Data = "static" WS [ "mut" WS ] Type WS Identifier WS ArrayLiteral ;
+Data = "static" [ "mut" ] Type Identifier ArrayLiteral ;
 
 Type = "byte" | "half" | "word"
-    | Type "[" OWS IntLiteral OWS "]" ;
+    | Type "[" IntLiteral "]" ;
 
 Label = Identifier ":" ;
 
-Instruction = Identifier { WS Operand } ;
+Instruction = Identifier { Operand } ;
 
 Operand = Identifier | Literal ;
 
@@ -264,7 +264,7 @@ Alphabetic = "A" | "B" | ... | "Z" | "a" | "b" | ... | "z" | "_" ;
 
 ArrayLiteral = Literal
     | StringLiteral
-    | "[" OWS [ ArrayLiteral OWS { "," OWS ArrayLiteral OWS } ] "]" ;
+    | "[" [ ArrayLiteral { "," ArrayLiteral } ] "]" ;
 
 StringLiteral = Quote { Character } Quote ;
 
@@ -296,8 +296,4 @@ Character = ? Any non-newline and non-backslash character ?
     | ? Escaped newline \n ?
     | ? Escaped quote \" ?
     | ? Escaped backslash \\ ? ;
-
-OWS = [ WS ] ;
-
-WS = ? Any non-newline whitespace ? ;
 ```

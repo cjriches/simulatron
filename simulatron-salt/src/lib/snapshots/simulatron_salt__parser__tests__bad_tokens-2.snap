@@ -29,7 +29,7 @@ expression: errors
         message: "Unexpected token at start of line: expected const declaration, data declaration, label, instruction, or comment.",
     },
     SaltError {
-        span: 229..230,
+        span: 230..231,
         message: "Unexpected token after end of line; expected newline.",
     },
     SaltError {

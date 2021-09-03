@@ -12,8 +12,8 @@ Program@0..337
       KwConst@33..38 "const"
       Whitespace@38..39 " "
       Identifier@39..43 "COLS"
-      Whitespace@43..44 " "
-      Literal@44..46
+      Literal@43..46
+        Whitespace@43..44 " "
         IntLiteral@44..46 "80"
     Newline@46..47 "\n"
   Line@47..48
@@ -26,8 +26,8 @@ Program@0..337
       KwConst@87..92 "const"
       Whitespace@92..93 " "
       Identifier@93..96 "ROW"
-      Whitespace@96..97 " "
-      Literal@97..99
+      Literal@96..99
+        Whitespace@96..97 " "
         IntLiteral@97..99 "12"
     Newline@99..100 "\n"
   Line@100..113
@@ -35,8 +35,8 @@ Program@0..337
       KwConst@100..105 "const"
       Whitespace@105..106 " "
       Identifier@106..109 "COL"
-      Whitespace@109..110 " "
-      Literal@110..112
+      Literal@109..112
+        Whitespace@109..110 " "
         IntLiteral@110..112 "32"
     Newline@112..113 "\n"
   Line@113..114
@@ -49,8 +49,8 @@ Program@0..337
       KwConst@153..158 "const"
       Whitespace@158..159 " "
       Identifier@159..166 "DISPLAY"
-      Whitespace@166..167 " "
-      Literal@167..172
+      Literal@166..172
+        Whitespace@166..167 " "
         IntLiteral@167..172 "0x240"
     Newline@172..173 "\n"
   Line@173..174
@@ -58,16 +58,16 @@ Program@0..337
   Line@174..215
     DataDecl@174..214
       KwStatic@174..180 "static"
-      Whitespace@180..181 " "
-      DataType@181..189
+      DataType@180..189
+        Whitespace@180..181 " "
         KwByte@181..185 "byte"
         OpenSquare@185..186 "["
         IntLiteral@186..188 "13"
         CloseSquare@188..189 "]"
       Whitespace@189..190 " "
       Identifier@190..198 "greeting"
-      Whitespace@198..199 " "
-      ArrayLiteral@199..214
+      ArrayLiteral@198..214
+        Whitespace@198..199 " "
         StringLiteral@199..214 "\"Hello, World!\""
     Newline@214..215 "\n"
   Line@215..216
@@ -78,60 +78,59 @@ Program@0..337
       Colon@220..221 ":"
     Newline@221..222 "\n"
   Line@222..268
-    Instruction@222..242
+    Instruction@222..234
       Identifier@222..226 "copy"
-      Whitespace@226..227 " "
-      Operand@227..230
+      Operand@226..230
+        Whitespace@226..227 " "
         Identifier@227..230 "r0b"
-      Whitespace@230..231 " "
-      Operand@231..234
+      Operand@230..234
+        Whitespace@230..231 " "
         Identifier@231..234 "ROW"
-      Whitespace@234..242 "        "
-      Operand@242..242
+    Whitespace@234..242 "        "
     Comment@242..267 "// Calculate the addr ..."
     Newline@267..268 "\n"
   Line@268..281
     Instruction@268..280
       Identifier@268..272 "mult"
-      Whitespace@272..273 " "
-      Operand@273..275
+      Operand@272..275
+        Whitespace@272..273 " "
         Identifier@273..275 "r0"
-      Whitespace@275..276 " "
-      Operand@276..280
+      Operand@275..280
+        Whitespace@275..276 " "
         Identifier@276..280 "COLS"
     Newline@280..281 "\n"
   Line@281..292
     Instruction@281..291
       Identifier@281..284 "add"
-      Whitespace@284..285 " "
-      Operand@285..287
+      Operand@284..287
+        Whitespace@284..285 " "
         Identifier@285..287 "r0"
-      Whitespace@287..288 " "
-      Operand@288..291
+      Operand@287..291
+        Whitespace@287..288 " "
         Identifier@288..291 "COL"
     Newline@291..292 "\n"
   Line@292..307
     Instruction@292..306
       Identifier@292..295 "add"
-      Whitespace@295..296 " "
-      Operand@296..298
+      Operand@295..298
+        Whitespace@295..296 " "
         Identifier@296..298 "r0"
-      Whitespace@298..299 " "
-      Operand@299..306
+      Operand@298..306
+        Whitespace@298..299 " "
         Identifier@299..306 "DISPLAY"
     Newline@306..307 "\n"
   Line@307..332
     Instruction@307..331
       Identifier@307..316 "blockcopy"
-      Whitespace@316..317 " "
-      Operand@317..319
-        Literal@317..319
+      Operand@316..319
+        Literal@316..319
+          Whitespace@316..317 " "
           IntLiteral@317..319 "13"
-      Whitespace@319..320 " "
-      Operand@320..322
+      Operand@319..322
+        Whitespace@319..320 " "
         Identifier@320..322 "r0"
-      Whitespace@322..323 " "
-      Operand@323..331
+      Operand@322..331
+        Whitespace@322..323 " "
         Identifier@323..331 "greeting"
     Newline@331..332 "\n"
   Line@332..337
