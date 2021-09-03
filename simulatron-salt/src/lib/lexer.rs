@@ -1,6 +1,7 @@
 use log::trace;
 use logos::Logos;
 use std::collections::VecDeque;
+use std::num::NonZeroUsize;
 
 #[derive(Logos, Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TokenType {
@@ -70,22 +71,34 @@ pub struct Lexer<'a> {
     buffer: VecDeque<Token<'a>>,
 }
 
+/// Helper macro for creating NonZeroUsizes out of literals.
+macro_rules! nzu {
+    ($n:expr) => {{
+        static_assertions::const_assert_ne!($n, 0);
+        unsafe { NonZeroUsize::new_unchecked($n) }
+    }}
+}
+
 impl<'a> Lexer<'a> {
     /// Create a new token stream from the given source.
     pub fn new(source: &'a str) -> Self {
         Self {
             inner: TokenType::lexer(source),
-            buffer: VecDeque::with_capacity(1),
+            buffer: VecDeque::with_capacity(2),
         }
     }
 
     /// Check the type of the next token.
     pub fn peek(&mut self) -> Option<TokenType> {
-        if self.buffer.is_empty() {
-            self.read_next()
-        } else {
-            Some(self.buffer.front().unwrap().tt)
+        self.lookahead(nzu!(1))
+    }
+
+    /// Check the type of the token N ahead.
+    pub fn lookahead(&mut self, n: NonZeroUsize) -> Option<TokenType> {
+        for _ in self.buffer.len()..n.get() {
+            self.read_next()?;
         }
+        Some(self.buffer.get(n.get()-1).unwrap().tt)
     }
 
     /// Consume the next token.

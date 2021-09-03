@@ -2,6 +2,7 @@ mod node_builder;
 
 use log::{trace, debug, info};
 use std::borrow::Cow;
+use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use crate::error::SaltError;
@@ -16,14 +17,15 @@ enum Failure {
 }
 type ParseResult<'a, T> = Result<T, Failure>;
 
-/// Return codes from parsing a single line.
-enum LineResult {
+/// Return codes for sequences that may terminate.
+enum SequenceResult {
     GoAgain,
-    GracefulEOF,
+    GracefulEnd,
 }
 
-/// An LL(1) mostly recursive descent parser for SimAsm, with bits of iterative
-/// Pratt-like parsing to deal with left recursion.
+/// A mostly LL(1) recursive descent parser for SimAsm, with bits of iterative
+/// Pratt-like parsing to deal with left recursion, and the occasional LL(2)
+/// lookahead.
 pub struct Parser<'a> {
     builder: SafeNodeBuilder,
     tokens: Lexer<'a>,
@@ -66,6 +68,11 @@ impl<'a> Parser<'a> {
     /// Wrapper for `tokens.peek`.
     fn peek(&mut self) -> ParseResult<TokenType> {
         self.tokens.peek().ok_or(Failure::EOF)
+    }
+
+    /// Wrapper for `tokens.lookahead`.
+    fn lookahead(&mut self, n: NonZeroUsize) -> ParseResult<TokenType> {
+        self.tokens.lookahead(n).ok_or(Failure::EOF)
     }
 
     /// Consume the next token and add it to the current position.
@@ -166,8 +173,8 @@ impl<'a> Parser<'a> {
         // Parse the next line until EOF.
         loop {
             match self.parse_line() {
-                Ok(LineResult::GoAgain) => {},
-                Ok(LineResult::GracefulEOF) => break,
+                Ok(SequenceResult::GoAgain) => {},
+                Ok(SequenceResult::GracefulEnd) => break,
                 Err(Failure::EOF) => {
                     debug!("Unexpected EOF.");
                     self.error_consume("Unexpected EOF");
@@ -184,7 +191,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Line non-terminal.
-    fn parse_line(&mut self) -> ParseResult<LineResult> {
+    fn parse_line(&mut self) -> ParseResult<SequenceResult> {
         let _guard = self.start_node(Line);
         info!("Parsing Line...");
 
@@ -192,7 +199,7 @@ impl<'a> Parser<'a> {
         // reached the end of the file.
         if let Err(Failure::EOF) = self.consume_whitespace(false) {
             info!("...Finished line with EOF.");
-            return Ok(LineResult::GracefulEOF);
+            return Ok(SequenceResult::GracefulEnd);
         }
 
         // Lookahead.
@@ -206,8 +213,12 @@ impl<'a> Parser<'a> {
                 self.parse_data_decl()
             },
             TokenType::Identifier => {
-                // Label or instruction: currently ambiguous.
-                self.parse_label_or_instruction()
+                // Label or instruction: we need a second lookahead.
+                if let Ok(TokenType::Colon) = self.lookahead(nzu!(2)) {
+                    self.parse_label()
+                } else {
+                    self.parse_instruction()
+                }
             },
             TokenType::Comment => {
                 self.consume()
@@ -232,7 +243,7 @@ impl<'a> Parser<'a> {
                 // Eat the rest of the line and carry on parsing.
                 self.consume_till_nl()?;
                 info!("...Finished Line with error.");
-                return Ok(LineResult::GoAgain);
+                return Ok(SequenceResult::GoAgain);
             },
             Err(Failure::EOF) => return Err(Failure::EOF),
         }
@@ -241,7 +252,7 @@ impl<'a> Parser<'a> {
         // We may have also reached the end of the file.
         if let Err(Failure::EOF) = self.consume_whitespace(false) {
             info!("...Finished line with EOF.");
-            return Ok(LineResult::GracefulEOF);
+            return Ok(SequenceResult::GracefulEnd);
         }
         match self.peek()? {
             TokenType::Comment => {
@@ -263,12 +274,12 @@ impl<'a> Parser<'a> {
                                    of line; expected newline.");
                 self.consume_till_nl()?;
                 info!("...Finished Line with error.");
-                return Ok(LineResult::GoAgain);
+                return Ok(SequenceResult::GoAgain);
             }
         }
 
         info!("...Finished Line.");
-        Ok(LineResult::GoAgain)
+        Ok(SequenceResult::GoAgain)
     }
 
     /// ConstDecl non-terminal.
@@ -355,11 +366,6 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    /// Either a label or an instruction.
-    fn parse_label_or_instruction(&mut self) -> ParseResult<()> {
-        todo!()
-    }
-
     /// Label non-terminal.
     fn parse_label(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(Label);
@@ -376,21 +382,29 @@ impl<'a> Parser<'a> {
         let _guard = self.start_node(Instruction);
         info!("Parsing Instruction...");
 
-        todo!();
+        // Opcode identifier.
+        self.consume_exact(TokenType::Identifier, "Expected opcode.")?;
+
+        // Zero or more operands.
+        loop {
+            if let SequenceResult::GracefulEnd = self.parse_operand()? {
+                break;
+            }
+        }
 
         info!("...Finished Instruction.");
         Ok(())
     }
 
     /// Operand non-terminal.
-    fn parse_operand(&mut self) -> ParseResult<()> {
+    fn parse_operand(&mut self) -> ParseResult<SequenceResult> {
         let _guard = self.start_node(Operand);
         info!("Parsing Operand...");
 
         todo!();
 
         info!("...Finished Operand.");
-        Ok(())
+        Ok(SequenceResult::GoAgain)
     }
 
     /// ArrayLiteral non-terminal.
