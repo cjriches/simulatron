@@ -7,3 +7,5 @@ pub struct SaltError {
     pub(crate) span: Range<usize>,
     pub(crate) message: Cow<'static, str>,
 }
+
+pub type SaltResult<T> = Result<T, SaltError>;

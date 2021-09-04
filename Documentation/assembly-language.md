@@ -266,7 +266,7 @@ ArrayLiteral = Literal
     | StringLiteral
     | "[" [ ArrayLiteral { "," ArrayLiteral } ] "]" ;
 
-StringLiteral = Quote { Character } Quote ;
+StringLiteral = Quote { StringCharacter } Quote ;
 
 Quote = ? Literal " ? ;
 
@@ -294,6 +294,11 @@ CharLiteral = "'" Character "'" ;
 
 Character = ? Any non-newline and non-backslash character ?
     | ? Escaped newline \n ?
-    | ? Escaped quote \" ?
+    | ? Escaped single quote \' ?
+    | ? Escaped backslash \\ ? ;
+
+StringCharacter = ? Any non-newline and non-backslash character ?
+    | ? Escaped newline \n ?
+    | ? Escaped double quote \" ?
     | ? Escaped backslash \\ ? ;
 ```
