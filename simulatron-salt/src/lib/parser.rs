@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use std::ops::Range;
 
 use crate::error::SaltError;
-use crate::language::{SyntaxKind::{self, *}, SyntaxNode};
+use crate::language::{SyntaxKind, SyntaxNode};
 use crate::lexer::{Lexer, Token, TokenType};
 use node_builder::{NodeGuard, SafeNodeBuilder};
 
@@ -209,7 +209,7 @@ impl<'a> Parser<'a> {
 
     /// Program non-terminal.
     fn parse_program(&mut self) {
-        let _guard = self.start_node(Program);
+        let _guard = self.start_node(SyntaxKind::Program);
         info!("Parsing Program...");
 
         // Parse the next line until EOF.
@@ -242,7 +242,7 @@ impl<'a> Parser<'a> {
             return Ok(SequenceResult::GracefulEnd);
         }
 
-        let _guard = self.start_node(Line);
+        let _guard = self.start_node(SyntaxKind::Line);
 
         // Lookahead.
         let line_result = match self.peek()? {
@@ -327,7 +327,7 @@ impl<'a> Parser<'a> {
 
     /// ConstDecl non-terminal.
     fn parse_const_decl(&mut self) -> ParseResult<()> {
-        let _guard = self.start_node(ConstDecl);
+        let _guard = self.start_node(SyntaxKind::ConstDecl);
         info!("Parsing ConstDecl...");
 
         // Const keyword.
@@ -345,7 +345,7 @@ impl<'a> Parser<'a> {
 
     /// DataDecl non-terminal.
     fn parse_data_decl(&mut self) -> ParseResult<()> {
-        let _guard = self.start_node(DataDecl);
+        let _guard = self.start_node(SyntaxKind::DataDecl);
         info!("Parsing DataDecl...");
 
         // Static keyword.
@@ -371,7 +371,7 @@ impl<'a> Parser<'a> {
 
     /// DataType non-terminal.
     fn parse_data_type(&mut self) -> ParseResult<()> {
-        let _guard = self.start_node(DataType);
+        let _guard = self.start_node(SyntaxKind::DataType);
         info!("Parsing DataType...");
 
         // Byte, Half, or Word.
@@ -402,7 +402,7 @@ impl<'a> Parser<'a> {
 
     /// Label non-terminal.
     fn parse_label(&mut self) -> ParseResult<()> {
-        let _guard = self.start_node(Label);
+        let _guard = self.start_node(SyntaxKind::Label);
         info!("Parsing Label...");
 
         // Label identifier.
@@ -417,7 +417,7 @@ impl<'a> Parser<'a> {
 
     /// Instruction non-terminal.
     fn parse_instruction(&mut self) -> ParseResult<()> {
-        let _guard = self.start_node(Instruction);
+        let _guard = self.start_node(SyntaxKind::Instruction);
         info!("Parsing Instruction...");
 
         // Opcode identifier.
@@ -445,7 +445,7 @@ impl<'a> Parser<'a> {
             | Ok(TokenType::IntLiteral)
             | Ok(TokenType::FloatLiteral)
             | Ok(TokenType::CharLiteral) => {
-                let _guard = self.start_node(Operand);
+                let _guard = self.start_node(SyntaxKind::Operand);
                 if let Ok(TokenType::Identifier) = tt {
                     self.consume()?;
                 } else {
@@ -464,7 +464,7 @@ impl<'a> Parser<'a> {
 
     /// ArrayLiteral non-terminal.
     fn parse_array_literal(&mut self) -> ParseResult<()> {
-        let _guard = self.start_node(ArrayLiteral);
+        let _guard = self.start_node(SyntaxKind::ArrayLiteral);
         info!("Parsing ArrayLiteral...");
 
         // Lookahead.
@@ -519,7 +519,7 @@ impl<'a> Parser<'a> {
 
     /// Literal non-terminal.
     fn parse_literal(&mut self) -> ParseResult<()> {
-        let _guard = self.start_node(Literal);
+        let _guard = self.start_node(SyntaxKind::Literal);
         info!("Parsing Literal...");
 
         match self.peek()? {
