@@ -1,0 +1,10 @@
+static word private 42
+pub static word public 56
+
+local_func:
+add r0 7
+return
+
+pub public_func:
+sub r0 5
+return

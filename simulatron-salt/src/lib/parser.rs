@@ -246,6 +246,14 @@ impl<'a> Parser<'a> {
 
         // Lookahead.
         let line_result = match self.peek()? {
+            TokenType::Pub => {
+                // Public data or label: we need a second lookahead.
+                if let TokenType::Static = self.double_lookahead()? {
+                    self.parse_data_decl()
+                } else {
+                    self.parse_label()
+                }
+            },
             TokenType::Const => {
                 // Constant declaration.
                 self.parse_const_decl()
@@ -256,6 +264,8 @@ impl<'a> Parser<'a> {
             },
             TokenType::Identifier => {
                 // Label or instruction: we need a second lookahead.
+                // We don't want to accidentally EOF here, as if it is an
+                // instruction, there may be zero operands.
                 if let Ok(TokenType::Colon) = self.double_lookahead() {
                     self.parse_label()
                 } else {
@@ -348,10 +358,15 @@ impl<'a> Parser<'a> {
         let _guard = self.start_node(SyntaxKind::DataDecl);
         info!("Parsing DataDecl...");
 
+        // Optional pub keyword.
+        if let TokenType::Pub = self.peek()? {
+            self.consume()?;
+        }
+
         // Static keyword.
         self.consume_exact(TokenType::Static, "Expected static keyword.")?;
 
-        // Optional mut.
+        // Optional mut keyword.
         if let TokenType::Mut = self.peek()? {
             self.consume()?;
         }
@@ -404,6 +419,11 @@ impl<'a> Parser<'a> {
     fn parse_label(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::Label);
         info!("Parsing Label...");
+
+        // Optional pub keyword.
+        if let TokenType::Pub = self.peek()? {
+            self.consume()?;
+        }
 
         // Label identifier.
         self.consume_exact(TokenType::Identifier, "Expected label name.")?;
@@ -631,6 +651,11 @@ mod tests {
     #[test]
     fn test_numeric_literals() {
         assert_syntax_tree_snapshot("examples/numeric-literals.simasm");
+    }
+
+    #[test]
+    fn test_publics() {
+        assert_syntax_tree_snapshot("examples/publics.simasm");
     }
 
     #[test]

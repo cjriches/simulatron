@@ -1,0 +1,81 @@
+---
+source: src/lib/parser.rs
+expression: output
+
+---
+Program@0..112
+  Line@0..23
+    DataDecl@0..22
+      KwStatic@0..6 "static"
+      DataType@6..11
+        Whitespace@6..7 " "
+        KwWord@7..11 "word"
+      Whitespace@11..12 " "
+      Identifier@12..19 "private"
+      ArrayLiteral@19..22
+        Literal@19..22
+          Whitespace@19..20 " "
+          IntLiteral@20..22 "42"
+    Newline@22..23 "\n"
+  Line@23..49
+    DataDecl@23..48
+      KwPub@23..26 "pub"
+      Whitespace@26..27 " "
+      KwStatic@27..33 "static"
+      DataType@33..38
+        Whitespace@33..34 " "
+        KwWord@34..38 "word"
+      Whitespace@38..39 " "
+      Identifier@39..45 "public"
+      ArrayLiteral@45..48
+        Literal@45..48
+          Whitespace@45..46 " "
+          IntLiteral@46..48 "56"
+    Newline@48..49 "\n"
+  Line@49..50
+    Newline@49..50 "\n"
+  Line@50..62
+    Label@50..61
+      Identifier@50..60 "local_func"
+      Colon@60..61 ":"
+    Newline@61..62 "\n"
+  Line@62..71
+    Instruction@62..70
+      Identifier@62..65 "add"
+      Operand@65..68
+        Whitespace@65..66 " "
+        Identifier@66..68 "r0"
+      Operand@68..70
+        Literal@68..70
+          Whitespace@68..69 " "
+          IntLiteral@69..70 "7"
+    Newline@70..71 "\n"
+  Line@71..78
+    Instruction@71..77
+      Identifier@71..77 "return"
+    Newline@77..78 "\n"
+  Line@78..79
+    Newline@78..79 "\n"
+  Line@79..96
+    Label@79..95
+      KwPub@79..82 "pub"
+      Whitespace@82..83 " "
+      Identifier@83..94 "public_func"
+      Colon@94..95 ":"
+    Newline@95..96 "\n"
+  Line@96..105
+    Instruction@96..104
+      Identifier@96..99 "sub"
+      Operand@99..102
+        Whitespace@99..100 " "
+        Identifier@100..102 "r0"
+      Operand@102..104
+        Literal@102..104
+          Whitespace@102..103 " "
+          IntLiteral@103..104 "5"
+    Newline@104..105 "\n"
+  Line@105..112
+    Instruction@105..111
+      Identifier@105..111 "return"
+    Newline@111..112 "\n"
+

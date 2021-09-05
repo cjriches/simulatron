@@ -88,19 +88,17 @@ const PI 3.14159
 ```
 
 ## Data Declarations
-Data declarations reserve space within the resulting object code for static data. Such data may be read-only or read/write.
+Data declarations reserve space within the resulting object code for static data. Such data may be read-only or read/write, and public or private.
 
 The write mode only affects the sections generated in the resulting [object code file](object-code.md), and it is not guaranteed by the assembler that they will be enforced at runtime (this is determined by the linker/loader). Be aware that if you are creating a ROM image, read/write data declarations may be rejected by the linker as ROM is by definition read-only.
 
+Public data declarations can be linked to in the resulting object code, while private declarations cannot.
+
 It is conventional that static data names are `lower_snake_case`.
 
-Read-Only Syntax:
+Syntax:
 ```
-static <type> <name> <initialiser>
-```
-Read/Write Syntax:
-```
-static mut <type> <name> <initialiser>
+[pub] static [mut] <type> <name> <initialiser>
 ```
 where the type is one of `byte`, `half`, or `word`, or any of those three with an array suffix (e.g. `byte[5]`).
 The initialiser is a literal. Note that arrays of arrays are allowed, and an array initialiser that is too short will be padded with zero.
@@ -111,20 +109,23 @@ Example:
 ```
 static byte[13] message "Hello, World!"
 static mut half counter 0
-static word[5][2] primes_and_doubles [[2, 4], [3, 6], [5, 10], [7, 14], [9, 18]]
+pub static word[5][2] primes_and_doubles [[2, 4], [3, 6], [5, 10], [7, 14], [9, 18]]
 ```
 
 ## Labels
-Labels create named locations within the resulting object code, referring to the address of the following instruction. These are useful for branching instructions. It is conventional that label names are `lower_snake_case`.
+Labels create named locations within the resulting object code, referring to the address of the following instruction. These are useful for branching instructions. Like data declarations, labels can be public or private.
+
+It is conventional that label names are `lower_snake_case`.
 
 Syntax:
 ```
-<name>:
+[pub] <name>:
 ```
 
 Example:
 ```
 loop_start:
+pub calculate_foo:
 ```
 
 ## Instructions
@@ -245,12 +246,12 @@ Comment = "//" { ? Any non-newline character ? } ;
 
 Const = "const" Identifier Literal ;
 
-Data = "static" [ "mut" ] Type Identifier ArrayLiteral ;
+Data = [ "pub" ] "static" [ "mut" ] Type Identifier ArrayLiteral ;
 
 Type = "byte" | "half" | "word"
     | Type "[" IntLiteral "]" ;
 
-Label = Identifier ":" ;
+Label = [ "pub" ] Identifier ":" ;
 
 Instruction = Identifier { Operand } ;
 

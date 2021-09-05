@@ -21,6 +21,7 @@ pub enum SyntaxKind {
     // Terminals
     KwConst,
     KwStatic,
+    KwPub,
     KwMut,
     KwByte,
     KwHalf,
@@ -49,6 +50,7 @@ impl From<TokenType> for SyntaxKind {
         match tt {
             TokenType::Const => SyntaxKind::KwConst,
             TokenType::Static => SyntaxKind::KwStatic,
+            TokenType::Pub => SyntaxKind::KwPub,
             TokenType::Mut => SyntaxKind::KwMut,
             TokenType::Byte => SyntaxKind::KwByte,
             TokenType::Half => SyntaxKind::KwHalf,

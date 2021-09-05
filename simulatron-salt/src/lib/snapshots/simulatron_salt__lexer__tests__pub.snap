@@ -1,0 +1,50 @@
+---
+source: src/lib/lexer.rs
+expression: output
+
+---
+Static `static`
+Whitespace ` `
+Word `word`
+Whitespace ` `
+Identifier `private`
+Whitespace ` `
+IntLiteral `42`
+Newline
+Pub `pub`
+Whitespace ` `
+Static `static`
+Whitespace ` `
+Word `word`
+Whitespace ` `
+Identifier `public`
+Whitespace ` `
+IntLiteral `56`
+Newline
+Newline
+Identifier `local_func`
+Colon `:`
+Newline
+Identifier `add`
+Whitespace ` `
+Identifier `r0`
+Whitespace ` `
+IntLiteral `7`
+Newline
+Identifier `return`
+Newline
+Newline
+Pub `pub`
+Whitespace ` `
+Identifier `public_func`
+Colon `:`
+Newline
+Identifier `sub`
+Whitespace ` `
+Identifier `r0`
+Whitespace ` `
+IntLiteral `5`
+Newline
+Identifier `return`
+Newline
+

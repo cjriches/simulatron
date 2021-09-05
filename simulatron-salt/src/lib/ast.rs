@@ -113,10 +113,14 @@ impl ConstDecl {
     }
 }
 
-/// DataDecls have a name, mutability, size, and initialiser.
+/// DataDecls have a name, publicity, mutability, size, and initialiser.
 impl DataDecl {
     pub fn name(&self) -> String {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
+    }
+
+    pub fn public(&self) -> bool {
+        node_contains_kind(&self.syntax, SyntaxKind::KwPub)
     }
 
     pub fn mutable(&self) -> bool {
@@ -180,10 +184,14 @@ impl DataType {
     }
 }
 
-/// Labels have a name and a following instruction.
+/// Labels have a name, publicity, and a following instruction.
 impl Label {
     pub fn name(&self) -> String {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
+    }
+
+    pub fn public(&self) -> bool {
+        node_contains_kind(&self.syntax, SyntaxKind::KwPub)
     }
 
     pub fn instruction(&self) -> SaltResult<Instruction> {
@@ -540,5 +548,19 @@ mod tests {
         test(&instructions[3], "add");
         test(&instructions[4], "blockcopy");
         test(&instructions[5], "halt");
+    }
+
+    #[test]
+    fn test_publics() {
+        let ast = setup("examples/publics.simasm");
+        let data = ast.data_decls();
+        let labels = ast.labels();
+        assert_eq!(data.len(), 2);
+        assert_eq!(labels.len(), 2);
+
+        assert_eq!(data[0].public(), false);
+        assert_eq!(data[1].public(), true);
+        assert_eq!(labels[0].public(), false);
+        assert_eq!(labels[1].public(), true);
     }
 }

@@ -8,6 +8,8 @@ pub enum TokenType {
     Const,
     #[token("static")]
     Static,
+    #[token("pub")]
+    Pub,
     #[token("mut")]
     Mut,
     #[token("byte")]
@@ -158,5 +160,11 @@ mod tests {
     #[test]
     fn test_bad_tokens() {
         assert_tokens_snapshot("examples/bad-tokens.simasm");
+    }
+
+    /// Test a program with pub keywords.
+    #[test]
+    fn test_pub() {
+        assert_tokens_snapshot("examples/publics.simasm");
     }
 }
