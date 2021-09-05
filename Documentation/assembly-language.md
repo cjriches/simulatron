@@ -14,6 +14,8 @@ A file must contain at least one instruction.
 
 It is conventional to place all constant declarations at the top of the file, followed by data declarations, and then instruction blocks. Each instruction block (except optionally the first) should be preceded by a label, and labels may also appear in the middle of instruction blocks. However, these are just conventions, and any ordering is legal.
 
+Note that constants, static data, and labels all share the same namespace.
+
 Comments are started by a double forward slash (`//`) and continue to the end of the line. These are ignored by the assembler.
 
 ## Literals and identifiers
@@ -172,9 +174,9 @@ w: word literal or register reference.
 f: float literal or register reference.
 ```
 
-A capital letter means that only register references are accepted, not literals.  A dot instead of a letter means this mode is not available. Some `w`/`W` entries are replaced with `a`/`A`; this indicates that the word is interpreted as an address. This distinction only exists in the mind of the programmer.
+A capital letter means that only register references are accepted, not literals.  A dot instead of a letter means this mode is not available. Some `w`/`W` entries are replaced with `a`/`A`; this indicates that the word is interpreted as an address.
 
-A constant name can be used anywhere a literal is expected, and a label or static data name can be used anywhere a word literal is expected (though you probably only want to use them for address operands).
+A constant name can be used anywhere a literal is expected, and a label or static data name can be used anywhere an address literal is expected. Any references to labels or static data that cannot be resolved within the current file will become external symbols in the generated object code and must be resolved at link time. Note that this means 
 
 Examples:
 ```

@@ -39,7 +39,7 @@ derive_token_casts! {
 
 /// An enum for Operands, which can be either Identifiers or Literals.
 #[derive(Debug)]
-pub enum OperandType {
+pub enum OperandValue {
     Ident((String, Range<usize>)),
     Lit(LiteralValue),
 }
@@ -47,8 +47,8 @@ pub enum OperandType {
 /// The value of a literal.
 #[derive(Debug, PartialEq, Eq)]
 pub struct LiteralValue {
-    value: u32,
-    min_size: usize,  // Minimum number of bytes needed to represent the value.
+    pub value: u32,
+    pub min_size: usize,  // Minimum number of bytes needed to represent the value.
 }
 
 /// Programs contain Const Declarations, Data Declarations, Labels,
@@ -117,7 +117,7 @@ impl ConstDecl {
     }
 }
 
-/// DataDecls have a name, publicity, mutability, size, and initialiser.
+/// DataDecls have a name, publicity, mutability, type, and initialiser.
 impl DataDecl {
     pub fn name(&self) -> String {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
@@ -131,11 +131,10 @@ impl DataDecl {
         node_contains_kind(&self.syntax, SyntaxKind::KwMut)
     }
 
-    pub fn size(&self) -> SaltResult<usize> {
+    pub fn type_(&self) -> DataType {
         self.syntax.children()
             .find_map(DataType::cast)
             .unwrap()
-            .size()
     }
 
     pub fn initialiser(&self) -> SaltResult<Vec<LiteralValue>> {
@@ -146,19 +145,21 @@ impl DataDecl {
     }
 }
 
-/// DataTypes have a total size.
+/// DataTypes have a base size and a total size.
 impl DataType {
-    pub fn size(&self) -> SaltResult<usize> {
-        // Get the size of the base data type.
-        let base_size: usize = if node_contains_kind(&self.syntax, SyntaxKind::KwByte) {
+    pub fn base_size(&self) -> usize {
+        if node_contains_kind(&self.syntax, SyntaxKind::KwByte) {
             1
         } else if node_contains_kind(&self.syntax, SyntaxKind::KwHalf) {
             2
         } else if node_contains_kind(&self.syntax, SyntaxKind::KwWord) {
             4
-        } else { unreachable!() };
-        // Find all the array lengths and multiply by them.
-        let mut size = base_size;
+        } else { unreachable!() }
+    }
+
+    pub fn total_size(&self) -> SaltResult<usize> {
+        // Find all the array lengths and multiply the base size by them.
+        let mut size = self.base_size();
         for child in self.syntax.children_with_tokens() {
             if let Some((text, span)) = int_literal_cast(child) {
                 // Parse the integer value.
@@ -216,7 +217,12 @@ impl Label {
 /// Instructions have an opcode an a list of operands.
 impl Instruction {
     pub fn opcode(&self) -> String {
-        self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
+        let mut opcode = self.syntax.children_with_tokens()
+            .find_map(identifier_cast)
+            .unwrap()
+            .0;
+        opcode.make_ascii_lowercase();
+        opcode
     }
 
     pub fn operands(&self) -> Vec<Operand> {
@@ -226,15 +232,15 @@ impl Instruction {
 
 /// Operands are either identifiers or literals.
 impl Operand {
-    pub fn value(&self) -> SaltResult<OperandType> {
+    pub fn value(&self) -> SaltResult<OperandValue> {
         match self.syntax.children_with_tokens().find_map(identifier_cast) {
-            Some(ident) => Ok(OperandType::Ident(ident)),
+            Some(ident) => Ok(OperandValue::Ident(ident)),
             None => {
                 let val = self.syntax.children()
                     .find_map(Literal::cast)
                     .unwrap()
                     .value()?;
-                Ok(OperandType::Lit(val))
+                Ok(OperandValue::Lit(val))
             }
         }
     }
@@ -507,7 +513,7 @@ mod tests {
         fn test(decl: &DataDecl, name: &str, mutable: bool) {
             assert_eq!(decl.name(), name);
             assert_eq!(decl.mutable(), mutable);
-            assert_debug_snapshot!(decl.size());
+            assert_debug_snapshot!(decl.type_().total_size());
             assert_debug_snapshot!(decl.initialiser());
         }
 

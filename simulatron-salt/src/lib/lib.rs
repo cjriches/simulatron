@@ -1,5 +1,5 @@
 pub mod ast;
-mod codegen;
+pub mod codegen;
 mod error;
 mod language;
 pub mod lexer;
