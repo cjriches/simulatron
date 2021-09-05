@@ -1,0 +1,13 @@
+---
+source: src/lib/ast.rs
+expression: decl.initialiser()
+
+---
+Ok(
+    [
+        LiteralValue {
+            value: 4294897296,
+            min_size: 4,
+        },
+    ],
+)

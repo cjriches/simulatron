@@ -1,0 +1,11 @@
+---
+source: src/lib/ast.rs
+expression: decl.size()
+
+---
+Err(
+    SaltError {
+        span: 187..189,
+        message: "Array lengths cannot be negative.",
+    },
+)

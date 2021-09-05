@@ -1,0 +1,25 @@
+---
+source: src/lib/ast.rs
+expression: "instruction.operands().iter().map(Operand::value).map(Result::unwrap).collect::<Vec<_>>()"
+
+---
+[
+    Lit(
+        LiteralValue {
+            value: 13,
+            min_size: 1,
+        },
+    ),
+    Ident(
+        (
+            "r0",
+            320..322,
+        ),
+    ),
+    Ident(
+        (
+            "greeting",
+            323..331,
+        ),
+    ),
+]

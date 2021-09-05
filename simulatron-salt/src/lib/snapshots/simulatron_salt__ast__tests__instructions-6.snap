@@ -1,0 +1,6 @@
+---
+source: src/lib/ast.rs
+expression: "instruction.operands().iter().map(Operand::value).map(Result::unwrap).collect::<Vec<_>>()"
+
+---
+[]

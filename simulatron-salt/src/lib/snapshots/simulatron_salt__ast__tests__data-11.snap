@@ -1,0 +1,11 @@
+---
+source: src/lib/ast.rs
+expression: decl.size()
+
+---
+Err(
+    SaltError {
+        span: 215..225,
+        message: "Integer literal out of range.",
+    },
+)

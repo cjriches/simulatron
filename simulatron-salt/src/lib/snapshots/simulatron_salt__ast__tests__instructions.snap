@@ -1,0 +1,19 @@
+---
+source: src/lib/ast.rs
+expression: "instruction.operands().iter().map(Operand::value).map(Result::unwrap).collect::<Vec<_>>()"
+
+---
+[
+    Ident(
+        (
+            "r0b",
+            227..230,
+        ),
+    ),
+    Ident(
+        (
+            "ROW",
+            231..234,
+        ),
+    ),
+]

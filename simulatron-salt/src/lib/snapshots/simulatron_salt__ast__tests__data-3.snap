@@ -1,0 +1,8 @@
+---
+source: src/lib/ast.rs
+expression: decl.size()
+
+---
+Ok(
+    40,
+)

@@ -41,7 +41,7 @@ derive_token_casts! {
 #[derive(Debug)]
 pub enum OperandType {
     Ident((String, Range<usize>)),
-    Lit(Literal),
+    Lit(LiteralValue),
 }
 
 /// The value of a literal.
@@ -108,27 +108,33 @@ impl ConstDecl {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
     }
 
-    pub fn value(&self) -> Literal {
-        self.syntax.children().find_map(Literal::cast).unwrap()
+    pub fn value(&self) -> SaltResult<LiteralValue> {
+        self.syntax.children().find_map(Literal::cast).unwrap().value()
     }
 }
 
-/// DataDecls have a name, value, type, and mutability.
+/// DataDecls have a name, mutability, size, and initialiser.
 impl DataDecl {
     pub fn name(&self) -> String {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
     }
 
-    pub fn value(&self) -> ArrayLiteral {
-        self.syntax.children().find_map(ArrayLiteral::cast).unwrap()
-    }
-
-    pub fn type_(&self) -> DataType {
-        self.syntax.children().find_map(DataType::cast).unwrap()
-    }
-
     pub fn mutable(&self) -> bool {
         node_contains_kind(&self.syntax, SyntaxKind::KwMut)
+    }
+
+    pub fn size(&self) -> SaltResult<usize> {
+        self.syntax.children()
+            .find_map(DataType::cast)
+            .unwrap()
+            .size()
+    }
+
+    pub fn initialiser(&self) -> SaltResult<Vec<LiteralValue>> {
+        self.syntax.children()
+            .find_map(ArrayLiteral::cast)
+            .unwrap()
+            .values()
     }
 }
 
@@ -174,10 +180,24 @@ impl DataType {
     }
 }
 
-/// Labels have a name.
+/// Labels have a name and a following instruction.
 impl Label {
     pub fn name(&self) -> String {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
+    }
+
+    pub fn instruction(&self) -> SaltResult<Instruction> {
+        // A label sits inside a line, so we need to look at the parent's
+        // following siblings.
+        self.syntax.parent()
+            .unwrap()
+            .siblings(rowan::Direction::Next)
+            .filter_map(Line::cast)
+            .find_map(|line| line.as_instruction())
+            .ok_or_else(|| SaltError {
+                span: self.syntax.text_range().into(),
+                message: "Label without a following instruction.".into(),
+            })
     }
 }
 
@@ -194,12 +214,15 @@ impl Instruction {
 
 /// Operands are either identifiers or literals.
 impl Operand {
-    pub fn value(&self) -> OperandType {
+    pub fn value(&self) -> SaltResult<OperandType> {
         match self.syntax.children_with_tokens().find_map(identifier_cast) {
-            Some(ident) => OperandType::Ident(ident),
+            Some(ident) => Ok(OperandType::Ident(ident)),
             None => {
-                let lit = self.syntax.children().find_map(Literal::cast);
-                OperandType::Lit(lit.unwrap())
+                let val = self.syntax.children()
+                    .find_map(Literal::cast)
+                    .unwrap()
+                    .value()?;
+                Ok(OperandType::Lit(val))
             }
         }
     }
@@ -232,7 +255,7 @@ impl ArrayLiteral {
                 }
             }
             Ok(values)
-        } else if let Some(_) = self.syntax().children()
+        } else if let Some(_) = self.syntax().children_with_tokens()
                 .find(|child| child.kind() == SyntaxKind::OpenSquare) {
             // A full array literal. Parse the internal array literals and
             // concatenate them together.
@@ -441,13 +464,12 @@ mod tests {
     }
 
     #[test]
-    fn test_literal_values() {
+    fn test_consts() {
         let ast = setup("examples/consts-only.simasm");
         let consts = ast.const_decls();
         assert_eq!(consts.len(), 9);
         let values: Vec<LiteralValue> = consts.iter()
             .map(ConstDecl::value)
-            .map(|lit| lit.value())
             .map(Result::unwrap)
             .collect();
         assert_eq!(values[0], LiteralValue {value: 0b01001, min_size: 1});
@@ -465,26 +487,58 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
-    fn test_literal_ranges() {
-        let ast = setup("examples/consts-only.simasm");
-        let consts = ast.const_decls();
-        assert_eq!(consts.len(), 8);
-        let values = consts.iter().map(ConstDecl::value);
-        todo!()
+    fn test_data() {
+        let ast = setup("examples/literal-ranges.simasm");
+        let data = ast.data_decls();
+        assert_eq!(data.len(), 8);
+
+        fn test(decl: &DataDecl, name: &str, mutable: bool) {
+            assert_eq!(decl.name(), name);
+            assert_eq!(decl.mutable(), mutable);
+            assert_debug_snapshot!(decl.size());
+            assert_debug_snapshot!(decl.initialiser());
+        }
+
+        test(&data[0], "arr", false);
+        test(&data[1], "primes_and_doubles", false);
+        test(&data[2], "empty", false);
+        test(&data[3], "zeros", true);
+        test(&data[4], "negative", false);
+        test(&data[5], "too_big", false);
+        test(&data[6], "init_too_big", false);
+        test(&data[7], "init_too_small", false);
     }
 
     #[test]
-    #[ignore]
-    fn test_array_values() {
-        let ast = setup("examples/hello-world.simasm");
-        todo!()
+    fn test_labels() {
+        let ast = setup("examples/instruction-block.simasm");
+        let first_instruction = &ast.instructions()[0];
+        let label = &ast.labels()[0];
+
+        assert_eq!(&label.name(), "somelabel");
+        assert_eq!(&label.instruction().unwrap(), first_instruction);
     }
 
     #[test]
-    #[ignore]
-    fn test_bad_array_indices() {
+    fn test_instructions() {
         let ast = setup("examples/hello-world.simasm");
-        todo!()
+        let instructions = ast.instructions();
+        assert_eq!(instructions.len(), 6);
+
+        fn test(instruction: &Instruction, opcode: &str) {
+            assert_eq!(&instruction.opcode(), opcode);
+            assert_debug_snapshot!(instruction.operands()
+                .iter()
+                .map(Operand::value)
+                .map(Result::unwrap)
+                .collect::<Vec<_>>());
+        }
+
+        test(&instructions[0], "copy");
+        test(&instructions[1], "mult");
+        test(&instructions[2], "add");
+        test(&instructions[3], "add");
+        test(&instructions[4], "blockcopy");
+        test(&instructions[5], "halt");
     }
 }

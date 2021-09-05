@@ -1,0 +1,19 @@
+---
+source: src/lib/ast.rs
+expression: "instruction.operands().iter().map(Operand::value).map(Result::unwrap).collect::<Vec<_>>()"
+
+---
+[
+    Ident(
+        (
+            "r0",
+            285..287,
+        ),
+    ),
+    Ident(
+        (
+            "COL",
+            288..291,
+        ),
+    ),
+]

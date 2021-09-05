@@ -23,7 +23,7 @@ pub fn derive_ast_nodes(item: TokenStream) -> TokenStream {
     // Generate the code for each name in the list.
     let defs = names.iter().map(|name| {
         quote! {
-            #[derive(Debug, Clone)]
+            #[derive(Debug, PartialEq, Eq, Clone)]
             pub struct #name {
                 syntax: SyntaxNode,
             }
