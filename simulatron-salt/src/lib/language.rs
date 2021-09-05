@@ -92,5 +92,6 @@ impl rowan::Language for SimAsmLanguage {
     }
 }
 
-/// SyntaxNode specialised to our language.
+/// Rowan types specialised to our language.
 pub type SyntaxNode = rowan::SyntaxNode<SimAsmLanguage>;
+pub type SyntaxElement = rowan::SyntaxElement<SimAsmLanguage>;

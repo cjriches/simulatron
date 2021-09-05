@@ -3,7 +3,7 @@ source: src/lib/parser.rs
 expression: output
 
 ---
-Program@0..149
+Program@0..171
   Line@0..18
     ConstDecl@0..17
       KwConst@0..5 "const"
@@ -76,4 +76,13 @@ Program@0..149
         Whitespace@140..141 " "
         FloatLiteral@141..148 "-9.9432"
     Newline@148..149 "\n"
+  Line@149..171
+    ConstDecl@149..170
+      KwConst@149..154 "const"
+      Whitespace@154..155 " "
+      Identifier@155..165 "HALF_SIZED"
+      Literal@165..170
+        Whitespace@165..166 " "
+        IntLiteral@166..170 "1000"
+    Newline@170..171 "\n"
 
