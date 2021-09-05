@@ -247,11 +247,17 @@ impl<'a> Parser<'a> {
         // Lookahead.
         let line_result = match self.peek()? {
             TokenType::Pub => {
-                // Public data or label: we need a second lookahead.
-                if let TokenType::Static = self.double_lookahead()? {
-                    self.parse_data_decl()
-                } else {
-                    self.parse_label()
+                // Public const, data or label: we need a second lookahead.
+                match self.double_lookahead()? {
+                    TokenType::Const => self.parse_const_decl(),
+                    TokenType::Static => self.parse_data_decl(),
+                    TokenType::Identifier => self.parse_label(),
+                    _ => {
+                        self.error_consume("The 'pub' qualifier can only be \
+                                           applied to const declarations, data \
+                                           declarations, and labels.");
+                        Err(Failure::WrongToken)
+                    }
                 }
             },
             TokenType::Const => {
@@ -339,6 +345,11 @@ impl<'a> Parser<'a> {
     fn parse_const_decl(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::ConstDecl);
         info!("Parsing ConstDecl...");
+
+        // Optional pub keyword.
+        if let TokenType::Pub = self.peek()? {
+            self.consume()?;
+        }
 
         // Const keyword.
         self.consume_exact(TokenType::Const, "Expected const keyword.")?;

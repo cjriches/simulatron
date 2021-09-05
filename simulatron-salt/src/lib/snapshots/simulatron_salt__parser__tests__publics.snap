@@ -3,79 +3,101 @@ source: src/lib/parser.rs
 expression: output
 
 ---
-Program@0..112
-  Line@0..23
-    DataDecl@0..22
-      KwStatic@0..6 "static"
-      DataType@6..11
-        Whitespace@6..7 " "
-        KwWord@7..11 "word"
-      Whitespace@11..12 " "
-      Identifier@12..19 "private"
-      ArrayLiteral@19..22
-        Literal@19..22
-          Whitespace@19..20 " "
-          IntLiteral@20..22 "42"
-    Newline@22..23 "\n"
-  Line@23..49
-    DataDecl@23..48
-      KwPub@23..26 "pub"
-      Whitespace@26..27 " "
-      KwStatic@27..33 "static"
-      DataType@33..38
-        Whitespace@33..34 " "
-        KwWord@34..38 "word"
-      Whitespace@38..39 " "
-      Identifier@39..45 "public"
-      ArrayLiteral@45..48
-        Literal@45..48
-          Whitespace@45..46 " "
-          IntLiteral@46..48 "56"
-    Newline@48..49 "\n"
-  Line@49..50
-    Newline@49..50 "\n"
-  Line@50..62
-    Label@50..61
-      Identifier@50..60 "local_func"
-      Colon@60..61 ":"
-    Newline@61..62 "\n"
-  Line@62..71
-    Instruction@62..70
-      Identifier@62..65 "add"
-      Operand@65..68
-        Whitespace@65..66 " "
-        Identifier@66..68 "r0"
-      Operand@68..70
-        Literal@68..70
-          Whitespace@68..69 " "
-          IntLiteral@69..70 "7"
-    Newline@70..71 "\n"
-  Line@71..78
-    Instruction@71..77
-      Identifier@71..77 "return"
-    Newline@77..78 "\n"
-  Line@78..79
-    Newline@78..79 "\n"
-  Line@79..96
-    Label@79..95
-      KwPub@79..82 "pub"
-      Whitespace@82..83 " "
-      Identifier@83..94 "public_func"
-      Colon@94..95 ":"
-    Newline@95..96 "\n"
-  Line@96..105
-    Instruction@96..104
-      Identifier@96..99 "sub"
-      Operand@99..102
-        Whitespace@99..100 " "
-        Identifier@100..102 "r0"
-      Operand@102..104
-        Literal@102..104
-          Whitespace@102..103 " "
-          IntLiteral@103..104 "5"
-    Newline@104..105 "\n"
-  Line@105..112
-    Instruction@105..111
-      Identifier@105..111 "return"
-    Newline@111..112 "\n"
+Program@0..148
+  Line@0..20
+    ConstDecl@0..19
+      KwPub@0..3 "pub"
+      Whitespace@3..4 " "
+      KwConst@4..9 "const"
+      Whitespace@9..10 " "
+      Identifier@10..13 "PUB"
+      Literal@13..19
+        Whitespace@13..14 " "
+        FloatLiteral@14..19 "1.234"
+    Newline@19..20 "\n"
+  Line@20..35
+    ConstDecl@20..34
+      KwConst@20..25 "const"
+      Whitespace@25..26 " "
+      Identifier@26..30 "PRIV"
+      Literal@30..34
+        Whitespace@30..31 " "
+        CharLiteral@31..34 "'F'"
+    Newline@34..35 "\n"
+  Line@35..36
+    Newline@35..36 "\n"
+  Line@36..59
+    DataDecl@36..58
+      KwStatic@36..42 "static"
+      DataType@42..47
+        Whitespace@42..43 " "
+        KwWord@43..47 "word"
+      Whitespace@47..48 " "
+      Identifier@48..55 "private"
+      ArrayLiteral@55..58
+        Literal@55..58
+          Whitespace@55..56 " "
+          IntLiteral@56..58 "42"
+    Newline@58..59 "\n"
+  Line@59..85
+    DataDecl@59..84
+      KwPub@59..62 "pub"
+      Whitespace@62..63 " "
+      KwStatic@63..69 "static"
+      DataType@69..74
+        Whitespace@69..70 " "
+        KwWord@70..74 "word"
+      Whitespace@74..75 " "
+      Identifier@75..81 "public"
+      ArrayLiteral@81..84
+        Literal@81..84
+          Whitespace@81..82 " "
+          IntLiteral@82..84 "56"
+    Newline@84..85 "\n"
+  Line@85..86
+    Newline@85..86 "\n"
+  Line@86..98
+    Label@86..97
+      Identifier@86..96 "local_func"
+      Colon@96..97 ":"
+    Newline@97..98 "\n"
+  Line@98..107
+    Instruction@98..106
+      Identifier@98..101 "add"
+      Operand@101..104
+        Whitespace@101..102 " "
+        Identifier@102..104 "r0"
+      Operand@104..106
+        Literal@104..106
+          Whitespace@104..105 " "
+          IntLiteral@105..106 "7"
+    Newline@106..107 "\n"
+  Line@107..114
+    Instruction@107..113
+      Identifier@107..113 "return"
+    Newline@113..114 "\n"
+  Line@114..115
+    Newline@114..115 "\n"
+  Line@115..132
+    Label@115..131
+      KwPub@115..118 "pub"
+      Whitespace@118..119 " "
+      Identifier@119..130 "public_func"
+      Colon@130..131 ":"
+    Newline@131..132 "\n"
+  Line@132..141
+    Instruction@132..140
+      Identifier@132..135 "sub"
+      Operand@135..138
+        Whitespace@135..136 " "
+        Identifier@136..138 "r0"
+      Operand@138..140
+        Literal@138..140
+          Whitespace@138..139 " "
+          IntLiteral@139..140 "5"
+    Newline@140..141 "\n"
+  Line@141..148
+    Instruction@141..147
+      Identifier@141..147 "return"
+    Newline@147..148 "\n"
 

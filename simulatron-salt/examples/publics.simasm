@@ -1,3 +1,6 @@
+pub const PUB 1.234
+const PRIV 'F'
+
 static word private 42
 pub static word public 56
 

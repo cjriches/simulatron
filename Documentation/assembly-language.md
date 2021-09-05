@@ -74,17 +74,20 @@ _foo_1_bar_
 ```
 
 ## Constant Declarations
-Constant declarations create symbolic constants that have all occurrences replaced with the defined value before assembling. It is conventional that constant names are `UPPER_SNAKE_CASE`.
+Constant declarations create symbolic constants that have all occurrences replaced with the defined value before assembling. Constants can be public or private, but since they are eliminated before reaching object code, the semantics of this is implementation-defined.
+
+It is conventional that constant names are `UPPER_SNAKE_CASE`.
 
 Syntax:
 ```
-const <name> <value>
+[pub] const <name> <value>
 ```
 The value can be any non-array literal.
 
 Example:
 ```
-const PI 3.14159
+pub const PI 3.14159
+const BUF_LEN 64
 ```
 
 ## Data Declarations
@@ -113,7 +116,7 @@ pub static word[5][2] primes_and_doubles [[2, 4], [3, 6], [5, 10], [7, 14], [9, 
 ```
 
 ## Labels
-Labels create named locations within the resulting object code, referring to the address of the following instruction. These are useful for branching instructions. Like data declarations, labels can be public or private.
+Labels create named locations within the resulting object code, referring to the address of the following instruction. These are useful for branching instructions. Like data declarations, labels can be public or private and this affects the linking of resulting object code.
 
 It is conventional that label names are `lower_snake_case`.
 
@@ -244,7 +247,7 @@ Line = [ Const | Data | Label | Instruction ] [ Comment ] ;
 
 Comment = "//" { ? Any non-newline character ? } ;
 
-Const = "const" Identifier Literal ;
+Const = [ "pub" ] "const" Identifier Literal ;
 
 Data = [ "pub" ] "static" [ "mut" ] Type Identifier ArrayLiteral ;
 

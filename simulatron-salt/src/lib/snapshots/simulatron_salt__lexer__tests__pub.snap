@@ -3,6 +3,21 @@ source: src/lib/lexer.rs
 expression: output
 
 ---
+Pub `pub`
+Whitespace ` `
+Const `const`
+Whitespace ` `
+Identifier `PUB`
+Whitespace ` `
+FloatLiteral `1.234`
+Newline
+Const `const`
+Whitespace ` `
+Identifier `PRIV`
+Whitespace ` `
+CharLiteral `'F'`
+Newline
+Newline
 Static `static`
 Whitespace ` `
 Word `word`
