@@ -1,0 +1,2 @@
+copy r0 looks_like_data   // Should create an extern symbol.
+copy r0 LOOKS_LIKE_CONST  // Should create an extern symbol with warning.

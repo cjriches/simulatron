@@ -136,6 +136,8 @@ Instructions form the bulk of most files and are translated into Simulatron mach
 
 Note that due to different addressing modes, the same assembly opcode may map to multiple possible binary opcodes.
 
+The method for specifying the entrypoint of instruction execution is implementation-defined.
+
 Syntax:
 ```
 <opcode> <operands>...

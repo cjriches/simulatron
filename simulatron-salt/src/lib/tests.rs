@@ -1,4 +1,4 @@
-use insta::assert_snapshot;
+use insta::{assert_snapshot, assert_debug_snapshot};
 
 use crate::{
     ast::{AstNode, Program},
@@ -95,6 +95,19 @@ fn test_success(path: &str, entrypoint: bool) {
     assert_snapshot!(pretty_print_hex_block(&object_code.code));
 }
 
+fn test_success_with_warnings(path: &str, entrypoint: bool) {
+    init_test_logging();
+    let input = std::fs::read_to_string(path).unwrap();
+    let parser = Parser::new(Lexer::new(&input));
+    let cst = parser.run().unwrap();
+    let ast = Program::cast(cst).unwrap();
+    let codegen = CodeGenerator::new(ast, &Vec::new()).unwrap();
+    let object_code = codegen.codegen(entrypoint).unwrap();
+    assert!(object_code.warnings.len() > 0);
+    assert_snapshot!(pretty_print_hex_block(&object_code.code));
+    assert_debug_snapshot!(object_code.warnings);
+}
+
 fn test_failure(path: &str) -> SaltError {
     init_test_logging();
     let input = std::fs::read_to_string(path).unwrap();
@@ -107,6 +120,11 @@ fn test_failure(path: &str) -> SaltError {
 }
 
 #[test]
+fn test_addressing_modes() {
+    test_success("examples/addressing-modes.simasm", true);
+}
+
+#[test]
 fn test_comments() {
     test_success("examples/comments.simasm", false);
 }
@@ -115,6 +133,12 @@ fn test_comments() {
 fn test_empty() {
     let err = test_failure("examples/empty-file.simasm");
     assert_eq!(err.message.as_ref(), "Cannot compile an empty file.");
+}
+
+#[test]
+#[ignore]  // TODO implement COPY instruction.
+fn test_external_refs() {
+    test_success("examples/external-refs.simasm", false);
 }
 
 #[test]

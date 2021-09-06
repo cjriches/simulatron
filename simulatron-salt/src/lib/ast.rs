@@ -45,7 +45,7 @@ pub enum OperandValue {
 }
 
 /// The value of a literal.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct LiteralValue {
     pub value: u32,
     pub min_size: usize,  // Minimum number of bytes needed to represent the value.

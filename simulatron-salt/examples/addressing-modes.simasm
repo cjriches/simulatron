@@ -1,0 +1,5 @@
+const INTERVAL 50
+
+timer 10
+TIMER r0  // Opcodes are case-insensitive.
+timer INTERVAL

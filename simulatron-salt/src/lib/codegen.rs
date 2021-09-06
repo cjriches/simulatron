@@ -301,6 +301,38 @@ fn register_type_matches(reg: RegisterType, op: OperandType) -> bool {
     }
 }
 
+/// The result of resolving an identifier.
+#[derive(Debug)]
+enum ResolvedOperand {
+    RegRef(u8, RegisterType),
+    Literal(LiteralValue),
+    SymbolReference,
+}
+
+/// Shortcut for checking number of operands.
+macro_rules! num_operands {
+    ($num:expr, $ops:expr, $span:expr) => {{
+        if $ops.len() != $num {
+            return Err(SaltError {
+                span: $span,
+                message: format!("Expected {} operands, but found {}.",
+                                    $num, $ops.len()).into(),
+            });
+        }
+    }}
+}
+
+/// Shortcut for disallowing SymbolReference resolutions.
+macro_rules! no_symbols {
+    ($span:expr) => {{
+        return Err(SaltError {
+            span: $span,
+            message: "Symbol references resolve to addresses, which can't be \
+                      used here.".into(),
+        });
+    }}
+}
+
 /// The description of a specific operand.
 #[derive(Debug)]
 struct OperandDesc {
@@ -562,16 +594,126 @@ impl CodeGenerator {
 
     /// Perform codegen for a single instruction.
     fn codegen_instruction(&mut self, instruction: &ast::Instruction) -> SaltResult<()> {
+        let span: Range<usize> = instruction.syntax().text_range().into();
         let gen_func = match instruction.opcode().as_str() {
-            "halt" => gen_halt,
-            "pause" => gen_pause,
+            "halt" => Self::gen_halt,
+            "pause" => Self::gen_pause,
+            "timer" => Self::gen_timer,
             // TODO more
             _ => return Err(SaltError {
                 span: instruction.syntax().text_range().into(),
                 message: "Unrecognised opcode.".into(),
             }),
         };
-        gen_func(&mut self.code, instruction.operands())
+        gen_func(self, instruction.operands(), span)
+    }
+
+    /// Codegen for the HALT instruction.
+    fn gen_halt(&mut self, operands: Vec<ast::Operand>,
+                span: Range<usize>) -> SaltResult<()> {
+        num_operands!(0, operands, span);
+        self.code.push(0x00);
+        Ok(())
+    }
+
+    /// Codegen for the PAUSE instruction.
+    fn gen_pause(&mut self, operands: Vec<ast::Operand>,
+                 span: Range<usize>) -> SaltResult<()> {
+        num_operands!(0, operands, span);
+        self.code.push(0x01);
+        Ok(())
+    }
+
+    /// Codegen for the TIMER instruction.
+    fn gen_timer(&mut self, operands: Vec<ast::Operand>,
+                 span: Range<usize>) -> SaltResult<()> {
+        num_operands!(1, operands, span);
+
+        match self.resolve_operand(&operands[0])? {
+            ResolvedOperand::Literal(literal) => {
+                // TIMER LiteralWord.
+                self.code.push(0x02);
+                self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                // TIMER RegRefWord.
+                if !register_type_matches(reg_type, OperandType::RegRefWord) {
+                    return Err(SaltError {
+                        span,
+                        message: "TIMER requires a word register reference.".into(),
+                    });
+                }
+                self.code.push(0x03);
+                self.code.push(reg_ref);
+            }
+            ResolvedOperand::SymbolReference => no_symbols!(span),
+        }
+
+        Ok(())
+    }
+
+    /// Resolve an operand. Literals are returned directly, register references
+    /// are recognised, known constants are substituted, known data and labels
+    /// add a reference to the symbol table and push a zero placeholder to the
+    /// code, and unknown identifiers implicitly declare an external symbol.
+    ///
+    /// If there is an uppercase unknown identifier, this generates a warning as
+    /// it looks like a missing constant, which can't be resolved at link time.
+    fn resolve_operand(&mut self, operand: &ast::Operand)
+                       -> SaltResult<ResolvedOperand> {
+        // Directly resolve a literal, or extract an identifier.
+        let ident = match operand.value()? {
+            OperandValue::Ident(ident) => ident,
+            OperandValue::Lit(literal) =>
+                return Ok(ResolvedOperand::Literal(literal)),
+        };
+
+        // Try and resolve as a register reference.
+        if let Some((reg_ref, reg_type)) = get_reg_ref(&ident) {
+            return Ok(ResolvedOperand::RegRef(reg_ref, reg_type));
+        }
+
+        // Try and resolve as symbol.
+        if let Some(entry) = self.symbol_table.table.get_mut(&ident) {
+            return Ok(match entry {
+                SymbolTableEntry::C(constant) => {
+                    ResolvedOperand::Literal(constant.value)
+                },
+                SymbolTableEntry::D(data) => {
+                    data.references.push(self.code.len().try_into().unwrap());
+                    self.code.write_be_u32(0).unwrap();
+                    ResolvedOperand::SymbolReference
+                },
+                SymbolTableEntry::L(label) => {
+                    label.references.push(self.code.len().try_into().unwrap());
+                    self.code.write_be_u32(0).unwrap();
+                    ResolvedOperand::SymbolReference
+                },
+                SymbolTableEntry::E(external) => {
+                    external.references.push(self.code.len().try_into().unwrap());
+                    self.code.write_be_u32(0).unwrap();
+                    ResolvedOperand::SymbolReference
+                },
+            });
+        }
+
+        // Unresolved: create a new external symbol.
+        // Warn if it looks like a constant.
+        let span: Range<usize> = operand.syntax().text_range().into();
+        if is_uppercase(&ident) {
+            self.warnings.push(SaltError {
+                span: span.clone(),
+                message: "Unresolved symbol creates an external data reference, \
+                          but this looks like a constant.".into(),
+            });
+        }
+        let external = External {
+            references: vec![self.code.len().try_into().unwrap()],
+            span,
+        };
+        self.symbol_table.table.insert(ident, SymbolTableEntry::E(external));
+        self.code.write_be_u32(0).unwrap();
+        Ok(ResolvedOperand::SymbolReference)
     }
 }
 
@@ -643,28 +785,12 @@ fn get_reg_ref(reg_ref: &str) -> Option<(u8, RegisterType)> {
     })
 }
 
-/// Codegen for the HALT instruction.
-fn gen_halt(code: &mut Vec<u8>, operands: Vec<ast::Operand>) -> SaltResult<()> {
-    if operands.len() == 0 {
-        code.push(0x00);
-        Ok(())
-    } else {
-        Err(SaltError {
-            span: operands[0].syntax().text_range().into(),
-            message: "HALT instructions do not take operands.".into(),
-        })
+/// Check if a string is in uppercase.
+fn is_uppercase(string: &str) -> bool {
+    for c in string.chars() {
+        if c.is_ascii_lowercase() {
+            return false;
+        }
     }
-}
-
-/// Codegen for the PAUSE instruction.
-fn gen_pause(code: &mut Vec<u8>, operands: Vec<ast::Operand>) -> SaltResult<()> {
-    if operands.len() == 0 {
-        code.push(0x01);
-        Ok(())
-    } else {
-        Err(SaltError {
-            span: operands[0].syntax().text_range().into(),
-            message: "PAUSE instructions do not take operands.".into(),
-        })
-    }
+    return true;
 }
