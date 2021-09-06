@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::convert::{TryInto, TryFrom};
 use std::io::Write;
 use std::ops::Range;
 
@@ -15,8 +15,6 @@ use crate::write_be::WriteBE;
 const AVG_INSTRUCTION_LEN: usize = 4;
 /// A very rough guesstimate, considering scalars and vectors.
 const AVG_DATA_LEN: usize = 8;
-/// The size of the non-variable-length portion of a symbol table entry.
-const SYMBOL_HEADER_LEN: usize = 10;
 /// A complete guess.
 const AVG_SYMBOL_REFERENCES: usize = 8;
 /// A rough estimate based on 3 sections.
@@ -25,13 +23,27 @@ const AVG_HEADER_OVERHEAD: usize = 32;
 // SimObj object code constants.
 const MAGIC_HEADER: &[u8; 6] = b"SIMOBJ";
 const ABI_VERSION: u16 = 0x0001;
-pub const SYMBOL_TYPE_INTERNAL: u8 = b'I';
-pub const SYMBOL_TYPE_PUBLIC: u8 = b'P';
-pub const SYMBOL_TYPE_EXTERNAL: u8 = b'E';
+const SYMBOL_TYPE_INTERNAL: u8 = b'I';
+const SYMBOL_TYPE_PUBLIC: u8 = b'P';
+const SYMBOL_TYPE_EXTERNAL: u8 = b'E';
+/// The size of the file header.
+const SIMOBJ_HEADER_LEN: usize = 16;
+/// The size of the non-variable-length portion of a symbol table entry.
+const SYMBOL_HEADER_LEN: usize = 10;
+/// A full section header.
+const SECTION_HEADER_LEN: usize = 5;
 
 /// Intermediate Representation Symbol Table.
 struct SymbolTable {
     table: HashMap<String, SymbolTableEntry>,
+}
+
+/// Info about the SimObj representation of a SymbolTable.
+struct SymbolTableStats {
+    num_entries: usize,
+    size: usize,            // Total size.
+    readonly_size: usize,   // Size of all read-only data items.
+    readwrite_size: usize,  // Size of all read-write data items.
 }
 
 impl SymbolTable {
@@ -142,22 +154,27 @@ impl SymbolTable {
         })
     }
 
-    /// Calculate the number of entries and the byte size of this symbol table
-    /// in the resulting object code.
-    fn simobj_size(&self) -> (usize, usize) {
+    fn stats(&self) -> SymbolTableStats {
+        let mut num_entries = 0;
         let mut size = 0;
-        let mut count = 0;
+        let mut readonly_size = 0;
+        let mut readwrite_size = 0;
         for (name, entry) in self.table.iter() {
             if let SymbolTableEntry::C(_) = entry {
                 continue;  // Ignore constants.
             }
-            count += 1;
+            num_entries += 1;
             size += SYMBOL_HEADER_LEN;
             size += name.len();
             match entry {
                 SymbolTableEntry::D(data) => {
                     size += data.size;
                     size += data.references.len() * 4;
+                    if data.mutable {
+                        readwrite_size += data.size;
+                    } else {
+                        readonly_size += data.size;
+                    }
                 },
                 SymbolTableEntry::L(label) => {
                     size += label.references.len() * 4;
@@ -168,31 +185,12 @@ impl SymbolTable {
                 SymbolTableEntry::C(_) => unreachable!(),
             }
         }
-        (count, size)
-    }
 
-    /// Write the symbol table as SimObj code into the given buffer.
-    fn write_simobj(&self, buf: &mut Vec<u8>) {
-        for (name, entry) in self.table.iter() {
-            if let SymbolTableEntry::C(_) = entry {
-                continue;  // Ignore constants.
-            }
-            match entry {
-                SymbolTableEntry::D(data) => {
-                    // Write symbol type.
-                    let type_ = if data.public {SYMBOL_TYPE_PUBLIC} else {SYMBOL_TYPE_INTERNAL};
-                    buf.write_u8(type_).unwrap();
-                    // Write symbol value.
-                    todo!()
-                },
-                SymbolTableEntry::L(label) => {
-                    todo!()
-                },
-                SymbolTableEntry::E(external) => {
-                    todo!()
-                },
-                SymbolTableEntry::C(_) => unreachable!(),
-            }
+        SymbolTableStats {
+            num_entries,
+            size,
+            readonly_size,
+            readwrite_size,
         }
     }
 }
@@ -228,6 +226,15 @@ enum LabelLocation {
     Offset(usize),
 }
 
+impl LabelLocation {
+    fn unwrap_offset(&self) -> u32 {
+        match self {
+            LabelLocation::Reference(_) => panic!(),
+            LabelLocation::Offset(off) => (*off).try_into().unwrap(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Label {
     public: bool,
@@ -239,6 +246,7 @@ struct Label {
 #[derive(Debug)]
 struct External {
     references: Vec<u32>,
+    span: Range<usize>,
 }
 
 /// Possible types of an operand.
@@ -358,10 +366,10 @@ impl CodeGenerator {
 
         // Generate object code.
         // Size is instructions plus symbol table plus headers.
-        let (num_symbols, st_size) = self.symbol_table.simobj_size();
+        let st_stats = self.symbol_table.stats();
         let mut simobj: Vec<u8> = Vec::with_capacity(
               self.code.len()
-            + st_size
+            + st_stats.size
             + AVG_HEADER_OVERHEAD
         );
 
@@ -369,23 +377,127 @@ impl CodeGenerator {
         simobj.write_all(MAGIC_HEADER).unwrap();
         simobj.write_be_u16(ABI_VERSION).unwrap();
 
-        // Write the number of symbols and sections. We'll use three sections:
-        // instructions, read-only data, and read-write data.
-        // TODO skip data sections if empty.
-        simobj.write_be_u32(num_symbols.try_into().unwrap()).unwrap();
-        simobj.write_be_u32(3).unwrap();
+        // Write the number of symbols and sections. We'll use up to three
+        // sections: instructions, read-only data, and read-write data.
+        let num_sections = 1
+            + if st_stats.readonly_size > 0 {1} else {0}
+            + if st_stats.readwrite_size > 0 {1} else {0};
+        simobj.write_be_u32(st_stats.num_entries.try_into().unwrap()).unwrap();
+        simobj.write_be_u32(num_sections).unwrap();
 
-        // Calculate data offsets.
-        // TODO
+        // Calculate the start offset of each section.
+        let instruction_base = SIMOBJ_HEADER_LEN
+            + st_stats.size        // Symbol table.
+            + SECTION_HEADER_LEN;  // Instruction section header.
+        let readonly_base = instruction_base
+            + self.code.len()      // Instruction section.
+            + SECTION_HEADER_LEN;  // Readonly section header.
+        let readwrite_base = readonly_base
+            + st_stats.readonly_size  // Readonly section.
+            + SECTION_HEADER_LEN;     // Readwrite section header.
+
+        // Helper macro for symbol names.
+        macro_rules! symbol_name_len {
+            ($name:expr, $span:expr) => {{
+                match $name.len().try_into() {
+                    Ok(val) => val,
+                    Err(_) => return Err(SaltError {
+                        span: $span,
+                        message: "Symbol name too long (max 255 chars).".into(),
+                    })
+                }
+            }}
+        }
 
         // Write symbol table.
-        // TODO
+        let instruction_base: u32 = instruction_base.try_into().unwrap();
+        let mut next_readonly: u32 = readonly_base.try_into().unwrap();
+        let mut next_readwrite: u32 = readwrite_base.try_into().unwrap();
+        for (name, entry) in self.symbol_table.table.iter() {
+            if let SymbolTableEntry::C(_) = entry {
+                continue;  // Ignore constants.
+            }
+            match entry {
+                SymbolTableEntry::D(data) => {
+                    // Write symbol type.
+                    let type_ = if data.public {SYMBOL_TYPE_PUBLIC} else {SYMBOL_TYPE_INTERNAL};
+                    simobj.write_u8(type_).unwrap();
+                    // Write symbol value.
+                    if data.mutable {
+                        simobj.write_be_u32(next_readwrite).unwrap();
+                        next_readwrite += u32::try_from(data.size).unwrap();
+                    } else {
+                        simobj.write_be_u32(next_readonly).unwrap();
+                        next_readonly += u32::try_from(data.size).unwrap();
+                    }
+                    // Write symbol name length.
+                    let name_len = symbol_name_len!(name, data.span.clone());
+                    simobj.write_u8(name_len).unwrap();
+                    // Write symbol name.
+                    simobj.write_all(name.as_bytes()).unwrap();
+                    // Write number of references.
+                    simobj.write_be_u32(data.references.len().try_into().unwrap()).unwrap();
+                    // Write references.
+                    for reference in data.references.iter() {
+                        simobj.write_be_u32(instruction_base + reference).unwrap();
+                    }
+                },
+                SymbolTableEntry::L(label) => {
+                    // Write symbol type.
+                    let type_ = if label.public {SYMBOL_TYPE_PUBLIC} else {SYMBOL_TYPE_INTERNAL};
+                    simobj.write_u8(type_).unwrap();
+                    // Write symbol value.
+                    simobj.write_be_u32(instruction_base + label.location.unwrap_offset()).unwrap();
+                    // Write symbol name length.
+                    let name_len = symbol_name_len!(name, label.span.clone());
+                    simobj.write_u8(name_len).unwrap();
+                    // Write symbol name.
+                    simobj.write_all(name.as_bytes()).unwrap();
+                    // Write number of references.
+                    simobj.write_be_u32(label.references.len().try_into().unwrap()).unwrap();
+                    // Write references.
+                    for reference in label.references.iter() {
+                        simobj.write_be_u32(instruction_base + reference).unwrap();
+                    }
+                },
+                SymbolTableEntry::E(external) => {
+                    // Write symbol type.
+                    simobj.write_u8(SYMBOL_TYPE_EXTERNAL).unwrap();
+                    // Write symbol value.
+                    simobj.write_be_u32(0).unwrap();
+                    // Write symbol name length.
+                    let name_len = symbol_name_len!(name, external.span.clone());
+                    simobj.write_u8(name_len).unwrap();
+                    // Write symbol name.
+                    simobj.write_all(name.as_bytes()).unwrap();
+                    // Write number of references.
+                    simobj.write_be_u32(external.references.len().try_into().unwrap()).unwrap();
+                    // Write references.
+                    for reference in external.references.iter() {
+                        simobj.write_be_u32(instruction_base + reference).unwrap();
+                    }
+                },
+                SymbolTableEntry::C(_) => unreachable!(),
+            }
+        }
+
+        // Sanity check.
+        assert_eq!(usize::try_from(next_readonly).unwrap(),
+                   readonly_base + st_stats.readonly_size);
+        assert_eq!(usize::try_from(next_readwrite).unwrap(),
+                   readwrite_base + st_stats.readwrite_size);
 
         // Write code section.
         // TODO
 
+        // Sanity check.
+        assert_eq!(simobj.len(), readonly_base);
+
         // Write read-only data section.
         // TODO
+
+        // Sanity check.
+        assert_eq!(simobj.len(), readwrite_base);
 
         // Write read-write data section.
         // TODO
