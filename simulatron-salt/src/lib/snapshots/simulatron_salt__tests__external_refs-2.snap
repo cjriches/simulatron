@@ -1,0 +1,11 @@
+---
+source: src/lib/tests.rs
+expression: object_code.warnings
+
+---
+[
+    SaltError {
+        span: 68..85,
+        message: "Unresolved symbol creates an external data reference, but this looks like a constant.",
+    },
+]

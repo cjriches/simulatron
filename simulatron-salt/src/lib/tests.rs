@@ -122,6 +122,7 @@ fn test_failure(path: &str) -> SaltError {
 #[test]
 fn test_addressing_modes() {
     test_success("examples/addressing-modes.simasm", true);
+    test_success("examples/addressing-modes-2.simasm", true);
 }
 
 #[test]
@@ -136,9 +137,8 @@ fn test_empty() {
 }
 
 #[test]
-#[ignore]  // TODO implement COPY instruction.
 fn test_external_refs() {
-    test_success("examples/external-refs.simasm", false);
+    test_success_with_warnings("examples/external-refs.simasm", false);
 }
 
 #[test]

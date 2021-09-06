@@ -323,6 +323,16 @@ macro_rules! num_operands {
 }
 
 /// Shortcut for disallowing SymbolReference resolutions.
+macro_rules! no_literals {
+    ($span:expr) => {{
+        return Err(SaltError {
+            span: $span,
+            message: "Cannot use a literal here.".into(),
+        });
+    }}
+}
+
+/// Shortcut for disallowing SymbolReference resolutions.
 macro_rules! no_symbols {
     ($span:expr) => {{
         return Err(SaltError {
@@ -599,6 +609,9 @@ impl CodeGenerator {
             "halt" => Self::gen_halt,
             "pause" => Self::gen_pause,
             "timer" => Self::gen_timer,
+            "usermode" => Self::gen_usermode,
+            "ireturn" => Self::gen_ireturn,
+            "load" => Self::gen_load,
             // TODO more
             _ => return Err(SaltError {
                 span: instruction.syntax().text_range().into(),
@@ -629,7 +642,8 @@ impl CodeGenerator {
                  span: Range<usize>) -> SaltResult<()> {
         num_operands!(1, operands, span);
 
-        match self.resolve_operand(&operands[0])? {
+        let (resolved, op_span) = self.resolve_operand(&operands[0])?;
+        match resolved {
             ResolvedOperand::Literal(literal) => {
                 // TIMER LiteralWord.
                 self.code.push(0x02);
@@ -639,14 +653,75 @@ impl CodeGenerator {
                 // TIMER RegRefWord.
                 if !register_type_matches(reg_type, OperandType::RegRefWord) {
                     return Err(SaltError {
-                        span,
+                        span: op_span,
                         message: "TIMER requires a word register reference.".into(),
                     });
                 }
                 self.code.push(0x03);
                 self.code.push(reg_ref);
             }
-            ResolvedOperand::SymbolReference => no_symbols!(span),
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        Ok(())
+    }
+
+    /// Codegen for the USERMODE instruction.
+    fn gen_usermode(&mut self, operands: Vec<ast::Operand>,
+                span: Range<usize>) -> SaltResult<()> {
+        num_operands!(0, operands, span);
+        self.code.push(0x04);
+        Ok(())
+    }
+
+    /// Codegen for the IRETURN instruction.
+    fn gen_ireturn(&mut self, operands: Vec<ast::Operand>,
+                 span: Range<usize>) -> SaltResult<()> {
+        num_operands!(0, operands, span);
+        self.code.push(0x05);
+        Ok(())
+    }
+
+    /// Codegen for the LOAD instruction.
+    fn gen_load(&mut self, operands: Vec<ast::Operand>,
+                 span: Range<usize>) -> SaltResult<()> {
+        num_operands!(2, operands, span);
+
+        // Push placeholder opcode.
+        let opcode_pos = self.code.len();
+        self.code.push(0);
+
+        // First operand: RegRefAny.
+        let (resolved, op_span) = self.resolve_operand(&operands[0])?;
+        match resolved {
+            ResolvedOperand::Literal(_) => no_literals!(op_span),
+            ResolvedOperand::RegRef(reg_ref, _) => self.code.push(reg_ref),
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        // Second operand: address.
+        let (resolved, op_span) = self.resolve_operand(&operands[1])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                // LOAD Ref LitAddr
+                self.code[opcode_pos] = 0x06;
+                self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                // LOAD Ref RefAddr
+                if !register_type_matches(reg_type, OperandType::RegRefWord) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "LOAD requires a word register reference.".into(),
+                    });
+                }
+                self.code[opcode_pos] = 0x07;
+                self.code.push(reg_ref);
+            },
+            ResolvedOperand::SymbolReference => {
+                // LOAD Ref LitAddr
+                self.code[opcode_pos] = 0x06;
+            }
         }
 
         Ok(())
@@ -660,22 +735,24 @@ impl CodeGenerator {
     /// If there is an uppercase unknown identifier, this generates a warning as
     /// it looks like a missing constant, which can't be resolved at link time.
     fn resolve_operand(&mut self, operand: &ast::Operand)
-                       -> SaltResult<ResolvedOperand> {
+                       -> SaltResult<(ResolvedOperand, Range<usize>)> {
+        let span: Range<usize> = operand.syntax().text_range().into();
+
         // Directly resolve a literal, or extract an identifier.
         let ident = match operand.value()? {
             OperandValue::Ident(ident) => ident,
             OperandValue::Lit(literal) =>
-                return Ok(ResolvedOperand::Literal(literal)),
+                return Ok((ResolvedOperand::Literal(literal), span)),
         };
 
         // Try and resolve as a register reference.
         if let Some((reg_ref, reg_type)) = get_reg_ref(&ident) {
-            return Ok(ResolvedOperand::RegRef(reg_ref, reg_type));
+            return Ok((ResolvedOperand::RegRef(reg_ref, reg_type), span));
         }
 
         // Try and resolve as symbol.
         if let Some(entry) = self.symbol_table.table.get_mut(&ident) {
-            return Ok(match entry {
+            return Ok((match entry {
                 SymbolTableEntry::C(constant) => {
                     ResolvedOperand::Literal(constant.value)
                 },
@@ -694,12 +771,11 @@ impl CodeGenerator {
                     self.code.write_be_u32(0).unwrap();
                     ResolvedOperand::SymbolReference
                 },
-            });
+            }, span));
         }
 
         // Unresolved: create a new external symbol.
         // Warn if it looks like a constant.
-        let span: Range<usize> = operand.syntax().text_range().into();
         if is_uppercase(&ident) {
             self.warnings.push(SaltError {
                 span: span.clone(),
@@ -709,11 +785,11 @@ impl CodeGenerator {
         }
         let external = External {
             references: vec![self.code.len().try_into().unwrap()],
-            span,
+            span: span.clone(),
         };
         self.symbol_table.table.insert(ident, SymbolTableEntry::E(external));
         self.code.write_be_u32(0).unwrap();
-        Ok(ResolvedOperand::SymbolReference)
+        Ok((ResolvedOperand::SymbolReference, span))
     }
 }
 

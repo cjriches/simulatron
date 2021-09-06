@@ -1,0 +1,6 @@
+const ADDR 0x5000
+static word foo 42.42
+
+load r0 0x4000
+LOAD f0 foo     // Opcodes are case-insensitive.
+load r1 ADDR
