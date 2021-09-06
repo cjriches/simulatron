@@ -145,3 +145,8 @@ fn test_external_refs() {
 fn test_minimal() {
     test_success("examples/minimal.simasm", true);
 }
+
+#[test]
+fn test_store() {
+    test_success("examples/store.simasm", true);
+}

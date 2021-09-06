@@ -257,19 +257,14 @@ struct External {
     span: Range<usize>,
 }
 
-/// Possible types of an operand.
-/// VarLiteral and RegRefWordFloat only appear in variants, and get resolved to
-/// more specific versions.
+/// Possible types of a register reference.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum OperandType {
-    Literal(usize),
-    VarLiteral,
+enum RegRefType {
     RegRefAny,
     RegRefInt,
     RegRefWord,
     RegRefHalf,
     RegRefByte,
-    RegRefWordFloat,
     RegRefFloat,
 }
 
@@ -282,22 +277,22 @@ enum RegisterType {
     Float,
 }
 
-/// Does the given register type match the given operand type?
-fn register_type_matches(reg: RegisterType, op: OperandType) -> bool {
-    use OperandType::*;
+/// Does the given register type match the given reference type?
+fn register_type_matches(reg: RegisterType, ref_: RegRefType) -> bool {
+    use RegRefType::*;
 
     match reg {
         RegisterType::Byte => {
-            op == RegRefAny || op == RegRefInt || op == RegRefByte
+            ref_ == RegRefAny || ref_ == RegRefInt || ref_ == RegRefByte
         },
         RegisterType::Half => {
-            op == RegRefAny || op == RegRefInt || op == RegRefHalf
+            ref_ == RegRefAny || ref_ == RegRefInt || ref_ == RegRefHalf
         },
         RegisterType::Word => {
-            op == RegRefAny || op == RegRefInt || op == RegRefWord
+            ref_ == RegRefAny || ref_ == RegRefInt || ref_ == RegRefWord
         },
         RegisterType::Float => {
-            op == RegRefAny || op == RegRefFloat
+            ref_ == RegRefAny || ref_ == RegRefFloat
         },
     }
 }
@@ -344,10 +339,21 @@ macro_rules! no_symbols {
     }}
 }
 
+/// Shortcut for an operand that must be any register reference.
+macro_rules! reg_ref_any {
+    ($self:ident, $resolved:expr) => {{
+        match $resolved.0 {
+            ResolvedOperand::Literal(_) => no_literals!($resolved.1),
+            ResolvedOperand::RegRef(reg_ref, _) => $self.code.push(reg_ref),
+            ResolvedOperand::SymbolReference => no_symbols!($resolved.1),
+        }
+    }}
+}
+
 /// The description of a specific operand.
 #[derive(Debug)]
 struct OperandDesc {
-    op_type: OperandType,
+    op_type: RegRefType,
     err_msg: &'static str,
 }
 
@@ -616,6 +622,7 @@ impl CodeGenerator {
             "usermode" => Self::gen_usermode,
             "ireturn" => Self::gen_ireturn,
             "load" => Self::gen_load,
+            "store" => Self::gen_store,
             // TODO more
             _ => return Err(SaltError {
                 span: instruction.syntax().text_range().into(),
@@ -655,7 +662,7 @@ impl CodeGenerator {
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 // TIMER RegRefWord.
-                if !register_type_matches(reg_type, OperandType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
                         span: op_span,
                         message: "TIMER requires a word register reference.".into(),
@@ -696,12 +703,8 @@ impl CodeGenerator {
         self.code.push(0);
 
         // First operand: RegRefAny.
-        let (resolved, op_span) = self.resolve_operand(&operands[0])?;
-        match resolved {
-            ResolvedOperand::Literal(_) => no_literals!(op_span),
-            ResolvedOperand::RegRef(reg_ref, _) => self.code.push(reg_ref),
-            ResolvedOperand::SymbolReference => no_symbols!(op_span),
-        }
+        let resolved = self.resolve_operand(&operands[0])?;
+        reg_ref_any!(self, resolved);
 
         // Second operand: address.
         let (resolved, op_span) = self.resolve_operand(&operands[1])?;
@@ -713,10 +716,11 @@ impl CodeGenerator {
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 // LOAD Ref RefAddr
-                if !register_type_matches(reg_type, OperandType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
                         span: op_span,
-                        message: "LOAD requires a word register reference.".into(),
+                        message: "LOAD requires an address (word) \
+                                  register reference.".into(),
                     });
                 }
                 self.code[opcode_pos] = 0x07;
@@ -727,6 +731,48 @@ impl CodeGenerator {
                 self.code[opcode_pos] = 0x06;
             }
         }
+
+        Ok(())
+    }
+
+    /// Codegen for the STORE instruction.
+    fn gen_store(&mut self, operands: Vec<ast::Operand>,
+                span: Range<usize>) -> SaltResult<()> {
+        num_operands!(2, operands, span);
+
+        // Push placeholder opcode.
+        let opcode_pos = self.code.len();
+        self.code.push(0);
+
+        // First operand: address.
+        let (resolved, op_span) = self.resolve_operand(&operands[0])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                // STORE LitAddr Ref
+                self.code[opcode_pos] = 0x08;
+                self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                // Store RefAddr Ref
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "STORE requires an address (word) \
+                                  register reference.".into(),
+                    });
+                }
+                self.code[opcode_pos] = 0x09;
+                self.code.push(reg_ref);
+            },
+            ResolvedOperand::SymbolReference => {
+                // STORE LitAddr Ref
+                self.code[opcode_pos] = 0x08;
+            }
+        }
+
+        // Second operand: RegRefAny.
+        let resolved = self.resolve_operand(&operands[1])?;
+        reg_ref_any!(self, resolved);
 
         Ok(())
     }
