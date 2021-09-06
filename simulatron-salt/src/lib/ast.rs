@@ -457,8 +457,7 @@ fn minimum_size(value: i64) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::init_test_logging;
-    use crate::{lexer::Lexer, parser::Parser};
+    use crate::{init_test_logging, lexer::Lexer, parser::Parser};
 
     use insta::assert_debug_snapshot;
     use log::info;

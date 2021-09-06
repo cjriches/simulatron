@@ -26,6 +26,10 @@ const ABI_VERSION: u16 = 0x0001;
 const SYMBOL_TYPE_INTERNAL: u8 = b'I';
 const SYMBOL_TYPE_PUBLIC: u8 = b'P';
 const SYMBOL_TYPE_EXTERNAL: u8 = b'E';
+const FLAG_ENTRYPOINT: u8 = 0x01;
+const FLAG_READ: u8 = 0x04;
+const FLAG_WRITE: u8 = 0x08;
+const FLAG_EXECUTE: u8 = 0x10;
 /// The size of the file header.
 const SIMOBJ_HEADER_LEN: usize = 16;
 /// The size of the non-variable-length portion of a symbol table entry.
@@ -61,16 +65,17 @@ impl SymbolTable {
             let value = const_.value()?;
             let span: Range<usize> = const_.syntax().text_range().into();
 
-            self.table.insert(name, SymbolTableEntry::C(Constant {
+            let existing = self.table.insert(name, SymbolTableEntry::C(Constant {
                 public,
                 value,
                 span: span.clone(),
-            })).ok_or_else(|| {
-                SaltError {
+            }));
+            if let Some(_) = existing {
+                return Err(SaltError {
                     span,
                     message: "Name already in use.".into(),
-                }
-            })?;
+                });
+            }
         }
         Ok(())
     }
@@ -101,23 +106,25 @@ impl SymbolTable {
                     })?;
                     buf.append(&mut bytes);
                 }
+                buf.resize(size, 0);
                 buf
             };
             assert_eq!(initialiser.len(), size);
 
-            self.table.insert(name, SymbolTableEntry::D(Data {
+            let existing = self.table.insert(name, SymbolTableEntry::D(Data {
                 public,
                 mutable,
                 size,
                 initialiser,
                 span: span.clone(),
                 references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
-            })).ok_or_else(|| {
-                SaltError {
+            }));
+            if let Some(_) = existing {
+                return Err(SaltError {
                     span,
                     message: "Name already in use.".into(),
-                }
-            })?;
+                });
+            }
         }
         Ok(())
     }
@@ -129,17 +136,18 @@ impl SymbolTable {
             let instruction = label.instruction()?;
             let span: Range<usize> = label.syntax().text_range().into();
 
-            self.table.insert(name, SymbolTableEntry::L(Label {
+            let existing = self.table.insert(name, SymbolTableEntry::L(Label {
                 public,
                 location: LabelLocation::Reference(instruction),
                 span: span.clone(),
                 references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
-            })).ok_or_else(|| {
-                SaltError {
+            }));
+            if let Some(_) = existing {
+                return Err(SaltError {
                     span,
                     message: "Name already in use.".into(),
-                }
-            })?;
+                });
+            }
         }
         Ok(())
     }
@@ -168,7 +176,6 @@ impl SymbolTable {
             size += name.len();
             match entry {
                 SymbolTableEntry::D(data) => {
-                    size += data.size;
                     size += data.references.len() * 4;
                     if data.mutable {
                         readwrite_size += data.size;
@@ -312,8 +319,8 @@ struct InstructionVariant {
 /// The result of successful codegen.
 #[derive(Debug)]
 pub struct ObjectCode {
-    code: Vec<u8>,
-    warnings: Vec<SaltError>,
+    pub code: Vec<u8>,
+    pub warnings: Vec<SaltError>,
 }
 
 /// An object code generator.
@@ -372,6 +379,8 @@ impl CodeGenerator {
             + st_stats.size
             + AVG_HEADER_OVERHEAD
         );
+        let mut readonly_data: Vec<u8> = Vec::with_capacity(st_stats.readonly_size);
+        let mut readwrite_data: Vec<u8> = Vec::with_capacity(st_stats.readwrite_size);
 
         // Write header and version.
         simobj.write_all(MAGIC_HEADER).unwrap();
@@ -393,6 +402,7 @@ impl CodeGenerator {
             + self.code.len()      // Instruction section.
             + SECTION_HEADER_LEN;  // Readonly section header.
         let readwrite_base = readonly_base
+            - if st_stats.readonly_size > 0 {0} else {SECTION_HEADER_LEN}  // Readonly might be missing.
             + st_stats.readonly_size  // Readonly section.
             + SECTION_HEADER_LEN;     // Readwrite section header.
 
@@ -413,7 +423,7 @@ impl CodeGenerator {
         let instruction_base: u32 = instruction_base.try_into().unwrap();
         let mut next_readonly: u32 = readonly_base.try_into().unwrap();
         let mut next_readwrite: u32 = readwrite_base.try_into().unwrap();
-        for (name, entry) in self.symbol_table.table.iter() {
+        for (name, entry) in self.symbol_table.table.iter_mut() {
             if let SymbolTableEntry::C(_) = entry {
                 continue;  // Ignore constants.
             }
@@ -426,9 +436,11 @@ impl CodeGenerator {
                     if data.mutable {
                         simobj.write_be_u32(next_readwrite).unwrap();
                         next_readwrite += u32::try_from(data.size).unwrap();
+                        readwrite_data.append(&mut data.initialiser);
                     } else {
                         simobj.write_be_u32(next_readonly).unwrap();
                         next_readonly += u32::try_from(data.size).unwrap();
+                        readonly_data.append(&mut data.initialiser);
                     }
                     // Write symbol name length.
                     let name_len = symbol_name_len!(name, data.span.clone());
@@ -482,25 +494,35 @@ impl CodeGenerator {
         }
 
         // Sanity check.
-        assert_eq!(usize::try_from(next_readonly).unwrap(),
-                   readonly_base + st_stats.readonly_size);
-        assert_eq!(usize::try_from(next_readwrite).unwrap(),
-                   readwrite_base + st_stats.readwrite_size);
+        assert_eq!(readonly_data.len(), st_stats.readonly_size);
+        assert_eq!(readwrite_data.len(), st_stats.readwrite_size);
+        assert_eq!(simobj.len(),
+                   usize::try_from(instruction_base).unwrap() - SECTION_HEADER_LEN);
 
         // Write code section.
-        // TODO
+        simobj.write_u8(FLAG_ENTRYPOINT | FLAG_EXECUTE).unwrap();
+        simobj.write_be_u32(self.code.len().try_into().unwrap()).unwrap();
+        simobj.write_all(self.code.as_slice()).unwrap();
 
         // Sanity check.
-        assert_eq!(simobj.len(), readonly_base);
+        assert_eq!(simobj.len(), readonly_base - SECTION_HEADER_LEN);
 
         // Write read-only data section.
-        // TODO
+        if st_stats.readonly_size > 0 {
+            simobj.write_u8(FLAG_READ).unwrap();
+            simobj.write_be_u32(readonly_data.len().try_into().unwrap()).unwrap();
+            simobj.write_all(readonly_data.as_slice()).unwrap();
+        }
 
         // Sanity check.
-        assert_eq!(simobj.len(), readwrite_base);
+        assert_eq!(simobj.len(), readwrite_base - SECTION_HEADER_LEN);
 
         // Write read-write data section.
-        // TODO
+        if st_stats.readwrite_size > 0 {
+            simobj.write_u8(FLAG_READ | FLAG_WRITE).unwrap();
+            simobj.write_be_u32(readwrite_data.len().try_into().unwrap()).unwrap();
+            simobj.write_all(readwrite_data.as_slice()).unwrap();
+        }
 
         Ok(ObjectCode {
             code: simobj,
@@ -524,6 +546,7 @@ impl CodeGenerator {
     fn codegen_instruction(&mut self, instruction: &ast::Instruction) -> SaltResult<()> {
         let gen_func = match instruction.opcode().as_str() {
             "halt" => gen_halt,
+            "pause" => gen_pause,
             // TODO more
             _ => return Err(SaltError {
                 span: instruction.syntax().text_range().into(),
@@ -611,6 +634,19 @@ fn gen_halt(code: &mut Vec<u8>, operands: Vec<ast::Operand>) -> SaltResult<()> {
         Err(SaltError {
             span: operands[0].syntax().text_range().into(),
             message: "HALT instructions do not take operands.".into(),
+        })
+    }
+}
+
+/// Codegen for the PAUSE instruction.
+fn gen_pause(code: &mut Vec<u8>, operands: Vec<ast::Operand>) -> SaltResult<()> {
+    if operands.len() == 0 {
+        code.push(0x01);
+        Ok(())
+    } else {
+        Err(SaltError {
+            span: operands[0].syntax().text_range().into(),
+            message: "PAUSE instructions do not take operands.".into(),
         })
     }
 }

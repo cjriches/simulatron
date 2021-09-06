@@ -11,15 +11,9 @@ expression: "instruction.operands().iter().map(Operand::value).map(Result::unwra
         },
     ),
     Ident(
-        (
-            "r0",
-            320..322,
-        ),
+        "r0",
     ),
     Ident(
-        (
-            "greeting",
-            323..331,
-        ),
+        "greeting",
     ),
 ]

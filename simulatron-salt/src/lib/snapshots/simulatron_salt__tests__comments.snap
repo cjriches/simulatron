@@ -1,0 +1,12 @@
+---
+source: src/lib/tests.rs
+expression: pretty_print_hex_block(&object_code.code)
+
+---
+0x00000000    53 49 4D 4F  42 4A 00 01  00 00 00 01  00 00 00 02  |SIMOBJ..........|
+0x00000010    49 00 00 00  2A 03 6D 73  67 00 00 00  00 11 00 00  |I...*.msg.......|
+0x00000020    00 03 00 01  00 04 00 00  00 42 54 68  69 73 20 6C  |.........BThis l|
+0x00000030    6F 6F 6B 73  20 6C 69 6B  65 20 69 74  20 68 61 73  |ooks like it has|
+0x00000040    20 61 20 2F  2F 63 6F 6D  6D 65 6E 74  20 69 6E 20  | a //comment in |
+0x00000050    69 74 20 62  75 74 20 69  74 27 73 20  61 20 73 74  |it but it's a st|
+0x00000060    72 69 6E 67  20 6C 69 74  65 72 61 6C               |ring literal|

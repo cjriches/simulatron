@@ -5,15 +5,9 @@ expression: "instruction.operands().iter().map(Operand::value).map(Result::unwra
 ---
 [
     Ident(
-        (
-            "r0",
-            296..298,
-        ),
+        "r0",
     ),
     Ident(
-        (
-            "DISPLAY",
-            299..306,
-        ),
+        "DISPLAY",
     ),
 ]

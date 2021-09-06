@@ -6,6 +6,9 @@ pub mod lexer;
 pub mod parser;
 mod write_be;
 
+#[cfg(test)]
+mod tests;
+
 /// Initialise logging for tests.
 #[cfg(test)]
 pub fn init_test_logging() {
