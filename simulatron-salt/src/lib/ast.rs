@@ -40,7 +40,7 @@ derive_token_casts! {
 /// An enum for Operands, which can be either Identifiers or Literals.
 #[derive(Debug)]
 pub enum OperandValue {
-    Ident((String, Range<usize>)),
+    Ident(String),
     Lit(LiteralValue),
 }
 
@@ -234,7 +234,7 @@ impl Instruction {
 impl Operand {
     pub fn value(&self) -> SaltResult<OperandValue> {
         match self.syntax.children_with_tokens().find_map(identifier_cast) {
-            Some(ident) => Ok(OperandValue::Ident(ident)),
+            Some(ident) => Ok(OperandValue::Ident(ident.0)),
             None => {
                 let val = self.syntax.children()
                     .find_map(Literal::cast)

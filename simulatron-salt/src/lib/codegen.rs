@@ -1,15 +1,33 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
+use std::io::Write;
 use std::ops::Range;
 
-use crate::ast::{self, AstNode, LiteralValue};
+use crate::ast::{self, AstNode, LiteralValue, OperandValue};
 use crate::error::{SaltError, SaltResult};
+use crate::write_be::WriteBE;
+
+// The following constants are used to provide guesses for initial vector
+// capacities. Thus, they are important for performance but not correctness.
 
 /// A rough estimate, assuming equal distribution of all instructions and
 /// addressing modes.
 const AVG_INSTRUCTION_LEN: usize = 4;
-
 /// A very rough guesstimate, considering scalars and vectors.
 const AVG_DATA_LEN: usize = 8;
+/// The size of the non-variable-length portion of a symbol table entry.
+const SYMBOL_HEADER_LEN: usize = 10;
+/// A complete guess.
+const AVG_SYMBOL_REFERENCES: usize = 8;
+/// A rough estimate based on 3 sections.
+const AVG_HEADER_OVERHEAD: usize = 32;
+
+// SimObj object code constants.
+const MAGIC_HEADER: &[u8; 6] = b"SIMOBJ";
+const ABI_VERSION: u16 = 0x0001;
+pub const SYMBOL_TYPE_INTERNAL: u8 = b'I';
+pub const SYMBOL_TYPE_PUBLIC: u8 = b'P';
+pub const SYMBOL_TYPE_EXTERNAL: u8 = b'E';
 
 /// Intermediate Representation Symbol Table.
 struct SymbolTable {
@@ -81,6 +99,7 @@ impl SymbolTable {
                 size,
                 initialiser,
                 span: span.clone(),
+                references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
             })).ok_or_else(|| {
                 SaltError {
                     span,
@@ -102,6 +121,7 @@ impl SymbolTable {
                 public,
                 location: LabelLocation::Reference(instruction),
                 span: span.clone(),
+                references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
             })).ok_or_else(|| {
                 SaltError {
                     span,
@@ -111,6 +131,70 @@ impl SymbolTable {
         }
         Ok(())
     }
+
+    fn iter_labels(&mut self) -> impl Iterator<Item = &mut Label> {
+        self.table.values_mut().filter_map(|entry| {
+            if let SymbolTableEntry::L(label) = entry {
+                Some(label)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Calculate the number of entries and the byte size of this symbol table
+    /// in the resulting object code.
+    fn simobj_size(&self) -> (usize, usize) {
+        let mut size = 0;
+        let mut count = 0;
+        for (name, entry) in self.table.iter() {
+            if let SymbolTableEntry::C(_) = entry {
+                continue;  // Ignore constants.
+            }
+            count += 1;
+            size += SYMBOL_HEADER_LEN;
+            size += name.len();
+            match entry {
+                SymbolTableEntry::D(data) => {
+                    size += data.size;
+                    size += data.references.len() * 4;
+                },
+                SymbolTableEntry::L(label) => {
+                    size += label.references.len() * 4;
+                },
+                SymbolTableEntry::E(external) => {
+                    size += external.references.len() * 4;
+                }
+                SymbolTableEntry::C(_) => unreachable!(),
+            }
+        }
+        (count, size)
+    }
+
+    /// Write the symbol table as SimObj code into the given buffer.
+    fn write_simobj(&self, buf: &mut Vec<u8>) {
+        for (name, entry) in self.table.iter() {
+            if let SymbolTableEntry::C(_) = entry {
+                continue;  // Ignore constants.
+            }
+            match entry {
+                SymbolTableEntry::D(data) => {
+                    // Write symbol type.
+                    let type_ = if data.public {SYMBOL_TYPE_PUBLIC} else {SYMBOL_TYPE_INTERNAL};
+                    buf.write_u8(type_).unwrap();
+                    // Write symbol value.
+                    todo!()
+                },
+                SymbolTableEntry::L(label) => {
+                    todo!()
+                },
+                SymbolTableEntry::E(external) => {
+                    todo!()
+                },
+                SymbolTableEntry::C(_) => unreachable!(),
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -118,6 +202,7 @@ enum SymbolTableEntry {
     C(Constant),
     D(Data),
     L(Label),
+    E(External),
 }
 
 #[derive(Debug)]
@@ -134,6 +219,7 @@ struct Data {
     size: usize,
     initialiser: Vec<u8>,
     span: Range<usize>,
+    references: Vec<u32>,
 }
 
 #[derive(Debug)]
@@ -147,18 +233,64 @@ struct Label {
     public: bool,
     location: LabelLocation,
     span: Range<usize>,
+    references: Vec<u32>,
+}
+
+#[derive(Debug)]
+struct External {
+    references: Vec<u32>,
 }
 
 /// Possible types of an operand.
-#[derive(Debug)]
+/// VarLiteral and RegRefWordFloat only appear in variants, and get resolved to
+/// more specific versions.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum OperandType {
     Literal(usize),
     VarLiteral,
     RegRefAny,
     RegRefInt,
     RegRefWord,
+    RegRefHalf,
     RegRefByte,
-    RegRefIntFloat,
+    RegRefWordFloat,
+    RegRefFloat,
+}
+
+/// Possible types of a register.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum RegisterType {
+    Byte,
+    Half,
+    Word,
+    Float,
+}
+
+/// Does the given register type match the given operand type?
+fn register_type_matches(reg: RegisterType, op: OperandType) -> bool {
+    use OperandType::*;
+
+    match reg {
+        RegisterType::Byte => {
+            op == RegRefAny || op == RegRefInt || op == RegRefByte
+        },
+        RegisterType::Half => {
+            op == RegRefAny || op == RegRefInt || op == RegRefHalf
+        },
+        RegisterType::Word => {
+            op == RegRefAny || op == RegRefInt || op == RegRefWord
+        },
+        RegisterType::Float => {
+            op == RegRefAny || op == RegRefFloat
+        },
+    }
+}
+
+/// The description of a specific operand.
+#[derive(Debug)]
+struct OperandDesc {
+    op_type: OperandType,
+    err_msg: &'static str,
 }
 
 /// A specific variant of an instruction, with a single binary opcode and
@@ -166,7 +298,7 @@ enum OperandType {
 #[derive(Debug)]
 struct InstructionVariant {
     opcode: u8,
-    operands: Vec<OperandType>,
+    operands: Vec<OperandDesc>,
 }
 
 /// The result of successful codegen.
@@ -181,7 +313,7 @@ pub struct CodeGenerator {
     symbol_table: SymbolTable,
     code: Vec<u8>,
     warnings: Vec<SaltError>,
-    instructions: Vec<ast::Instruction>,
+    instructions: Option<Vec<ast::Instruction>>,
 }
 
 impl CodeGenerator {
@@ -210,20 +342,83 @@ impl CodeGenerator {
             symbol_table,
             code,
             warnings,
-            instructions,
+            instructions: Some(instructions),
         })
     }
 
+    /// Top-level codegen entrypoint.
     pub fn codegen(mut self) -> SaltResult<ObjectCode> {
-        for instruction in self.instructions.iter() {
-            let variants = get_instruction_variants(instruction)?;
-            todo!()
+        // Process all instructions.
+        for instruction in self.instructions.take().unwrap().iter() {
+            // Resolve any labels pointing here.
+            self.resolve_labels(instruction);
+            // Codegen the instruction.
+            self.codegen_instruction(instruction)?;
         }
 
+        // Generate object code.
+        // Size is instructions plus symbol table plus headers.
+        let (num_symbols, st_size) = self.symbol_table.simobj_size();
+        let mut simobj: Vec<u8> = Vec::with_capacity(
+              self.code.len()
+            + st_size
+            + AVG_HEADER_OVERHEAD
+        );
+
+        // Write header and version.
+        simobj.write_all(MAGIC_HEADER).unwrap();
+        simobj.write_be_u16(ABI_VERSION).unwrap();
+
+        // Write the number of symbols and sections. We'll use three sections:
+        // instructions, read-only data, and read-write data.
+        // TODO skip data sections if empty.
+        simobj.write_be_u32(num_symbols.try_into().unwrap()).unwrap();
+        simobj.write_be_u32(3).unwrap();
+
+        // Calculate data offsets.
+        // TODO
+
+        // Write symbol table.
+        // TODO
+
+        // Write code section.
+        // TODO
+
+        // Write read-only data section.
+        // TODO
+
+        // Write read-write data section.
+        // TODO
+
         Ok(ObjectCode {
-            code: self.code,
+            code: simobj,
             warnings: self.warnings,
         })
+    }
+
+    /// Resolve any labels pointing to the given instruction, making them point
+    /// to an offset of the current code buffer length.
+    fn resolve_labels(&mut self, instruction: &ast::Instruction) {
+        for label in self.symbol_table.iter_labels() {
+            if let LabelLocation::Reference(referenced_instruction) = &label.location {
+                if instruction == referenced_instruction {
+                    label.location = LabelLocation::Offset(self.code.len());
+                }
+            }
+        }
+    }
+
+    /// Perform codegen for a single instruction.
+    fn codegen_instruction(&mut self, instruction: &ast::Instruction) -> SaltResult<()> {
+        let gen_func = match instruction.opcode().as_str() {
+            "halt" => gen_halt,
+            // TODO more
+            _ => return Err(SaltError {
+                span: instruction.syntax().text_range().into(),
+                message: "Unrecognised opcode.".into(),
+            }),
+        };
+        gen_func(&mut self.code, instruction.operands())
     }
 }
 
@@ -248,20 +443,62 @@ fn value_as_word(val: &LiteralValue) -> Option<Vec<u8>> {
     Some(val.value.to_be_bytes().to_vec())
 }
 
-/// Find the possible opcodes and operands for the given opcode string.
-fn get_instruction_variants(instruction: &ast::Instruction)
-        -> SaltResult<Vec<InstructionVariant>> {
-    Ok(match instruction.opcode().as_str() {
-        "halt" => vec![InstructionVariant { opcode: 0x00, operands: vec![] }],
-        "pause" => vec![InstructionVariant { opcode: 0x01, operands: vec![] }],
-        "timer" => vec![
-            InstructionVariant { opcode: 0x02, operands: vec![OperandType::Literal(4)] },
-            InstructionVariant { opcode: 0x03, operands: vec![OperandType::RegRefWord] },
-        ],
-        // TODO more
-        _ => return Err(SaltError {
-            span: instruction.syntax().text_range().into(),
-            message: "Unrecognised opcode.".into(),
-        })
+/// Convert a register reference string into its binary reference and associated type.
+fn get_reg_ref(reg_ref: &str) -> Option<(u8, RegisterType)> {
+    use RegisterType::*;
+
+    Some(match reg_ref {
+        "r0" => (0x00, Word),
+        "r1" => (0x01, Word),
+        "r2" => (0x02, Word),
+        "r3" => (0x03, Word),
+        "r4" => (0x04, Word),
+        "r5" => (0x05, Word),
+        "r6" => (0x06, Word),
+        "r7" => (0x07, Word),
+        "r0h" => (0x08, Half),
+        "r1h" => (0x09, Half),
+        "r2h" => (0x0A, Half),
+        "r3h" => (0x0B, Half),
+        "r4h" => (0x0C, Half),
+        "r5h" => (0x0D, Half),
+        "r6h" => (0x0E, Half),
+        "r7h" => (0x0F, Half),
+        "r0b" => (0x10, Byte),
+        "r1b" => (0x11, Byte),
+        "r2b" => (0x12, Byte),
+        "r3b" => (0x13, Byte),
+        "r4b" => (0x14, Byte),
+        "r5b" => (0x15, Byte),
+        "r6b" => (0x16, Byte),
+        "r7b" => (0x17, Byte),
+        "f0" => (0x18, Float),
+        "f1" => (0x19, Float),
+        "f2" => (0x1A, Float),
+        "f3" => (0x1B, Float),
+        "f4" => (0x1C, Float),
+        "f5" => (0x1D, Float),
+        "f6" => (0x1E, Float),
+        "f7" => (0x1F, Float),
+        "flags" => (0x20, Half),
+        "uspr" => (0x21, Word),
+        "kspr" => (0x22, Word),
+        "pdpr" => (0x23, Word),
+        "imr" => (0x24, Half),
+        "pfsr" => (0x25, Word),
+        _ => return None,
     })
+}
+
+/// Codegen for the HALT instruction.
+fn gen_halt(code: &mut Vec<u8>, operands: Vec<ast::Operand>) -> SaltResult<()> {
+    if operands.len() == 0 {
+        code.push(0x00);
+        Ok(())
+    } else {
+        Err(SaltError {
+            span: operands[0].syntax().text_range().into(),
+            message: "HALT instructions do not take operands.".into(),
+        })
+    }
 }

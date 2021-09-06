@@ -4,6 +4,7 @@ mod error;
 mod language;
 pub mod lexer;
 pub mod parser;
+mod write_be;
 
 /// Initialise logging for tests.
 #[cfg(test)]
