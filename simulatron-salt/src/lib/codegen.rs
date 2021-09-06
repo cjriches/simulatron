@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::convert::{TryInto, TryFrom};
 use std::io::Write;
@@ -476,11 +477,14 @@ impl CodeGenerator {
             }}
         }
 
-        // Write symbol table.
+        // Write symbol table. Iterate through sorted by key, so the results
+        // are deterministic.
         let instruction_base: u32 = instruction_base.try_into().unwrap();
         let mut next_readonly: u32 = readonly_base.try_into().unwrap();
         let mut next_readwrite: u32 = readwrite_base.try_into().unwrap();
-        for (name, entry) in self.symbol_table.table.iter_mut() {
+        for (name, entry) in self.symbol_table.table
+                .iter_mut()
+                .sorted_by_key(|(k, _)| *k) {
             if let SymbolTableEntry::C(_) = entry {
                 continue;  // Ignore constants.
             }
