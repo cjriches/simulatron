@@ -4,13 +4,11 @@
 ## Overview
 A single assembly file (`*.simasm`) gets [translated](../simulatron-salt/README.md) to a single [object code](object-code.md) file (`*.simobj`). One or more object code files can then be [linked](../simulatron-silk/README.md) together to form a final executable.
 
-An assembly file contains a combination of four types of element:
+An assembly file contains a combination of four types of element, all of which are optional:
 1. Constant declarations
 2. Data declarations
 3. Labels
 4. Instructions
-
-A file must contain at least one instruction.
 
 It is conventional to place all constant declarations at the top of the file, followed by data declarations, and then instruction blocks. Each instruction block (except optionally the first) should be preceded by a label, and labels may also appear in the middle of instruction blocks. However, these are just conventions, and any ordering is legal.
 

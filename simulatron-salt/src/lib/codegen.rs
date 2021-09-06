@@ -332,9 +332,14 @@ pub struct CodeGenerator {
 }
 
 impl CodeGenerator {
-    pub fn new(program: ast::Program) -> SaltResult<Self> {
+    pub fn new(program: ast::Program,
+               extra_consts: &Vec<ast::ConstDecl>) -> SaltResult<Self> {
         // Extract program components.
-        let consts = program.const_decls();
+        let mut consts = program.const_decls();
+        consts.reserve_exact(extra_consts.len());
+        for extra in extra_consts.iter() {
+            consts.push(extra.clone());
+        }
         let data = program.data_decls();
         let labels = program.labels();
         let instructions = program.instructions();
@@ -362,7 +367,7 @@ impl CodeGenerator {
     }
 
     /// Top-level codegen entrypoint.
-    pub fn codegen(mut self) -> SaltResult<ObjectCode> {
+    pub fn codegen(mut self, entrypoint: bool) -> SaltResult<ObjectCode> {
         // Process all instructions.
         for instruction in self.instructions.take().unwrap().iter() {
             // Resolve any labels pointing here.
@@ -388,9 +393,18 @@ impl CodeGenerator {
 
         // Write the number of symbols and sections. We'll use up to three
         // sections: instructions, read-only data, and read-write data.
-        let num_sections = 1
+        let num_sections =
+              if self.code.len() > 0 {1} else {0}
             + if st_stats.readonly_size > 0 {1} else {0}
             + if st_stats.readwrite_size > 0 {1} else {0};
+
+        if num_sections == 0 {
+            return Err(SaltError {
+                span: 0..0,
+                message: "Cannot compile an empty file.".into(),
+            });
+        }
+
         simobj.write_be_u32(st_stats.num_entries.try_into().unwrap()).unwrap();
         simobj.write_be_u32(num_sections).unwrap();
 
@@ -399,6 +413,7 @@ impl CodeGenerator {
             + st_stats.size        // Symbol table.
             + SECTION_HEADER_LEN;  // Instruction section header.
         let readonly_base = instruction_base
+            - if self.code.len() > 0 {0} else {SECTION_HEADER_LEN}  // Instructions might be missing.
             + self.code.len()      // Instruction section.
             + SECTION_HEADER_LEN;  // Readonly section header.
         let readwrite_base = readonly_base
@@ -500,9 +515,12 @@ impl CodeGenerator {
                    usize::try_from(instruction_base).unwrap() - SECTION_HEADER_LEN);
 
         // Write code section.
-        simobj.write_u8(FLAG_ENTRYPOINT | FLAG_EXECUTE).unwrap();
-        simobj.write_be_u32(self.code.len().try_into().unwrap()).unwrap();
-        simobj.write_all(self.code.as_slice()).unwrap();
+        if self.code.len() > 0 {
+            let flags = FLAG_EXECUTE | if entrypoint {FLAG_ENTRYPOINT} else {0};
+            simobj.write_u8(flags).unwrap();
+            simobj.write_be_u32(self.code.len().try_into().unwrap()).unwrap();
+            simobj.write_all(self.code.as_slice()).unwrap();
+        }
 
         // Sanity check.
         assert_eq!(simobj.len(), readonly_base - SECTION_HEADER_LEN);

@@ -3,6 +3,7 @@ use insta::assert_snapshot;
 use crate::{
     ast::{AstNode, Program},
     codegen::CodeGenerator,
+    error::SaltError,
     init_test_logging,
     lexer::Lexer,
     parser::Parser,
@@ -82,24 +83,41 @@ fn printable(chr: u8) -> char {
     }
 }
 
-fn test_success(path: &str) {
+fn test_success(path: &str, entrypoint: bool) {
     init_test_logging();
     let input = std::fs::read_to_string(path).unwrap();
     let parser = Parser::new(Lexer::new(&input));
     let cst = parser.run().unwrap();
     let ast = Program::cast(cst).unwrap();
-    let codegen = CodeGenerator::new(ast).unwrap();
-    let object_code = codegen.codegen().unwrap();
+    let codegen = CodeGenerator::new(ast, &Vec::new()).unwrap();
+    let object_code = codegen.codegen(entrypoint).unwrap();
     assert_eq!(object_code.warnings.len(), 0);
     assert_snapshot!(pretty_print_hex_block(&object_code.code));
 }
 
+fn test_failure(path: &str) -> SaltError {
+    init_test_logging();
+    let input = std::fs::read_to_string(path).unwrap();
+    let parser = Parser::new(Lexer::new(&input));
+    let cst = parser.run().unwrap();
+    let ast = Program::cast(cst).unwrap();
+    CodeGenerator::new(ast, &Vec::new()).and_then(|cg| {
+        cg.codegen(true)
+    }).unwrap_err()
+}
+
 #[test]
 fn test_comments() {
-    test_success("examples/comments.simasm");
+    test_success("examples/comments.simasm", false);
+}
+
+#[test]
+fn test_empty() {
+    let err = test_failure("examples/empty-file.simasm");
+    assert_eq!(err.message.as_ref(), "Cannot compile an empty file.");
 }
 
 #[test]
 fn test_minimal() {
-    test_success("examples/minimal.simasm");
+    test_success("examples/minimal.simasm", true);
 }
