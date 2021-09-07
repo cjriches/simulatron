@@ -131,6 +131,11 @@ fn test_blockcopy() {
 }
 
 #[test]
+fn test_blockset() {
+    test_success("examples/blockset.simasm", true);
+}
+
+#[test]
 fn test_comments() {
     test_success("examples/comments.simasm", false);
 }

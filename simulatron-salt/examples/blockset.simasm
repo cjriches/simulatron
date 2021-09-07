@@ -1,0 +1,11 @@
+const LEN 64
+
+blockset LEN 0x12345678 'A'
+blockset LEN 0x12345678 r0b
+blockset LEN r1 'A'
+blockset LEN r1 r0b
+
+blockset r7 0x12345678 'A'
+blockset r7 0x12345678 r0b
+blockset r7 r1 'A'
+blockset r7 r1 r0b

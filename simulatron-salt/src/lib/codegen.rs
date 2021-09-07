@@ -595,6 +595,8 @@ impl CodeGenerator {
             "pop" => def!(i_BHWF, 0x0F),
             "blockcopy" => def!(i_w_a_a, (0x10, 0x11, 0x12, 0x13,
                                           0x14, 0x15, 0x16, 0x17)),
+            "blockset" => def!(i_w_a_b, (0x18, 0x19, 0x1A, 0x1B,
+                                         0x1C, 0x1D, 0x1E, 0x1F)),
             // TODO more
             _ => Err(SaltError {
                 span: instruction.syntax().text_range().into(),

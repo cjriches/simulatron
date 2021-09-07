@@ -291,3 +291,92 @@ macro_rules! i_w_a_a {
         Ok(())
     }}
 }
+
+/// An instruction with operands ..w. ..a. ..b.
+macro_rules! i_w_a_b {
+    ($self:ident, $opcodes:expr, $operands:expr, $span:expr) => {{
+        num_operands!(3, $operands, $span);
+
+        // Push placeholder opcode.
+        let opcode_pos = $self.code.len();
+        $self.code.push(0);
+        let mut opcode_choice = 0;
+
+        // First operand: word.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                $self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Expected a word register reference.".into(),
+                    });
+                }
+                opcode_choice += 4;
+                $self.code.push(reg_ref);
+            }
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        // Second operand: address.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[1])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                $self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Expected an address (word) \
+                                  register reference.".into(),
+                    });
+                }
+                opcode_choice += 2;
+                $self.code.push(reg_ref);
+            },
+            ResolvedOperand::SymbolReference => {},
+        }
+
+        // Third operand: byte value.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[2])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                $self.code.append(&mut value_as_byte(&literal)
+                    .ok_or_else(|| SaltError {
+                        span: op_span,
+                        message: "Literal too large: expected single byte.".into(),
+                })?);
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if !register_type_matches(reg_type, RegRefType::RegRefByte) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Expected a byte register reference.".into(),
+                    });
+                }
+                opcode_choice += 1;
+                $self.code.push(reg_ref);
+            }
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        let opcode = match opcode_choice {
+            0 => $opcodes.0,
+            1 => $opcodes.1,
+            2 => $opcodes.2,
+            3 => $opcodes.3,
+            4 => $opcodes.4,
+            5 => $opcodes.5,
+            6 => $opcodes.6,
+            7 => $opcodes.7,
+            _ => unreachable!(),
+        };
+        $self.code[opcode_pos] = opcode;
+
+        Ok(())
+    }}
+}
