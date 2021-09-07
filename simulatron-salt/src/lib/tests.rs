@@ -131,6 +131,11 @@ fn test_comments() {
 }
 
 #[test]
+fn test_copy() {
+    test_success("examples/copy.simasm", true);
+}
+
+#[test]
 fn test_empty() {
     let err = test_failure("examples/empty-file.simasm");
     assert_eq!(err.message.as_ref(), "Cannot compile an empty file.");

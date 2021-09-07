@@ -344,7 +344,10 @@ macro_rules! reg_ref_any {
     ($self:ident, $resolved:expr) => {{
         match $resolved.0 {
             ResolvedOperand::Literal(_) => no_literals!($resolved.1),
-            ResolvedOperand::RegRef(reg_ref, _) => $self.code.push(reg_ref),
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                $self.code.push(reg_ref);
+                reg_type
+            },
             ResolvedOperand::SymbolReference => no_symbols!($resolved.1),
         }
     }}
@@ -623,6 +626,7 @@ impl CodeGenerator {
             "ireturn" => Self::gen_ireturn,
             "load" => Self::gen_load,
             "store" => Self::gen_store,
+            "copy" => Self::gen_copy,
             // TODO more
             _ => return Err(SaltError {
                 span: instruction.syntax().text_range().into(),
@@ -777,6 +781,45 @@ impl CodeGenerator {
         Ok(())
     }
 
+    /// Codegen for the COPY instruction.
+    fn gen_copy(&mut self, operands: Vec<ast::Operand>,
+                 span: Range<usize>) -> SaltResult<()> {
+        num_operands!(2, operands, span);
+
+        // Push placeholder opcode.
+        let opcode_pos = self.code.len();
+        self.code.push(0);
+
+        // First operand: destination register.
+        let resolved = self.resolve_operand(&operands[0])?;
+        let reg_type = reg_ref_any!(self, resolved);
+
+        // Second operand: source value or register.
+        let (resolved, op_span) = self.resolve_operand(&operands[1])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                // COPY Ref VarLit
+                self.code[opcode_pos] = 0x0A;
+                self.push_value_as_reg_type(&literal, reg_type, op_span)?;
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type_2) => {
+                // COPY Ref Ref
+                if reg_type != reg_type_2 {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Cannot COPY between differently-sized \
+                                  registers.".into(),
+                    });
+                }
+                self.code[opcode_pos] = 0x0B;
+                self.code.push(reg_ref);
+            },
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        Ok(())
+    }
+
     /// Resolve an operand. Literals are returned directly, register references
     /// are recognised, known constants are substituted, known data and labels
     /// add a reference to the symbol table and push a zero placeholder to the
@@ -840,6 +883,20 @@ impl CodeGenerator {
         self.symbol_table.table.insert(ident, SymbolTableEntry::E(external));
         self.code.write_be_u32(0).unwrap();
         Ok((ResolvedOperand::SymbolReference, span))
+    }
+
+    fn push_value_as_reg_type(&mut self, val: &LiteralValue, reg_type: RegisterType,
+                              span: Range<usize>) -> SaltResult<()> {
+        match reg_type {
+            RegisterType::Byte => value_as_byte(val),
+            RegisterType::Half => value_as_half(val),
+            RegisterType::Word
+            | RegisterType::Float => value_as_word(val),
+        }.map(|mut bytes| self.code.append(&mut bytes))
+         .ok_or_else(|| SaltError {
+             span,
+             message: "Literal too big for register.".into(),
+         })
     }
 }
 

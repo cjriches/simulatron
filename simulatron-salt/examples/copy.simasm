@@ -1,0 +1,5 @@
+const FOO 1.0
+
+copy f0 FOO
+copy r1b 255
+copy r2b r1b
