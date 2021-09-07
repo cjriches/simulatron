@@ -1,0 +1,5 @@
+push r0
+push flags
+
+pop r0h
+pop r1

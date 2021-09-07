@@ -152,6 +152,11 @@ fn test_minimal() {
 }
 
 #[test]
+fn test_push_pop() {
+    test_success("examples/push-pop.simasm", true);
+}
+
+#[test]
 fn test_store() {
     test_success("examples/store.simasm", true);
 }

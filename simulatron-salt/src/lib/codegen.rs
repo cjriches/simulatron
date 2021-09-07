@@ -591,6 +591,8 @@ impl CodeGenerator {
             "store" => def!(i_00a0_BHWF, (0x08, 0x09)),
             "copy" => def!(i_BHWF_bhwf, (0x0A, 0x0B)),
             "swap" => def!(i_BHWF_00a0, (0x0C, 0x0D)),
+            "push" => def!(i_BHWF, 0x0E),
+            "pop" => def!(i_BHWF, 0x0F),
             // TODO more
             _ => Err(SaltError {
                 span: instruction.syntax().text_range().into(),

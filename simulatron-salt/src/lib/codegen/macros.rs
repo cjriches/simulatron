@@ -51,6 +51,33 @@ macro_rules! reg_ref_any {
     }}
 }
 
+/// Shortcut for an operand that must be an address.
+/// Only applicable to two-operand instructions.
+macro_rules! address {
+    ($self:ident, $resolved:expr, $opcodes:expr, $opcode_pos:expr) => {{
+        match $resolved.0 {
+            ResolvedOperand::Literal(literal) => {
+                $self.code[$opcode_pos] = $opcodes.0;
+                $self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    return Err(SaltError {
+                        span: $resolved.1,
+                        message: "Expected an address (word) \
+                                  register reference.".into(),
+                    });
+                }
+                $self.code[$opcode_pos] = $opcodes.1;
+                $self.code.push(reg_ref);
+            },
+            ResolvedOperand::SymbolReference => {
+                $self.code[$opcode_pos] = $opcodes.0;
+            }
+        }
+    }}
+}
+
 /// An instruction with no operands.
 macro_rules! i_none {
     ($self:ident, $opcode:expr, $operands:expr, $span:expr) => {{
@@ -102,27 +129,8 @@ macro_rules! i_BHWF_00a0 {
         reg_ref_any!($self, resolved);
 
         // Second operand: address.
-        let (resolved, op_span) = $self.resolve_operand(&$operands[1])?;
-        match resolved {
-            ResolvedOperand::Literal(literal) => {
-                $self.code[opcode_pos] = $opcodes.0;
-                $self.code.append(&mut value_as_word(&literal).unwrap());
-            },
-            ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
-                    return Err(SaltError {
-                        span: op_span,
-                        message: "Expected an address (word) \
-                                  register reference.".into(),
-                    });
-                }
-                $self.code[opcode_pos] = $opcodes.1;
-                $self.code.push(reg_ref);
-            },
-            ResolvedOperand::SymbolReference => {
-                $self.code[opcode_pos] = $opcodes.0;
-            }
-        }
+        let resolved = $self.resolve_operand(&$operands[1])?;
+        address!($self, resolved, $opcodes, opcode_pos);
 
         Ok(())
     }}
@@ -138,27 +146,8 @@ macro_rules! i_00a0_BHWF {
         $self.code.push(0);
 
         // First operand: address.
-        let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
-        match resolved {
-            ResolvedOperand::Literal(literal) => {
-                $self.code[opcode_pos] = $opcodes.0;
-                $self.code.append(&mut value_as_word(&literal).unwrap());
-            },
-            ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
-                    return Err(SaltError {
-                        span: op_span,
-                        message: "Expected an address (word) \
-                                  register reference.".into(),
-                    });
-                }
-                $self.code[opcode_pos] = $opcodes.1;
-                $self.code.push(reg_ref);
-            },
-            ResolvedOperand::SymbolReference => {
-                $self.code[opcode_pos] = $opcodes.0;
-            }
-        }
+        let resolved = $self.resolve_operand(&$operands[0])?;
+        address!($self, resolved, $opcodes, opcode_pos);
 
         // Second operand: RegRefAny.
         let resolved = $self.resolve_operand(&$operands[1])?;
@@ -202,6 +191,17 @@ macro_rules! i_BHWF_bhwf {
             ResolvedOperand::SymbolReference => no_symbols!(op_span),
         }
 
+        Ok(())
+    }}
+}
+
+/// An instruction a single BHWF operand.
+macro_rules! i_BHWF {
+    ($self:ident, $opcode:expr, $operands:expr, $span:expr) => {{
+        num_operands!(1, $operands, $span);
+        $self.code.push($opcode);
+        let resolved = $self.resolve_operand(&$operands[0])?;
+        reg_ref_any!($self, resolved);
         Ok(())
     }}
 }
