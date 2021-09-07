@@ -155,3 +155,8 @@ fn test_minimal() {
 fn test_store() {
     test_success("examples/store.simasm", true);
 }
+
+#[test]
+fn test_swap() {
+    test_success("examples/swap.simasm", true);
+}

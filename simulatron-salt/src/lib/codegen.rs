@@ -1,3 +1,6 @@
+#[macro_use]
+mod macros;
+
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::convert::{TryInto, TryFrom};
@@ -305,54 +308,6 @@ enum ResolvedOperand {
     SymbolReference,
 }
 
-/// Shortcut for checking number of operands.
-macro_rules! num_operands {
-    ($num:expr, $ops:expr, $span:expr) => {{
-        if $ops.len() != $num {
-            return Err(SaltError {
-                span: $span,
-                message: format!("Expected {} operands, but found {}.",
-                                    $num, $ops.len()).into(),
-            });
-        }
-    }}
-}
-
-/// Shortcut for disallowing SymbolReference resolutions.
-macro_rules! no_literals {
-    ($span:expr) => {{
-        return Err(SaltError {
-            span: $span,
-            message: "Cannot use a literal here.".into(),
-        });
-    }}
-}
-
-/// Shortcut for disallowing SymbolReference resolutions.
-macro_rules! no_symbols {
-    ($span:expr) => {{
-        return Err(SaltError {
-            span: $span,
-            message: "Symbol references resolve to addresses, which can't be \
-                      used here.".into(),
-        });
-    }}
-}
-
-/// Shortcut for an operand that must be any register reference.
-macro_rules! reg_ref_any {
-    ($self:ident, $resolved:expr) => {{
-        match $resolved.0 {
-            ResolvedOperand::Literal(_) => no_literals!($resolved.1),
-            ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                $self.code.push(reg_ref);
-                reg_type
-            },
-            ResolvedOperand::SymbolReference => no_symbols!($resolved.1),
-        }
-    }}
-}
-
 /// The description of a specific operand.
 #[derive(Debug)]
 struct OperandDesc {
@@ -618,206 +573,30 @@ impl CodeGenerator {
     /// Perform codegen for a single instruction.
     fn codegen_instruction(&mut self, instruction: &ast::Instruction) -> SaltResult<()> {
         let span: Range<usize> = instruction.syntax().text_range().into();
-        let gen_func = match instruction.opcode().as_str() {
-            "halt" => Self::gen_halt,
-            "pause" => Self::gen_pause,
-            "timer" => Self::gen_timer,
-            "usermode" => Self::gen_usermode,
-            "ireturn" => Self::gen_ireturn,
-            "load" => Self::gen_load,
-            "store" => Self::gen_store,
-            "copy" => Self::gen_copy,
+
+        // Shortcut macro.
+        macro_rules! def {
+            ($addr_mode:ident, $opcodes:expr) => {{
+                $addr_mode!(self, $opcodes, instruction.operands(), span)
+            }}
+        }
+
+        match instruction.opcode().as_str() {
+            "halt" => def!(i_none, 0x00),
+            "pause" => def!(i_none, 0x01),
+            "timer" => def!(i_00w0, (0x02, 0x03)),
+            "usermode" => def!(i_none, 0x04),
+            "ireturn" => def!(i_none, 0x05),
+            "load" => def!(i_BHWF_00a0, (0x06, 0x07)),
+            "store" => def!(i_00a0_BHWF, (0x08, 0x09)),
+            "copy" => def!(i_BHWF_bhwf, (0x0A, 0x0B)),
+            "swap" => def!(i_BHWF_00a0, (0x0C, 0x0D)),
             // TODO more
-            _ => return Err(SaltError {
+            _ => Err(SaltError {
                 span: instruction.syntax().text_range().into(),
                 message: "Unrecognised opcode.".into(),
             }),
-        };
-        gen_func(self, instruction.operands(), span)
-    }
-
-    /// Codegen for the HALT instruction.
-    fn gen_halt(&mut self, operands: Vec<ast::Operand>,
-                span: Range<usize>) -> SaltResult<()> {
-        num_operands!(0, operands, span);
-        self.code.push(0x00);
-        Ok(())
-    }
-
-    /// Codegen for the PAUSE instruction.
-    fn gen_pause(&mut self, operands: Vec<ast::Operand>,
-                 span: Range<usize>) -> SaltResult<()> {
-        num_operands!(0, operands, span);
-        self.code.push(0x01);
-        Ok(())
-    }
-
-    /// Codegen for the TIMER instruction.
-    fn gen_timer(&mut self, operands: Vec<ast::Operand>,
-                 span: Range<usize>) -> SaltResult<()> {
-        num_operands!(1, operands, span);
-
-        let (resolved, op_span) = self.resolve_operand(&operands[0])?;
-        match resolved {
-            ResolvedOperand::Literal(literal) => {
-                // TIMER LiteralWord.
-                self.code.push(0x02);
-                self.code.append(&mut value_as_word(&literal).unwrap());
-            },
-            ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                // TIMER RegRefWord.
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
-                    return Err(SaltError {
-                        span: op_span,
-                        message: "TIMER requires a word register reference.".into(),
-                    });
-                }
-                self.code.push(0x03);
-                self.code.push(reg_ref);
-            }
-            ResolvedOperand::SymbolReference => no_symbols!(op_span),
         }
-
-        Ok(())
-    }
-
-    /// Codegen for the USERMODE instruction.
-    fn gen_usermode(&mut self, operands: Vec<ast::Operand>,
-                span: Range<usize>) -> SaltResult<()> {
-        num_operands!(0, operands, span);
-        self.code.push(0x04);
-        Ok(())
-    }
-
-    /// Codegen for the IRETURN instruction.
-    fn gen_ireturn(&mut self, operands: Vec<ast::Operand>,
-                 span: Range<usize>) -> SaltResult<()> {
-        num_operands!(0, operands, span);
-        self.code.push(0x05);
-        Ok(())
-    }
-
-    /// Codegen for the LOAD instruction.
-    fn gen_load(&mut self, operands: Vec<ast::Operand>,
-                 span: Range<usize>) -> SaltResult<()> {
-        num_operands!(2, operands, span);
-
-        // Push placeholder opcode.
-        let opcode_pos = self.code.len();
-        self.code.push(0);
-
-        // First operand: RegRefAny.
-        let resolved = self.resolve_operand(&operands[0])?;
-        reg_ref_any!(self, resolved);
-
-        // Second operand: address.
-        let (resolved, op_span) = self.resolve_operand(&operands[1])?;
-        match resolved {
-            ResolvedOperand::Literal(literal) => {
-                // LOAD Ref LitAddr
-                self.code[opcode_pos] = 0x06;
-                self.code.append(&mut value_as_word(&literal).unwrap());
-            },
-            ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                // LOAD Ref RefAddr
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
-                    return Err(SaltError {
-                        span: op_span,
-                        message: "LOAD requires an address (word) \
-                                  register reference.".into(),
-                    });
-                }
-                self.code[opcode_pos] = 0x07;
-                self.code.push(reg_ref);
-            },
-            ResolvedOperand::SymbolReference => {
-                // LOAD Ref LitAddr
-                self.code[opcode_pos] = 0x06;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Codegen for the STORE instruction.
-    fn gen_store(&mut self, operands: Vec<ast::Operand>,
-                span: Range<usize>) -> SaltResult<()> {
-        num_operands!(2, operands, span);
-
-        // Push placeholder opcode.
-        let opcode_pos = self.code.len();
-        self.code.push(0);
-
-        // First operand: address.
-        let (resolved, op_span) = self.resolve_operand(&operands[0])?;
-        match resolved {
-            ResolvedOperand::Literal(literal) => {
-                // STORE LitAddr Ref
-                self.code[opcode_pos] = 0x08;
-                self.code.append(&mut value_as_word(&literal).unwrap());
-            },
-            ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                // Store RefAddr Ref
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
-                    return Err(SaltError {
-                        span: op_span,
-                        message: "STORE requires an address (word) \
-                                  register reference.".into(),
-                    });
-                }
-                self.code[opcode_pos] = 0x09;
-                self.code.push(reg_ref);
-            },
-            ResolvedOperand::SymbolReference => {
-                // STORE LitAddr Ref
-                self.code[opcode_pos] = 0x08;
-            }
-        }
-
-        // Second operand: RegRefAny.
-        let resolved = self.resolve_operand(&operands[1])?;
-        reg_ref_any!(self, resolved);
-
-        Ok(())
-    }
-
-    /// Codegen for the COPY instruction.
-    fn gen_copy(&mut self, operands: Vec<ast::Operand>,
-                 span: Range<usize>) -> SaltResult<()> {
-        num_operands!(2, operands, span);
-
-        // Push placeholder opcode.
-        let opcode_pos = self.code.len();
-        self.code.push(0);
-
-        // First operand: destination register.
-        let resolved = self.resolve_operand(&operands[0])?;
-        let reg_type = reg_ref_any!(self, resolved);
-
-        // Second operand: source value or register.
-        let (resolved, op_span) = self.resolve_operand(&operands[1])?;
-        match resolved {
-            ResolvedOperand::Literal(literal) => {
-                // COPY Ref VarLit
-                self.code[opcode_pos] = 0x0A;
-                self.push_value_as_reg_type(&literal, reg_type, op_span)?;
-            },
-            ResolvedOperand::RegRef(reg_ref, reg_type_2) => {
-                // COPY Ref Ref
-                if reg_type != reg_type_2 {
-                    return Err(SaltError {
-                        span: op_span,
-                        message: "Cannot COPY between differently-sized \
-                                  registers.".into(),
-                    });
-                }
-                self.code[opcode_pos] = 0x0B;
-                self.code.push(reg_ref);
-            },
-            ResolvedOperand::SymbolReference => no_symbols!(op_span),
-        }
-
-        Ok(())
     }
 
     /// Resolve an operand. Literals are returned directly, register references

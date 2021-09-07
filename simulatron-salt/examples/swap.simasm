@@ -1,0 +1,5 @@
+static mut word foo 64
+
+swap r0 foo
+swap r1 0x5000
+swap r2 r3
