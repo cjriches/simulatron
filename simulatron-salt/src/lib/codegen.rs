@@ -598,6 +598,8 @@ impl CodeGenerator {
             "blockset" => def!(i_w_a_b, (0x18, 0x19, 0x1A, 0x1B,
                                          0x1C, 0x1D, 0x1E, 0x1F)),
             // TODO more
+            "sconvert" => def!(i_WF_WF, 0x6C),
+            "uconvert" => def!(i_WF_WF, 0x6D),
             _ => Err(SaltError {
                 span: instruction.syntax().text_range().into(),
                 message: "Unrecognised opcode.".into(),

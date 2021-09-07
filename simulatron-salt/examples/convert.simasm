@@ -1,0 +1,5 @@
+sconvert r0 f0
+sconvert f0 r0
+
+uconvert r0 f0
+uconvert f0 r0

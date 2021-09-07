@@ -380,3 +380,65 @@ macro_rules! i_w_a_b {
         Ok(())
     }}
 }
+
+/// An instruction with operands ..WF ..WF
+macro_rules! i_WF_WF {
+    ($self:ident, $opcode:expr, $operands:expr, $span:expr) => {{
+        num_operands!(2, $operands, $span);
+
+        // Push opcode.
+        $self.code.push($opcode);
+        let float_first: bool;
+
+        // First operand: word or float register ref.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
+        match resolved {
+            ResolvedOperand::Literal(_) => no_literals!(op_span),
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    float_first = false;
+                    $self.code.push(reg_ref);
+                } else if register_type_matches(reg_type, RegRefType::RegRefFloat) {
+                    float_first = true;
+                    $self.code.push(reg_ref);
+                } else {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Expected a word or float register reference.".into(),
+                    });
+                }
+            }
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        // Second operand: register ref of opposite type to first.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[1])?;
+        match resolved {
+            ResolvedOperand::Literal(_) => no_literals!(op_span),
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if float_first {
+                    if register_type_matches(reg_type, RegRefType::RegRefWord) {
+                        $self.code.push(reg_ref);
+                    } else {
+                        return Err(SaltError {
+                            span: op_span,
+                            message: "Expected a word register reference.".into(),
+                        });
+                    }
+                } else {
+                    if register_type_matches(reg_type, RegRefType::RegRefFloat) {
+                        $self.code.push(reg_ref);
+                    } else {
+                        return Err(SaltError {
+                            span: op_span,
+                            message: "Expected a float register reference.".into(),
+                        });
+                    }
+                }
+            }
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        Ok(())
+    }}
+}

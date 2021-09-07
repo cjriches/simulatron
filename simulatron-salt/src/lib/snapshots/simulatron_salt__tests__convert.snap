@@ -1,0 +1,8 @@
+---
+source: src/lib/tests.rs
+expression: pretty_print_hex_block(&object_code.code)
+
+---
+0x00000000    53 49 4D 4F  42 4A 00 01  00 00 00 00  00 00 00 01  |SIMOBJ..........|
+0x00000010    11 00 00 00  0C 6C 00 18  6C 18 00 6D  00 18 6D 18  |.....l..l..m..m.|
+0x00000020    00                                                  |.|

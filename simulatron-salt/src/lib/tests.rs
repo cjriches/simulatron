@@ -141,6 +141,11 @@ fn test_comments() {
 }
 
 #[test]
+fn test_convert() {
+    test_success("examples/convert.simasm", true);
+}
+
+#[test]
 fn test_copy() {
     test_success("examples/copy.simasm", true);
 }
