@@ -1,0 +1,12 @@
+const FOO 0x4000
+static byte[64] message "Hello There!"
+
+blockcopy 64 0x4000 0x5000
+blockcopy 64 FOO r0
+blockcopy 64 r0 message
+blockcopy 64 r0 r1
+
+blockcopy r7 0x4000 0x5000
+blockcopy r7 FOO r0
+blockcopy r7 r0 message
+blockcopy r7 r0 r1

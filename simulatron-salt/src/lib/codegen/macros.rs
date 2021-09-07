@@ -88,7 +88,7 @@ macro_rules! i_none {
 }
 
 /// An instruction with a single ..w. operand.
-macro_rules! i_00w0 {
+macro_rules! i_w {
     ($self:ident, $opcodes:expr, $operands:expr, $span:expr) => {{
         num_operands!(1, $operands, $span);
 
@@ -116,7 +116,7 @@ macro_rules! i_00w0 {
 }
 
 /// An instruction with operands BHWF ..a.
-macro_rules! i_BHWF_00a0 {
+macro_rules! i_BHWF_a {
     ($self:ident, $opcodes:expr, $operands:expr, $span:expr) => {{
         num_operands!(2, $operands, $span);
 
@@ -137,7 +137,7 @@ macro_rules! i_BHWF_00a0 {
 }
 
 /// An instruction with operands ..a. BHWF
-macro_rules! i_00a0_BHWF {
+macro_rules! i_a_BHWF {
     ($self:ident, $opcodes:expr, $operands:expr, $span:expr) => {{
         num_operands!(2, $operands, $span);
 
@@ -202,6 +202,92 @@ macro_rules! i_BHWF {
         $self.code.push($opcode);
         let resolved = $self.resolve_operand(&$operands[0])?;
         reg_ref_any!($self, resolved);
+        Ok(())
+    }}
+}
+
+/// An instruction with operands ..w. ..a. ..a.
+macro_rules! i_w_a_a {
+    ($self:ident, $opcodes:expr, $operands:expr, $span:expr) => {{
+        num_operands!(3, $operands, $span);
+
+        // Push placeholder opcode.
+        let opcode_pos = $self.code.len();
+        $self.code.push(0);
+        let mut opcode_choice = 0;
+
+        // First operand: word.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                $self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Expected a word register reference.".into(),
+                    });
+                }
+                opcode_choice += 4;
+                $self.code.push(reg_ref);
+            }
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        // Second operand: address.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[1])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                $self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Expected an address (word) \
+                                  register reference.".into(),
+                    });
+                }
+                opcode_choice += 2;
+                $self.code.push(reg_ref);
+            },
+            ResolvedOperand::SymbolReference => {},
+        }
+
+        // Third operand: address.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[2])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                $self.code.append(&mut value_as_word(&literal).unwrap());
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Expected an address (word) \
+                                  register reference.".into(),
+                    });
+                }
+                opcode_choice += 1;
+                $self.code.push(reg_ref);
+            },
+            ResolvedOperand::SymbolReference => {},
+        }
+
+        let opcode = match opcode_choice {
+            0 => $opcodes.0,
+            1 => $opcodes.1,
+            2 => $opcodes.2,
+            3 => $opcodes.3,
+            4 => $opcodes.4,
+            5 => $opcodes.5,
+            6 => $opcodes.6,
+            7 => $opcodes.7,
+            _ => unreachable!(),
+        };
+        $self.code[opcode_pos] = opcode;
+
         Ok(())
     }}
 }

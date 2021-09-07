@@ -584,15 +584,17 @@ impl CodeGenerator {
         match instruction.opcode().as_str() {
             "halt" => def!(i_none, 0x00),
             "pause" => def!(i_none, 0x01),
-            "timer" => def!(i_00w0, (0x02, 0x03)),
+            "timer" => def!(i_w, (0x02, 0x03)),
             "usermode" => def!(i_none, 0x04),
             "ireturn" => def!(i_none, 0x05),
-            "load" => def!(i_BHWF_00a0, (0x06, 0x07)),
-            "store" => def!(i_00a0_BHWF, (0x08, 0x09)),
+            "load" => def!(i_BHWF_a, (0x06, 0x07)),
+            "store" => def!(i_a_BHWF, (0x08, 0x09)),
             "copy" => def!(i_BHWF_bhwf, (0x0A, 0x0B)),
-            "swap" => def!(i_BHWF_00a0, (0x0C, 0x0D)),
+            "swap" => def!(i_BHWF_a, (0x0C, 0x0D)),
             "push" => def!(i_BHWF, 0x0E),
             "pop" => def!(i_BHWF, 0x0F),
+            "blockcopy" => def!(i_w_a_a, (0x10, 0x11, 0x12, 0x13,
+                                          0x14, 0x15, 0x16, 0x17)),
             // TODO more
             _ => Err(SaltError {
                 span: instruction.syntax().text_range().into(),

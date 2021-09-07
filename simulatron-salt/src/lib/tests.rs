@@ -126,6 +126,11 @@ fn test_addressing_modes() {
 }
 
 #[test]
+fn test_blockcopy() {
+    test_success("examples/blockcopy.simasm", false);
+}
+
+#[test]
 fn test_comments() {
     test_success("examples/comments.simasm", false);
 }
