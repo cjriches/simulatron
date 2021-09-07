@@ -128,11 +128,16 @@ fn test_addressing_modes() {
 #[test]
 fn test_blockcopy() {
     test_success("examples/blockcopy.simasm", false);
+    let err = test_failure("examples/blockcopy-bad.simasm");
+    assert_eq!(err.message.as_ref(), "Symbol references resolve to addresses, \
+                                      which can't be used here.");
 }
 
 #[test]
 fn test_blockset() {
     test_success("examples/blockset.simasm", true);
+    let err = test_failure("examples/blockset-bad.simasm");
+    assert_eq!(err.message.as_ref(), "Literal too large: expected single byte.");
 }
 
 #[test]
@@ -143,11 +148,16 @@ fn test_comments() {
 #[test]
 fn test_convert() {
     test_success("examples/convert.simasm", true);
+    let err = test_failure("examples/convert-bad.simasm");
+    assert_eq!(err.message.as_ref(), "Expected a float register reference.");
 }
 
 #[test]
 fn test_copy() {
     test_success("examples/copy.simasm", true);
+    let err = test_failure("examples/copy-bad.simasm");
+    assert_eq!(err.message.as_ref(), "Cannot operate between differently-sized \
+                                      registers.");
 }
 
 #[test]
@@ -169,6 +179,8 @@ fn test_minimal() {
 #[test]
 fn test_push_pop() {
     test_success("examples/push-pop.simasm", true);
+    let err = test_failure("examples/push-pop-bad.simasm");
+    assert_eq!(err.message.as_ref(), "Cannot use a literal here.");
 }
 
 #[test]
