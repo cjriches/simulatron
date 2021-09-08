@@ -1,6 +1,6 @@
 mod node_builder;
 
-use log::{debug, info, error};
+use log::{trace, debug, info, error};
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::ops::Range;
@@ -73,8 +73,11 @@ impl<'a> Parser<'a> {
         self.parse_program();
 
         if self.errors.is_empty() {
-            Ok(SyntaxNode::new_root(self.builder.finish()))
+            let root = SyntaxNode::new_root(self.builder.finish());
+            info!("Parsed successfully:\n{:#?}", root);
+            Ok(root)
         } else {
+            info!("Parsed unsuccessfully:\n{:#?}", self.errors);
             Err(self.errors)
         }
     }
@@ -127,7 +130,7 @@ impl<'a> Parser<'a> {
         // Helper function for DRY.
         fn eat(self_: &mut Parser) -> TokenType {
             let token = self_.buffer.pop_front().unwrap();
-            debug!("Consuming {:?}", token);
+            trace!("Consuming {:?}", token);
             let tt = token.tt;
             self_.last_span = token.span.clone();
             self_.add_token(token);
@@ -159,7 +162,7 @@ impl<'a> Parser<'a> {
     /// Try and consume the specified token. If the token is wrong, it will
     /// not be consumed.
     fn try_consume_exact(&mut self, target: TokenType) -> ParseResult<()> {
-        debug!("Trying to consume {:?}.", target);
+        trace!("Trying to consume {:?}.", target);
         if self.peek()? == target {
             self.consume()?;
             Ok(())
@@ -173,7 +176,7 @@ impl<'a> Parser<'a> {
     fn consume_exact<M>(&mut self, target: TokenType, msg: M) -> ParseResult<()>
         where M: Into<Cow<'static, str>>
     {
-        debug!("Needing to consume {:?}.", target);
+        trace!("Needing to consume {:?}.", target);
         if self.peek()? == target {
             self.consume()?;
             Ok(())
@@ -210,7 +213,7 @@ impl<'a> Parser<'a> {
     /// Program non-terminal.
     fn parse_program(&mut self) {
         let _guard = self.start_node(SyntaxKind::Program);
-        info!("Parsing Program...");
+        debug!("Parsing Program...");
 
         // Parse the next line until EOF.
         loop {
@@ -218,7 +221,7 @@ impl<'a> Parser<'a> {
                 Ok(SequenceResult::GoAgain) => {},
                 Ok(SequenceResult::GracefulEnd) => break,
                 Err(Failure::EOF) => {
-                    debug!("Unexpected EOF.");
+                    info!("Unexpected EOF.");
                     self.error_consume("Unexpected EOF");
                     break;
                 },
@@ -229,16 +232,16 @@ impl<'a> Parser<'a> {
         // We must be at the end of the file now.
         assert!(self.tokens.next().is_none(), "Reached end of PROGRAM before EOF.");
 
-        info!("...Finished Program.");
+        debug!("...Finished Program.");
     }
 
     /// Line non-terminal.
     fn parse_line(&mut self) -> ParseResult<SequenceResult> {
-        info!("Parsing Line...");
+        debug!("Parsing Line...");
 
         // We might have gracefully reached the end of the file.
         if let Err(Failure::EOF) = self.peek() {
-            info!("...Finished line with EOF.");
+            debug!("...Finished line with EOF.");
             return Ok(SequenceResult::GracefulEnd);
         }
 
@@ -300,7 +303,7 @@ impl<'a> Parser<'a> {
             Err(Failure::WrongToken) => {
                 // Eat the rest of the line and carry on parsing.
                 self.consume_till_nl()?;
-                info!("...Finished Line with error.");
+                debug!("...Finished Line with error.");
                 return Ok(SequenceResult::GoAgain);
             },
             Err(Failure::EOF) => return Err(Failure::EOF),
@@ -308,7 +311,7 @@ impl<'a> Parser<'a> {
 
         // We may have reached the end of the file.
         if let Err(Failure::EOF) = self.peek() {
-            info!("...Finished line with EOF.");
+            debug!("...Finished line with EOF.");
             return Ok(SequenceResult::GracefulEnd);
         }
 
@@ -332,19 +335,19 @@ impl<'a> Parser<'a> {
                 self.error_consume("Unexpected token after end \
                                    of line; expected newline.");
                 self.consume_till_nl()?;
-                info!("...Finished Line with error.");
+                debug!("...Finished Line with error.");
                 return Ok(SequenceResult::GoAgain);
             }
         }
 
-        info!("...Finished Line.");
+        debug!("...Finished Line.");
         Ok(SequenceResult::GoAgain)
     }
 
     /// ConstDecl non-terminal.
     fn parse_const_decl(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::ConstDecl);
-        info!("Parsing ConstDecl...");
+        debug!("Parsing ConstDecl...");
 
         // Optional pub keyword.
         if let TokenType::Pub = self.peek()? {
@@ -360,14 +363,14 @@ impl<'a> Parser<'a> {
         // Literal value.
         self.parse_literal()?;
 
-        info!("...Finished ConstDecl.");
+        debug!("...Finished ConstDecl.");
         Ok(())
     }
 
     /// DataDecl non-terminal.
     fn parse_data_decl(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::DataDecl);
-        info!("Parsing DataDecl...");
+        debug!("Parsing DataDecl...");
 
         // Optional pub keyword.
         if let TokenType::Pub = self.peek()? {
@@ -391,14 +394,14 @@ impl<'a> Parser<'a> {
         // (array) literal value.
         self.parse_array_literal()?;
 
-        info!("...Finished DataDecl.");
+        debug!("...Finished DataDecl.");
         Ok(())
     }
 
     /// DataType non-terminal.
     fn parse_data_type(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::DataType);
-        info!("Parsing DataType...");
+        debug!("Parsing DataType...");
 
         // Byte, Half, or Word.
         match self.peek()? {
@@ -409,7 +412,7 @@ impl<'a> Parser<'a> {
             },
             _ => {
                 self.error_consume("Expected data type.");
-                info!("...Finished DataType with error.");
+                debug!("...Finished DataType with error.");
                 return Err(Failure::WrongToken);
             }
         }
@@ -422,14 +425,14 @@ impl<'a> Parser<'a> {
             self.consume_exact(TokenType::CloseSquare, "Expected ']'.")?;
         }
 
-        info!("...Finished DataType.");
+        debug!("...Finished DataType.");
         Ok(())
     }
 
     /// Label non-terminal.
     fn parse_label(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::Label);
-        info!("Parsing Label...");
+        debug!("Parsing Label...");
 
         // Optional pub keyword.
         if let TokenType::Pub = self.peek()? {
@@ -442,14 +445,14 @@ impl<'a> Parser<'a> {
         // Colon.
         self.consume_exact(TokenType::Colon, "Expected ':'")?;
 
-        info!("...Finished Label.");
+        debug!("...Finished Label.");
         Ok(())
     }
 
     /// Instruction non-terminal.
     fn parse_instruction(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::Instruction);
-        info!("Parsing Instruction...");
+        debug!("Parsing Instruction...");
 
         // Opcode identifier.
         self.consume_exact(TokenType::Identifier, "Expected opcode.")?;
@@ -461,13 +464,13 @@ impl<'a> Parser<'a> {
             }
         }
 
-        info!("...Finished Instruction.");
+        debug!("...Finished Instruction.");
         Ok(())
     }
 
     /// Operand non-terminal.
     fn parse_operand(&mut self) -> ParseResult<SequenceResult> {
-        info!("Parsing Operand...");
+        debug!("Parsing Operand...");
         // Since operand lists have no terminator, we must be aware of
         // potential EOFs.
         let tt = self.peek();
@@ -482,12 +485,12 @@ impl<'a> Parser<'a> {
                 } else {
                     self.parse_literal()?;
                 }
-                info!("...Finished Operand.");
+                debug!("...Finished Operand.");
                 Ok(SequenceResult::GoAgain)
             },
             _ => {
                 // No more operands.
-                info!("...Finished last Operand.");
+                debug!("...Finished last Operand.");
                 Ok(SequenceResult::GracefulEnd)
             }
         }
@@ -496,7 +499,7 @@ impl<'a> Parser<'a> {
     /// ArrayLiteral non-terminal.
     fn parse_array_literal(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::ArrayLiteral);
-        info!("Parsing ArrayLiteral...");
+        debug!("Parsing ArrayLiteral...");
 
         // Lookahead.
         match self.peek()? {
@@ -529,7 +532,7 @@ impl<'a> Parser<'a> {
                             },
                             _ => {
                                 self.error_consume("Expected ',' or ']'");
-                                info!("...Finishing ArrayLiteral with error.");
+                                debug!("...Finishing ArrayLiteral with error.");
                                 return Err(Failure::WrongToken);
                             }
                         }
@@ -539,31 +542,31 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 self.error_consume("Expected literal.");
-                info!("...Finishing ArrayLiteral with error.");
+                debug!("...Finishing ArrayLiteral with error.");
                 return Err(Failure::WrongToken);
             }
         }
 
-        info!("...Finished ArrayLiteral.");
+        debug!("...Finished ArrayLiteral.");
         Ok(())
     }
 
     /// Literal non-terminal.
     fn parse_literal(&mut self) -> ParseResult<()> {
         let _guard = self.start_node(SyntaxKind::Literal);
-        info!("Parsing Literal...");
+        debug!("Parsing Literal...");
 
         match self.peek()? {
             TokenType::IntLiteral
             | TokenType::FloatLiteral
             | TokenType::CharLiteral => {
                 self.consume()?;
-                info!("...Finished Literal.");
+                debug!("...Finished Literal.");
                 Ok(())
             },
             _ => {
                 self.error_consume("Expected integer, float, or character literal.");
-                info!("...Finished literal with error.");
+                debug!("...Finished literal with error.");
                 Err(Failure::WrongToken)
             }
         }

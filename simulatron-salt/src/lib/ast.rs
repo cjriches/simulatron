@@ -12,8 +12,8 @@ pub trait AstNode {
     fn syntax(&self) -> &SyntaxNode;
 }
 
-// Proc macro invocation to derive boilerplate AstNode implementations for
-// each AST node type.
+// Proc macro invocation to derive boilerplate structs and AstNode
+// implementations for each AST node type.
 derive_ast_nodes! {
     Program,
     Line,
@@ -27,8 +27,8 @@ derive_ast_nodes! {
     Literal,
 }
 
-// Similar to derive boilerplate for token casts.
-// These look like `int_literal_cast`.
+// Proc macro invocation to derive boilerplate token casts.
+// These are snake_case like `int_literal_cast`.
 derive_token_casts! {
     Identifier,
     IntLiteral,
@@ -231,7 +231,7 @@ impl Label {
     }
 }
 
-/// Instructions have an opcode an a list of operands.
+/// Instructions have an opcode and a list of operands.
 impl Instruction {
     pub fn opcode(&self) -> String {
         let mut opcode = self.syntax.children_with_tokens()
@@ -247,7 +247,7 @@ impl Instruction {
     }
 }
 
-/// Operands are either identifiers or literals.
+/// Operands have a value.
 impl Operand {
     pub fn value(&self) -> SaltResult<OperandValue> {
         match self.syntax.children_with_tokens().find_map(identifier_cast) {
@@ -310,7 +310,6 @@ impl ArrayLiteral {
 /// Literals have a value.
 impl Literal {
     pub fn value(&self) -> SaltResult<LiteralValue> {
-        log::trace!("{:#?}", self.syntax.children());
         if let Some((text, span)) = self.syntax.children_with_tokens()
                 .find_map(int_literal_cast) {
             // Integer literal: parse and determine minimum size.
@@ -321,15 +320,15 @@ impl Literal {
             let value = value as u32;
             Ok(LiteralValue {value, min_reg_type})
         } else if let Some((text, _)) = self.syntax.children_with_tokens()
-            .find_map(float_literal_cast) {
+                .find_map(float_literal_cast) {
             // Float literal: parse, transmute bit representation to u32, and
-            // size is always 4 bytes.
+            // size is always Word.
             let value = f32::from_str(&text).unwrap();
             let value = unsafe { std::mem::transmute::<f32, u32>(value) };
             Ok(LiteralValue {value, min_reg_type: RegisterType::Float})
         } else if let Some((text, _)) = self.syntax.children_with_tokens()
-            .find_map(char_literal_cast) {
-            // Character literal: parse, and size is always 1 byte.
+                .find_map(char_literal_cast) {
+            // Character literal: parse, and size is always Byte.
             let (value, _) = char_literal_value(&text);
             Ok(LiteralValue {value, min_reg_type: RegisterType::Byte})
         } else {
@@ -345,7 +344,7 @@ fn node_contains_kind(node: &SyntaxNode, kind: SyntaxKind) -> bool {
         .is_some()
 }
 
-/// Parse a SyntaxNode to get the value of an IntLiteral. We return this as an
+/// Parse a string to get the value of an IntLiteral. We return this as an
 /// i64 since it encompasses the range of both u32 and i32.
 fn int_literal_value(text: &str, span: Range<usize>) -> SaltResult<i64> {
     // Shortcut for out-of-range error.
@@ -421,16 +420,17 @@ fn int_literal_value(text: &str, span: Range<usize>) -> SaltResult<i64> {
     Ok(value)
 }
 
-/// Parse a SyntaxNode to get the value of an character. Useful for both
-/// CharLiterals and slices of StringLiterals. Also returns whether the character
-/// was an escape sequence.
+/// Parse a string to get the value of a character. Useful for both CharLiterals
+/// and slices of StringLiterals. Also returns whether the character was an
+/// escape sequence.
 fn char_literal_value(text: &str) -> (u32, bool) {
-    // The first character is a quote.
-    // The second character is either the character itself or the start of
-    // an escape sequence.
+    // The first character is a quote, and is ignored.
+    // The second character is either the literal character itself or the start
+    // of an escape sequence. Check which.
     let char1 = text.chars().nth(1).unwrap();
     match char1 {
         '\\' => {
+            // Escape sequence. Third character determines value.
             let char2 = text.chars().nth(2).unwrap();
             let value = match char2 {
                 'n' => 15,
@@ -441,9 +441,11 @@ fn char_literal_value(text: &str) -> (u32, bool) {
             };
             (value, true)
         },
+        // Special cases where Simulatron instruction set diverges from ASCII.
         '£' => (31, false),
         '¬' => (127, false),
         c => {
+            // ASCII conversion.
             let value: u32 = c.into();
             assert!(value >= 32 && value <= 126);
             (value, false)

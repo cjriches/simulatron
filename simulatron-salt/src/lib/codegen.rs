@@ -2,6 +2,7 @@
 mod instruction_macros;
 
 use itertools::Itertools;
+use log::{trace, debug, info, warn, error};
 use std::collections::HashMap;
 use std::convert::{TryInto, TryFrom};
 use std::io::Write;
@@ -18,11 +19,13 @@ use crate::write_be::WriteBE;
 /// addressing modes.
 const AVG_INSTRUCTION_LEN: usize = 4;
 /// A very rough guesstimate, considering scalars and vectors.
-const AVG_DATA_LEN: usize = 8;
+const AVG_DATA_LEN: usize = 16;
 /// A complete guess.
 const AVG_SYMBOL_REFERENCES: usize = 8;
 /// A rough estimate based on 3 sections.
 const AVG_HEADER_OVERHEAD: usize = 32;
+/// A complete guess.
+const AVG_EXTERNAL_REFERENCES: usize = 32;
 
 // SimObj object code constants.
 const MAGIC_HEADER: &[u8; 6] = b"SIMOBJ";
@@ -47,6 +50,7 @@ struct SymbolTable {
 }
 
 /// Info about the SimObj representation of a SymbolTable.
+#[derive(Debug)]
 struct SymbolTableStats {
     num_entries: usize,
     size: usize,            // Total size.
@@ -62,10 +66,11 @@ impl SymbolTable {
         }
     }
 
-    fn iter_labels(&mut self) -> impl Iterator<Item = &mut Label> {
-        self.table.values_mut().filter_map(|entry| {
+    /// Iterate mutably through only labels.
+    fn iter_labels(&mut self) -> impl Iterator<Item = (&String, &mut Label)> {
+        self.table.iter_mut().filter_map(|(name, entry)| {
             if let SymbolTableEntry::L(label) = entry {
-                Some(label)
+                Some((name, label))
             } else {
                 None
             }
@@ -120,6 +125,7 @@ enum SymbolTableEntry {
     E(External),
 }
 
+/// Constant symbol table entry.
 #[derive(Debug)]
 struct Constant {
     public: bool,
@@ -127,6 +133,7 @@ struct Constant {
     span: Range<usize>,
 }
 
+/// Static data symbol table entry.
 #[derive(Debug)]
 struct Data {
     public: bool,
@@ -137,13 +144,15 @@ struct Data {
     references: Vec<u32>,
 }
 
+/// The location a label points to.
 #[derive(Debug)]
 enum LabelLocation {
-    Reference(ast::Instruction),
-    Offset(usize),
+    Reference(ast::Instruction),  // Not yet resolved to a code offset.
+    Offset(usize),                // Resolved to a code offset.
 }
 
 impl LabelLocation {
+    /// Assume this `LabelLocation` is an `Offset`, and return the offset.
     fn unwrap_offset(&self) -> u32 {
         match self {
             LabelLocation::Reference(_) => panic!(),
@@ -152,6 +161,7 @@ impl LabelLocation {
     }
 }
 
+/// Label symbol table entry.
 #[derive(Debug)]
 struct Label {
     public: bool,
@@ -160,6 +170,7 @@ struct Label {
     references: Vec<u32>,
 }
 
+/// External symbol symbol table entry.
 #[derive(Debug)]
 struct External {
     references: Vec<u32>,
@@ -171,9 +182,9 @@ struct External {
 enum RegRefType {
     RegRefAny,
     RegRefInt,
-    RegRefWord,
-    RegRefHalf,
     RegRefByte,
+    RegRefHalf,
+    RegRefWord,
     RegRefFloat,
 }
 
@@ -197,7 +208,7 @@ fn register_type_matches(reg: RegisterType, ref_: RegRefType) -> bool {
     }
 }
 
-/// The result of resolving an identifier.
+/// The result of resolving an operand.
 #[derive(Debug)]
 enum ResolvedOperand {
     RegRef(u8, RegisterType),
@@ -205,29 +216,14 @@ enum ResolvedOperand {
     SymbolReference,
 }
 
-/// The description of a specific operand.
-#[derive(Debug)]
-struct OperandDesc {
-    op_type: RegRefType,
-    err_msg: &'static str,
-}
-
-/// A specific variant of an instruction, with a single binary opcode and
-/// set of operand types.
-#[derive(Debug)]
-struct InstructionVariant {
-    opcode: u8,
-    operands: Vec<OperandDesc>,
-}
-
-/// The result of successful codegen.
+/// The result of successful codegen: object code and warnings.
 #[derive(Debug)]
 pub struct CodegenSuccess {
     pub simobj: Vec<u8>,
     pub warnings: Vec<SaltError>,
 }
 
-/// The result of unsuccessful codegen.
+/// The result of unsuccessful codegen: errors and warnings.
 #[derive(Debug)]
 pub struct CodegenFailure {
     pub errors: Vec<SaltError>,
@@ -237,7 +233,7 @@ pub struct CodegenFailure {
 /// An object code generator.
 pub struct CodeGenerator {
     symbol_table: SymbolTable,
-    code: Vec<u8>,
+    code: Vec<u8>,  // Binary generated from the instructions.
     errors: Vec<SaltError>,
     warnings: Vec<SaltError>,
     instructions: Option<Vec<ast::Instruction>>,
@@ -249,7 +245,7 @@ macro_rules! ok_or_continue {
         match $result {
             Ok(value) => value,
             Err(e) => {
-                $self.errors.push(e);
+                $self.error(e);
                 continue;
             }
         }
@@ -257,21 +253,23 @@ macro_rules! ok_or_continue {
 }
 
 impl CodeGenerator {
+    /// Create a new CodeGenerator with the given AST and list of extra constants.
     pub fn new(program: ast::Program,
                extra_consts: &Vec<ast::ConstDecl>) -> Result<Self, CodegenFailure> {
         // Extract program components.
         let mut consts = program.const_decls();
         consts.reserve_exact(extra_consts.len());
         for extra in extra_consts.iter() {
+            // A ConstDecl is just a typed SyntaxNode, so they're cheap to clone.
             consts.push(extra.clone());
         }
         let data = program.data_decls();
         let labels = program.labels();
         let instructions = program.instructions();
 
-        // Allocate data structures.
+        // Allocate data structures with estimates for the capacity.
         let symbol_table = SymbolTable::with_capacity(
-            consts.len() + data.len() + labels.len() + 32  // Extra space for external references.
+            consts.len() + data.len() + labels.len() + AVG_EXTERNAL_REFERENCES
         );
         let code: Vec<u8> = Vec::with_capacity(
             data.len() * AVG_DATA_LEN + instructions.len() * AVG_INSTRUCTION_LEN
@@ -300,9 +298,22 @@ impl CodeGenerator {
         }
     }
 
-    /// Run the code generator.
+    /// Add an error.
+    fn error(&mut self, e: SaltError) {
+        error!("Producing error: {}", e.message.as_ref());
+        self.errors.push(e);
+    }
+
+    /// Add a warning.
+    fn warning(&mut self, w: SaltError) {
+        warn!("Producing warning: {}", w.message.as_ref());
+        self.warnings.push(w);
+    }
+
+    /// Run the code generator, consuming it.
     pub fn run(mut self, entrypoint: bool) -> Result<CodegenSuccess, CodegenFailure> {
         let simobj = self.codegen(entrypoint);
+        // TODO log result.
         if self.errors.is_empty() {
             Ok(CodegenSuccess {
                 simobj,
@@ -317,17 +328,21 @@ impl CodeGenerator {
     }
 
     fn codegen(&mut self, entrypoint: bool) -> Vec<u8> {
-        // Process all instructions.
-        for instruction in self.instructions.take().unwrap().iter() {
+        // Process all instructions, taking temporary ownership of the
+        // vector to satisfy the borrow checker.
+        let instructions = self.instructions.take().unwrap();
+        for instruction in instructions.iter() {
             // Resolve any labels pointing here.
             self.resolve_labels(instruction);
             // Codegen the instruction.
             ok_or_continue!(self, self.codegen_instruction(instruction));
         }
+        self.instructions = Some(instructions);
 
         // Generate object code.
         // Size is instructions plus symbol table plus headers.
         let st_stats = self.symbol_table.stats();
+        info!("Symbol table stats: {:#?}", st_stats);
         let mut simobj: Vec<u8> = Vec::with_capacity(
               self.code.len()
             + st_stats.size
@@ -342,13 +357,32 @@ impl CodeGenerator {
 
         // Write the number of symbols and sections. We'll use up to three
         // sections: instructions, read-only data, and read-write data.
-        let num_sections =
-              if self.code.len() > 0 {1} else {0}
-            + if st_stats.readonly_size > 0 {1} else {0}
-            + if st_stats.readwrite_size > 0 {1} else {0};
+        let num_sections = {
+            (if self.code.len() > 0 {
+                info!("Producing a code section.");
+                1
+            } else {
+                info!("Code section empty: skipping.");
+                0
+            }) +
+            (if st_stats.readonly_size > 0 {
+                info!("Producing a read-only section.");
+                1
+            } else {
+                info!("Read-only section empty: skipping.");
+                0
+            }) +
+            (if st_stats.readwrite_size > 0 {
+                info!("Producing a read-write section.");
+                1
+            } else {
+                info!("Read-write section empty: skipping.");
+                0
+            })
+        };
 
         if num_sections == 0 {
-            self.errors.push(SaltError {
+            self.error(SaltError {
                 span: 0..0,
                 message: "Cannot compile an empty file.".into(),
             });
@@ -377,21 +411,29 @@ impl CodeGenerator {
                 match $name.len().try_into() {
                     Ok(val) => val,
                     Err(_) => {
-                        self.errors.push(SaltError {
+                        // Using `self.error` here causes overlapping mutable
+                        // references. To avoid an awkward workaround, do the
+                        // log and push manually here.
+                        let e = SaltError {
                             span: $span,
                             message: "Symbol name too long (max 255 chars).".into(),
-                        });
+                        };
+                        error!("Producing error: {}", e.message.as_ref());
+                        self.errors.push(e);
                         continue;
                     }
                 }
             }}
         }
 
-        // Write symbol table. Iterate through sorted by key, so the results
-        // are deterministic.
+        // Write symbol table.
         let instruction_base: u32 = instruction_base.try_into().unwrap();
         let mut next_readonly: u32 = readonly_base.try_into().unwrap();
         let mut next_readwrite: u32 = readwrite_base.try_into().unwrap();
+        debug!("Instruction base: {:#X}", instruction_base);
+        debug!("Read-only base: {:#X}", next_readonly);
+        debug!("Read-write base: {:#X}", next_readwrite);
+        // Iterate through sorted by key, so the results are deterministic.
         for (name, entry) in self.symbol_table.table
                 .iter_mut()
                 .sorted_by_key(|(k, _)| *k) {
@@ -404,15 +446,19 @@ impl CodeGenerator {
                     let type_ = if data.public {SYMBOL_TYPE_PUBLIC} else {SYMBOL_TYPE_INTERNAL};
                     simobj.write_u8(type_).unwrap();
                     // Write symbol value.
-                    if data.mutable {
+                    let value = if data.mutable {
                         simobj.write_be_u32(next_readwrite).unwrap();
+                        let value = next_readwrite;
                         next_readwrite += u32::try_from(data.size).unwrap();
                         readwrite_data.append(&mut data.initialiser);
+                        value
                     } else {
                         simobj.write_be_u32(next_readonly).unwrap();
+                        let value = next_readonly;
                         next_readonly += u32::try_from(data.size).unwrap();
                         readonly_data.append(&mut data.initialiser);
-                    }
+                        value
+                    };
                     // Write symbol name length.
                     let name_len = symbol_name_len!(name, data.span.clone());
                     simobj.write_u8(name_len).unwrap();
@@ -424,13 +470,18 @@ impl CodeGenerator {
                     for reference in data.references.iter() {
                         simobj.write_be_u32(instruction_base + reference).unwrap();
                     }
+                    trace!("Writing {} data symbol {} with type '{}', value \
+                           {:#X} with {} references.",
+                        if data.mutable {"mutable"} else {"immutable"},
+                        name, char::from(type_), value, data.references.len());
                 },
                 SymbolTableEntry::L(label) => {
                     // Write symbol type.
                     let type_ = if label.public {SYMBOL_TYPE_PUBLIC} else {SYMBOL_TYPE_INTERNAL};
                     simobj.write_u8(type_).unwrap();
                     // Write symbol value.
-                    simobj.write_be_u32(instruction_base + label.location.unwrap_offset()).unwrap();
+                    let value = instruction_base + label.location.unwrap_offset();
+                    simobj.write_be_u32(value).unwrap();
                     // Write symbol name length.
                     let name_len = symbol_name_len!(name, label.span.clone());
                     simobj.write_u8(name_len).unwrap();
@@ -442,6 +493,9 @@ impl CodeGenerator {
                     for reference in label.references.iter() {
                         simobj.write_be_u32(instruction_base + reference).unwrap();
                     }
+                    trace!("Writing label {} with type '{}', value \
+                           {:#X} with {} references.",
+                        name, char::from(type_), value, label.references.len());
                 },
                 SymbolTableEntry::E(external) => {
                     // Write symbol type.
@@ -459,10 +513,13 @@ impl CodeGenerator {
                     for reference in external.references.iter() {
                         simobj.write_be_u32(instruction_base + reference).unwrap();
                     }
+                    trace!("Writing symbol {} with type '{}', with {} references.",
+                        name, char::from(SYMBOL_TYPE_EXTERNAL), external.references.len());
                 },
                 SymbolTableEntry::C(_) => unreachable!(),
             }
         }
+        debug!("Written symbol table.");
 
         // Sanity check.
         assert_eq!(readonly_data.len(), st_stats.readonly_size);
@@ -476,6 +533,7 @@ impl CodeGenerator {
             simobj.write_u8(flags).unwrap();
             simobj.write_be_u32(self.code.len().try_into().unwrap()).unwrap();
             simobj.write_all(self.code.as_slice()).unwrap();
+            debug!("Written code section.");
         }
 
         // Sanity check.
@@ -486,6 +544,7 @@ impl CodeGenerator {
             simobj.write_u8(FLAG_READ).unwrap();
             simobj.write_be_u32(readonly_data.len().try_into().unwrap()).unwrap();
             simobj.write_all(readonly_data.as_slice()).unwrap();
+            debug!("Written read-only section.");
         }
 
         // Sanity check.
@@ -496,6 +555,7 @@ impl CodeGenerator {
             simobj.write_u8(FLAG_READ | FLAG_WRITE).unwrap();
             simobj.write_be_u32(readwrite_data.len().try_into().unwrap()).unwrap();
             simobj.write_all(readwrite_data.as_slice()).unwrap();
+            debug!("Written read-write section.");
         }
 
         simobj
@@ -509,7 +569,7 @@ impl CodeGenerator {
             let span: Range<usize> = const_.syntax().text_range().into();
 
             if !is_uppercase(&name) {
-                self.warnings.push(SaltError {
+                self.warning(SaltError {
                     span: const_.name_span(),
                     message: "Constant names are expected to be \
                               UPPER_SNAKE_CASE.".into(),
@@ -523,7 +583,7 @@ impl CodeGenerator {
                     span: span.clone(),
                 }));
             if let Some(_) = existing {
-                self.errors.push(SaltError {
+                self.error(SaltError {
                     span,
                     message: "Name already in use.".into(),
                 });
@@ -541,7 +601,7 @@ impl CodeGenerator {
             let span: Range<usize> = data.syntax().text_range().into();
 
             if !is_lowercase(&name) {
-                self.warnings.push(SaltError {
+                self.warning(SaltError {
                     span: data.name_span(),
                     message: "Data names are expected to be \
                               lower_snake_case.".into(),
@@ -563,7 +623,7 @@ impl CodeGenerator {
                     let mut bytes = match bytes {
                         Some(bytes) => bytes,
                         None => {
-                            self.errors.push(SaltError {
+                            self.error(SaltError {
                                 span: span.clone(),
                                 message: "Initialiser too big for type.".into(),
                             });
@@ -573,7 +633,7 @@ impl CodeGenerator {
                     buf.append(&mut bytes);
                 }
                 if buf.len() > size {
-                    self.errors.push(SaltError {
+                    self.error(SaltError {
                         span: span.clone(),
                         message: "Initialiser too big for type.".into(),
                     });
@@ -593,7 +653,7 @@ impl CodeGenerator {
                     references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
                 }));
             if let Some(_) = existing {
-                self.errors.push(SaltError {
+                self.error(SaltError {
                     span,
                     message: "Name already in use.".into(),
                 });
@@ -616,7 +676,7 @@ impl CodeGenerator {
                     references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
                 }));
             if let Some(_) = existing {
-                self.errors.push(SaltError {
+                self.error(SaltError {
                     span,
                     message: "Name already in use.".into(),
                 });
@@ -627,10 +687,12 @@ impl CodeGenerator {
     /// Resolve any labels pointing to the given instruction, making them point
     /// to an offset of the current code buffer length.
     fn resolve_labels(&mut self, instruction: &ast::Instruction) {
-        for label in self.symbol_table.iter_labels() {
+        for (name, label) in self.symbol_table.iter_labels() {
             if let LabelLocation::Reference(referenced_instruction) = &label.location {
                 if instruction == referenced_instruction {
-                    label.location = LabelLocation::Offset(self.code.len());
+                    let offset = self.code.len();
+                    debug!("Resolved label {} to code offset {:#X}", name, offset);
+                    label.location = LabelLocation::Offset(offset);
                 }
             }
         }
@@ -642,67 +704,68 @@ impl CodeGenerator {
 
         // Shortcut macro.
         macro_rules! def {
-            ($addr_mode:ident, $opcodes:expr) => {{
+            ($name:expr, $addr_mode:ident, $opcodes:expr) => {{
+                debug!("Generating code for {}.", $name);
                 $addr_mode!(self, $opcodes, instruction.operands(), span)
             }}
         }
 
         match instruction.opcode().as_str() {
-            "halt" => def!(i_none, 0x00),
-            "pause" => def!(i_none, 0x01),
-            "timer" => def!(i_w, (0x02, 0x03)),
-            "usermode" => def!(i_none, 0x04),
-            "ireturn" => def!(i_none, 0x05),
-            "load" => def!(i_BHWF_a, (0x06, 0x07)),
-            "store" => def!(i_a_BHWF, (0x08, 0x09)),
-            "copy" => def!(i_BHWF_bhwf, (0x0A, 0x0B)),
-            "swap" => def!(i_BHWF_a, (0x0C, 0x0D)),
-            "push" => def!(i_BHWF, 0x0E),
-            "pop" => def!(i_BHWF, 0x0F),
-            "blockcopy" => def!(i_w_a_a, (0x10, 0x11, 0x12, 0x13,
-                                          0x14, 0x15, 0x16, 0x17)),
-            "blockset" => def!(i_w_a_b, (0x18, 0x19, 0x1A, 0x1B,
-                                         0x1C, 0x1D, 0x1E, 0x1F)),
-            "negate" => def!(i_BHWF, 0x20),
-            "add" => def!(i_BHWF_bhwf, (0x21, 0x22)),
-            "addcarry" => def!(i_BHW_bhw, (0x23, 0x24)),
-            "sub" => def!(i_BHWF_bhwf, (0x25, 0x26)),
-            "subborrow" => def!(i_BHW_bhw, (0x27, 0x28)),
-            "mult" => def!(i_BHWF_bhwf, (0x29, 0x2A)),
-            "sdiv" => def!(i_BHWF_bhwf, (0x2B, 0x2C)),
-            "udiv" => def!(i_BHW_bhw, (0x2D, 0x2E)),
-            "srem" => def!(i_BHWF_bhwf, (0x2F, 0x30)),
-            "urem" => def!(i_BHW_bhw, (0x31, 0x32)),
-            "not" => def!(i_BHW, 0x33),
-            "and" => def!(i_BHW_bhw, (0x34, 0x35)),
-            "or" => def!(i_BHW_bhw, (0x36, 0x37)),
-            "xor" => def!(i_BHW_bhw, (0x38, 0x39)),
-            "lshift" => def!(i_BHW_b, (0x3A, 0x3B)),
-            "srshift" => def!(i_BHW_b, (0x3C, 0x3D)),
-            "urshift" => def!(i_BHW_b, (0x3E, 0x3F)),
-            "lrot" => def!(i_BHW_b, (0x40, 0x41)),
-            "rrot" => def!(i_BHW_b, (0x42, 0x43)),
-            "lrotcarry" => def!(i_BHW_b, (0x44, 0x45)),
-            "rrotcarry" => def!(i_BHW_b, (0x46, 0x47)),
-            "jump" => def!(i_a, (0x48, 0x49)),
-            "compare" => def!(i_BHWF_bhwf, (0x4A, 0x4B)),
-            "blockcmp" => def!(i_w_a_a, (0x4C, 0x4D, 0x4E, 0x4F,
-                                         0x50, 0x51, 0x52, 0x53)),
-            "jequal" => def!(i_a, (0x54, 0x55)),
-            "jnotequal" => def!(i_a, (0x56, 0x57)),
-            "sjgreater" => def!(i_a, (0x58, 0x59)),
-            "sjgreatereq" => def!(i_a, (0x5A, 0x5B)),
-            "ujgreater" => def!(i_a, (0x5C, 0x5D)),
-            "ujgreatereq" => def!(i_a, (0x5E, 0x5F)),
-            "sjlesser" => def!(i_a, (0x60, 0x61)),
-            "sjlessereq" => def!(i_a, (0x62, 0x63)),
-            "ujlesser" => def!(i_a, (0x64, 0x65)),
-            "ujlessereq" => def!(i_a, (0x66, 0x67)),
-            "call" => def!(i_a, (0x68, 0x69)),
-            "return" => def!(i_none, 0x6A),
-            "syscall" => def!(i_none, 0x6B),
-            "sconvert" => def!(i_WF_WF, 0x6C),
-            "uconvert" => def!(i_WF_WF, 0x6D),
+            "halt" => def!("halt", i_none, 0x00),
+            "pause" => def!("pause", i_none, 0x01),
+            "timer" => def!("timer", i_w, (0x02, 0x03)),
+            "usermode" => def!("usermode", i_none, 0x04),
+            "ireturn" => def!("ireturn", i_none, 0x05),
+            "load" => def!("load", i_BHWF_a, (0x06, 0x07)),
+            "store" => def!("store", i_a_BHWF, (0x08, 0x09)),
+            "copy" => def!("copy", i_BHWF_bhwf, (0x0A, 0x0B)),
+            "swap" => def!("swap", i_BHWF_a, (0x0C, 0x0D)),
+            "push" => def!("push", i_BHWF, 0x0E),
+            "pop" => def!("pop", i_BHWF, 0x0F),
+            "blockcopy" => def!("blockcopy", i_w_a_a, (0x10, 0x11, 0x12, 0x13,
+                                                       0x14, 0x15, 0x16, 0x17)),
+            "blockset" => def!("blockset", i_w_a_b, (0x18, 0x19, 0x1A, 0x1B,
+                                                     0x1C, 0x1D, 0x1E, 0x1F)),
+            "negate" => def!("negate", i_BHWF, 0x20),
+            "add" => def!("add", i_BHWF_bhwf, (0x21, 0x22)),
+            "addcarry" => def!("addcarry", i_BHW_bhw, (0x23, 0x24)),
+            "sub" => def!("sub", i_BHWF_bhwf, (0x25, 0x26)),
+            "subborrow" => def!("subborrow", i_BHW_bhw, (0x27, 0x28)),
+            "mult" => def!("mult", i_BHWF_bhwf, (0x29, 0x2A)),
+            "sdiv" => def!("sdiv", i_BHWF_bhwf, (0x2B, 0x2C)),
+            "udiv" => def!("udiv", i_BHW_bhw, (0x2D, 0x2E)),
+            "srem" => def!("srem", i_BHWF_bhwf, (0x2F, 0x30)),
+            "urem" => def!("urem", i_BHW_bhw, (0x31, 0x32)),
+            "not" => def!("not", i_BHW, 0x33),
+            "and" => def!("and", i_BHW_bhw, (0x34, 0x35)),
+            "or" => def!("or", i_BHW_bhw, (0x36, 0x37)),
+            "xor" => def!("xor", i_BHW_bhw, (0x38, 0x39)),
+            "lshift" => def!("lshift", i_BHW_b, (0x3A, 0x3B)),
+            "srshift" => def!("srshift", i_BHW_b, (0x3C, 0x3D)),
+            "urshift" => def!("urshift", i_BHW_b, (0x3E, 0x3F)),
+            "lrot" => def!("lrot", i_BHW_b, (0x40, 0x41)),
+            "rrot" => def!("rrot", i_BHW_b, (0x42, 0x43)),
+            "lrotcarry" => def!("lrotcarry", i_BHW_b, (0x44, 0x45)),
+            "rrotcarry" => def!("rrotcarry", i_BHW_b, (0x46, 0x47)),
+            "jump" => def!("jump", i_a, (0x48, 0x49)),
+            "compare" => def!("compare", i_BHWF_bhwf, (0x4A, 0x4B)),
+            "blockcmp" => def!("blockcmp", i_w_a_a, (0x4C, 0x4D, 0x4E, 0x4F,
+                                                     0x50, 0x51, 0x52, 0x53)),
+            "jequal" => def!("jequal", i_a, (0x54, 0x55)),
+            "jnotequal" => def!("jnotequal", i_a, (0x56, 0x57)),
+            "sjgreater" => def!("sjgreater", i_a, (0x58, 0x59)),
+            "sjgreatereq" => def!("sjgreatereq", i_a, (0x5A, 0x5B)),
+            "ujgreater" => def!("ujgreater", i_a, (0x5C, 0x5D)),
+            "ujgreatereq" => def!("ujgreatereq", i_a, (0x5E, 0x5F)),
+            "sjlesser" => def!("sjlesser", i_a, (0x60, 0x61)),
+            "sjlessereq" => def!("sjlessereq", i_a, (0x62, 0x63)),
+            "ujlesser" => def!("ujlesser", i_a, (0x64, 0x65)),
+            "ujlessereq" => def!("ujlessereq", i_a, (0x66, 0x67)),
+            "call" => def!("call", i_a, (0x68, 0x69)),
+            "return" => def!("return", i_none, 0x6A),
+            "syscall" => def!("syscall", i_none, 0x6B),
+            "sconvert" => def!("sconvert", i_WF_WF, 0x6C),
+            "uconvert" => def!("uconvert", i_WF_WF, 0x6D),
             _ => Err(SaltError {
                 span: instruction.syntax().text_range().into(),
                 message: "Unrecognised opcode.".into(),
@@ -717,6 +780,8 @@ impl CodeGenerator {
     ///
     /// If there is an uppercase unknown identifier, this generates a warning as
     /// it looks like a missing constant, which can't be resolved at link time.
+    ///
+    /// This is called from the various i_* macros in `instruction_macros`.
     fn resolve_operand(&mut self, operand: &ast::Operand)
                        -> SaltResult<(ResolvedOperand, Range<usize>)> {
         let span: Range<usize> = operand.syntax().text_range().into();
@@ -724,12 +789,15 @@ impl CodeGenerator {
         // Directly resolve a literal, or extract an identifier.
         let ident = match operand.value()? {
             OperandValue::Ident(ident) => ident,
-            OperandValue::Lit(literal) =>
-                return Ok((ResolvedOperand::Literal(literal), span)),
+            OperandValue::Lit(literal) => {
+                trace!("Operand resolved to {:?}", literal);
+                return Ok((ResolvedOperand::Literal(literal), span));
+            },
         };
 
         // Try and resolve as a register reference.
         if let Some((reg_ref, reg_type)) = get_reg_ref(&ident) {
+            trace!("Operand resolved to register reference {}", ident);
             return Ok((ResolvedOperand::RegRef(reg_ref, reg_type), span));
         }
 
@@ -737,19 +805,23 @@ impl CodeGenerator {
         if let Some(entry) = self.symbol_table.table.get_mut(&ident) {
             return Ok((match entry {
                 SymbolTableEntry::C(constant) => {
+                    trace!("Operand resolved to constant {}", ident);
                     ResolvedOperand::Literal(constant.value)
                 },
                 SymbolTableEntry::D(data) => {
+                    trace!("Operand resolved to static data {}", ident);
                     data.references.push(self.code.len().try_into().unwrap());
                     self.code.write_be_u32(0).unwrap();
                     ResolvedOperand::SymbolReference
                 },
                 SymbolTableEntry::L(label) => {
+                    trace!("Operand resolved to label {}", ident);
                     label.references.push(self.code.len().try_into().unwrap());
                     self.code.write_be_u32(0).unwrap();
                     ResolvedOperand::SymbolReference
                 },
                 SymbolTableEntry::E(external) => {
+                    trace!("Operand resolved to external symbol {}", ident);
                     external.references.push(self.code.len().try_into().unwrap());
                     self.code.write_be_u32(0).unwrap();
                     ResolvedOperand::SymbolReference
@@ -760,7 +832,7 @@ impl CodeGenerator {
         // Unresolved: create a new external symbol.
         // Warn if it looks like a constant.
         if is_uppercase(&ident) {
-            self.warnings.push(SaltError {
+            self.warning(SaltError {
                 span: span.clone(),
                 message: "Unresolved symbol creates an external data reference, \
                           but this looks like a constant.".into(),
@@ -770,6 +842,7 @@ impl CodeGenerator {
             references: vec![self.code.len().try_into().unwrap()],
             span: span.clone(),
         };
+        trace!("Operand created new external symbol {}", ident);
         self.symbol_table.table.insert(ident, SymbolTableEntry::E(external));
         self.code.write_be_u32(0).unwrap();
         Ok((ResolvedOperand::SymbolReference, span))
@@ -807,7 +880,7 @@ impl CodeGenerator {
 
     fn value_as_word(&mut self, val: &LiteralValue, span: Range<usize>) -> Option<Vec<u8>> {
         if let RegisterType::Float = val.min_reg_type {
-            self.warnings.push(SaltError {
+            self.warning(SaltError {
                 span,
                 message: "Float literal being used as an integer.".into(),
             });
@@ -818,7 +891,7 @@ impl CodeGenerator {
 
     fn value_as_float(&mut self, val: &LiteralValue, span: Range<usize>) -> Option<Vec<u8>> {
         if let RegisterType::Float = val.min_reg_type { /* no-op */ } else {
-            self.warnings.push(SaltError {
+            self.warning(SaltError {
                 span,
                 message: "Integer literal being used as a float.".into(),
             });
