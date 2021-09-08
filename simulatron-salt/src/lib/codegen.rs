@@ -1,5 +1,5 @@
 #[macro_use]
-mod macros;
+mod instruction_macros;
 
 use itertools::Itertools;
 use std::collections::HashMap;
