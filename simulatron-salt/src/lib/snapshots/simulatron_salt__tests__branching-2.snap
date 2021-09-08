@@ -1,0 +1,31 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 30..34,
+            message: "Expected an address (word) register reference.",
+        },
+        SaltError {
+            span: 42..44,
+            message: "Cannot use a literal here.",
+        },
+        SaltError {
+            span: 53..56,
+            message: "Expected an address (word) register reference.",
+        },
+        SaltError {
+            span: 66..70,
+            message: "Expected an address (word) register reference.",
+        },
+    ],
+    warnings: [
+        SaltError {
+            span: 80..87,
+            message: "Float literal being used as an integer.",
+        },
+    ],
+}

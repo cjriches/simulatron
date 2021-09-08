@@ -580,3 +580,19 @@ macro_rules! i_BHW_b {
         Ok(())
     }}
 }
+
+/// An instruction with a single ..a. operand.
+macro_rules! i_a {
+    ($self:ident, $opcodes:expr, $operands:expr, $span:expr) => {{
+        num_operands!(1, $operands, $span);
+
+        // Push placeholder opcode.
+        let opcode_pos = $self.code.len();
+        $self.code.push(0);
+
+        let resolved = $self.resolve_operand(&$operands[0])?;
+        address!($self, resolved, $opcodes, opcode_pos);
+
+        Ok(())
+    }}
+}

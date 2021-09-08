@@ -150,6 +150,14 @@ fn test_blockset() {
 }
 
 #[test]
+fn test_branching() {
+    test_success("examples/branching.simasm", true);
+    test_failure("examples/branching-bad.simasm");
+    test_failure("examples/branching-bad-2.simasm");
+
+}
+
+#[test]
 fn test_comments() {
     test_success("examples/comments.simasm", false);
 }

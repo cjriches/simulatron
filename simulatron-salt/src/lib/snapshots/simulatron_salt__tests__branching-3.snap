@@ -1,0 +1,14 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 32..36,
+            message: "Label without a following instruction.",
+        },
+    ],
+    warnings: [],
+}

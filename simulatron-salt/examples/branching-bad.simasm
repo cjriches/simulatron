@@ -1,0 +1,9 @@
+const FOOBAR 4096.0
+
+foo:
+call r0b
+compare 5 6
+jequal f0
+jnotequal r1h
+sjgreater FOOBAR
+jump bar

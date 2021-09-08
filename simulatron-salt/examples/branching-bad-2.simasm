@@ -1,0 +1,6 @@
+const FOOBAR 4096.0
+
+foo:
+halt
+
+baz:
