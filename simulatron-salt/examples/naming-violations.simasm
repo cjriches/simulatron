@@ -1,0 +1,11 @@
+const C_GOOD 0x4000
+static word d_good 42.42
+
+const CBad 0x5000
+static word DBad 56.56
+
+label_good:
+halt
+
+LabelAlsoGood:
+halt

@@ -190,6 +190,11 @@ fn test_minimal() {
 }
 
 #[test]
+fn test_naming_violations() {
+    test_success_with_warnings("examples/naming-violations.simasm", true);
+}
+
+#[test]
 fn test_negate() {
     test_success("examples/negate.simasm", true);
 }

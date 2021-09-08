@@ -117,6 +117,10 @@ impl ConstDecl {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
     }
 
+    pub fn name_span(&self) -> Range<usize> {
+        self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().1
+    }
+
     pub fn public(&self) -> bool {
         node_contains_kind(&self.syntax, SyntaxKind::KwPub)
     }
@@ -130,6 +134,10 @@ impl ConstDecl {
 impl DataDecl {
     pub fn name(&self) -> String {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
+    }
+
+    pub fn name_span(&self) -> Range<usize> {
+        self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().1
     }
 
     pub fn public(&self) -> bool {

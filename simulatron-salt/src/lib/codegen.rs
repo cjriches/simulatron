@@ -508,6 +508,14 @@ impl CodeGenerator {
             let value = ok_or_continue!(self, const_.value());
             let span: Range<usize> = const_.syntax().text_range().into();
 
+            if !is_uppercase(&name) {
+                self.warnings.push(SaltError {
+                    span: const_.name_span(),
+                    message: "Constant names are expected to be \
+                              UPPER_SNAKE_CASE.".into(),
+                });
+            }
+
             let existing = self.symbol_table.table
                 .insert(name, SymbolTableEntry::C(Constant {
                     public,
@@ -531,6 +539,14 @@ impl CodeGenerator {
             let type_ = data.type_();
             let initialiser = ok_or_continue!(self, data.initialiser());
             let span: Range<usize> = data.syntax().text_range().into();
+
+            if !is_lowercase(&name) {
+                self.warnings.push(SaltError {
+                    span: data.name_span(),
+                    message: "Data names are expected to be \
+                              lower_snake_case.".into(),
+                });
+            }
 
             // Calculate the full initialiser.
             let base_size = type_.base_size();
@@ -867,6 +883,16 @@ fn get_reg_ref(reg_ref: &str) -> Option<(u8, RegisterType)> {
 fn is_uppercase(string: &str) -> bool {
     for c in string.chars() {
         if c.is_ascii_lowercase() {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Check if a string is in lowercase.
+fn is_lowercase(string: &str) -> bool {
+    for c in string.chars() {
+        if c.is_ascii_uppercase() {
             return false;
         }
     }

@@ -1,0 +1,15 @@
+---
+source: src/lib/tests.rs
+expression: success.warnings
+
+---
+[
+    SaltError {
+        span: 52..56,
+        message: "Constant names are expected to be UPPER_SNAKE_CASE.",
+    },
+    SaltError {
+        span: 76..80,
+        message: "Data names are expected to be lower_snake_case.",
+    },
+]

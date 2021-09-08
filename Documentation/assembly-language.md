@@ -118,7 +118,7 @@ pub static word[5][2] primes_and_doubles [[2, 4], [3, 6], [5, 10], [7, 14], [9, 
 ## Labels
 Labels create named locations within the resulting object code, referring to the address of the following instruction. These are useful for branching instructions. Like data declarations, labels can be public or private and this affects the linking of resulting object code.
 
-It is conventional that label names are `lower_snake_case`.
+There is no specific convention for label names, but you should be consistent.
 
 Syntax:
 ```
@@ -128,7 +128,7 @@ Syntax:
 Example:
 ```
 loop_start:
-pub calculate_foo:
+pub CalculateFoo:
 ```
 
 ## Instructions
