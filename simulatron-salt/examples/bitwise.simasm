@@ -1,0 +1,10 @@
+const FOO 0b10000000
+
+not r0
+and r0 FOO
+or r1 r0
+xor r1 r0
+srshift r0 1
+lshift r0 1
+lrot r0 1
+lrotcarry r0 2

@@ -501,3 +501,82 @@ macro_rules! i_BHW_bhw {
         Ok(())
     }}
 }
+
+/// An instruction a single BHW. operand.
+macro_rules! i_BHW {
+    ($self:ident, $opcode:expr, $operands:expr, $span:expr) => {{
+        num_operands!(1, $operands, $span);
+        $self.code.push($opcode);
+        let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
+        match resolved {
+            ResolvedOperand::Literal(_) => no_literals!(op_span),
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if let RegisterType::Float = reg_type {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Operation not applicable to floats.".into(),
+                    });
+                } else {
+                    $self.code.push(reg_ref);
+                }
+            },
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+        Ok(())
+    }}
+}
+
+/// An instruction with operands BHW. b...
+macro_rules! i_BHW_b {
+    ($self:ident, $opcodes:expr, $operands:expr, $span:expr) => {{
+        num_operands!(2, $operands, $span);
+
+        // Push placeholder opcode.
+        let opcode_pos = $self.code.len();
+        $self.code.push(0);
+
+        // First operand: destination register (no floats).
+        let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
+        match resolved {
+            ResolvedOperand::Literal(_) => no_literals!(op_span),
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if let RegisterType::Float = reg_type {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Operation not applicable to floats.".into(),
+                    });
+                } else {
+                    $self.code.push(reg_ref);
+                    reg_type
+                }
+            },
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        };
+
+        // Second operand: byte.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[1])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                $self.code[opcode_pos] = $opcodes.0;
+                $self.code.append(&mut CodeGenerator::value_as_byte(&literal)
+                    .ok_or_else(|| SaltError {
+                        span: op_span,
+                        message: "Literal too large: expected single byte.".into(),
+                })?);
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if !register_type_matches(reg_type, RegRefType::RegRefByte) {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Expected a byte register reference.".into(),
+                    });
+                }
+                $self.code[opcode_pos] = $opcodes.1;
+                $self.code.push(reg_ref);
+            }
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        Ok(())
+    }}
+}

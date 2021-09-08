@@ -1,0 +1,22 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 46..49,
+            message: "Operation not applicable to floats.",
+        },
+        SaltError {
+            span: 56..60,
+            message: "Symbol references resolve to addresses, which can't be used here.",
+        },
+        SaltError {
+            span: 71..75,
+            message: "Literal too large: expected single byte.",
+        },
+    ],
+    warnings: [],
+}
