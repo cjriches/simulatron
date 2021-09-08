@@ -7,7 +7,7 @@ use std::convert::{TryInto, TryFrom};
 use std::io::Write;
 use std::ops::Range;
 
-use crate::ast::{self, AstNode, LiteralValue, OperandValue};
+use crate::ast::{self, AstNode, LiteralValue, OperandValue, RegisterType};
 use crate::error::{SaltError, SaltResult};
 use crate::write_be::WriteBE;
 
@@ -175,15 +175,6 @@ enum RegRefType {
     RegRefHalf,
     RegRefByte,
     RegRefFloat,
-}
-
-/// Possible types of a register.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum RegisterType {
-    Byte,
-    Half,
-    Word,
-    Float,
 }
 
 /// Does the given register type match the given reference type?
@@ -548,9 +539,9 @@ impl CodeGenerator {
                 let mut buf = Vec::with_capacity(size);
                 for literal in initialiser.iter() {
                     let bytes = match base_size {
-                        1 => value_as_byte(literal),
-                        2 => value_as_half(literal),
-                        4 => value_as_word(literal),
+                        1 => CodeGenerator::value_as_byte(literal),
+                        2 => CodeGenerator::value_as_half(literal),
+                        4 => CodeGenerator::value_as_word_or_float(literal),
                         _ => unreachable!(),
                     };
                     let mut bytes = match bytes {
@@ -744,37 +735,58 @@ impl CodeGenerator {
     fn push_value_as_reg_type(&mut self, val: &LiteralValue, reg_type: RegisterType,
                               span: Range<usize>) -> SaltResult<()> {
         match reg_type {
-            RegisterType::Byte => value_as_byte(val),
-            RegisterType::Half => value_as_half(val),
-            RegisterType::Word
-            | RegisterType::Float => value_as_word(val),
+            RegisterType::Byte => Self::value_as_byte(val),
+            RegisterType::Half => Self::value_as_half(val),
+            RegisterType::Word => self.value_as_word(val, span.clone()),
+            RegisterType::Float => self.value_as_float(val, span.clone()),
         }.map(|mut bytes| self.code.append(&mut bytes))
          .ok_or_else(|| SaltError {
              span,
              message: "Literal too big for register.".into(),
          })
     }
-}
 
-fn value_as_byte(val: &LiteralValue) -> Option<Vec<u8>> {
-    if val.min_size == 1 {
-        Some(vec![val.value as u8])
-    } else {
-        None
+    fn value_as_byte(val: &LiteralValue) -> Option<Vec<u8>> {
+        if let RegisterType::Byte = val.min_reg_type {
+            Some(vec![val.value as u8])
+        } else {
+            None
+        }
     }
-}
 
-fn value_as_half(val: &LiteralValue) -> Option<Vec<u8>> {
-    if val.min_size <= 2 {
-        Some((val.value as u16).to_be_bytes().to_vec())
-    } else {
-        None
+    fn value_as_half(val: &LiteralValue) -> Option<Vec<u8>> {
+        if let RegisterType::Byte | RegisterType::Half = val.min_reg_type {
+            Some((val.value as u16).to_be_bytes().to_vec())
+        } else {
+            None
+        }
     }
-}
 
-fn value_as_word(val: &LiteralValue) -> Option<Vec<u8>> {
-    assert!(val.min_size <= 4);
-    Some(val.value.to_be_bytes().to_vec())
+    fn value_as_word(&mut self, val: &LiteralValue, span: Range<usize>) -> Option<Vec<u8>> {
+        if let RegisterType::Float = val.min_reg_type {
+            self.warnings.push(SaltError {
+                span,
+                message: "Float literal being used as an integer.".into(),
+            });
+        }
+
+        Some(val.value.to_be_bytes().to_vec())
+    }
+
+    fn value_as_float(&mut self, val: &LiteralValue, span: Range<usize>) -> Option<Vec<u8>> {
+        if let RegisterType::Float = val.min_reg_type { /* no-op */ } else {
+            self.warnings.push(SaltError {
+                span,
+                message: "Integer literal being used as a float.".into(),
+            });
+        }
+
+        Some(val.value.to_be_bytes().to_vec())
+    }
+
+    fn value_as_word_or_float(val: &LiteralValue) -> Option<Vec<u8>> {
+        Some(val.value.to_be_bytes().to_vec())
+    }
 }
 
 /// Convert a register reference string into its binary reference and associated type.

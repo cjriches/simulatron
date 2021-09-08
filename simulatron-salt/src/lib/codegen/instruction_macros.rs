@@ -58,7 +58,8 @@ macro_rules! address {
         match $resolved.0 {
             ResolvedOperand::Literal(literal) => {
                 $self.code[$opcode_pos] = $opcodes.0;
-                $self.code.append(&mut value_as_word(&literal).unwrap());
+                let mut value = $self.value_as_word(&literal, $resolved.1).unwrap();
+                $self.code.append(&mut value);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
@@ -96,7 +97,8 @@ macro_rules! i_w {
         match resolved {
             ResolvedOperand::Literal(literal) => {
                 $self.code.push($opcodes.0);
-                $self.code.append(&mut value_as_word(&literal).unwrap());
+                let mut value = $self.value_as_word(&literal, op_span).unwrap();
+                $self.code.append(&mut value);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
@@ -220,7 +222,8 @@ macro_rules! i_w_a_a {
         let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
         match resolved {
             ResolvedOperand::Literal(literal) => {
-                $self.code.append(&mut value_as_word(&literal).unwrap());
+                let mut value = $self.value_as_word(&literal, op_span).unwrap();
+                $self.code.append(&mut value);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
@@ -239,7 +242,8 @@ macro_rules! i_w_a_a {
         let (resolved, op_span) = $self.resolve_operand(&$operands[1])?;
         match resolved {
             ResolvedOperand::Literal(literal) => {
-                $self.code.append(&mut value_as_word(&literal).unwrap());
+                let mut value = $self.value_as_word(&literal, op_span).unwrap();
+                $self.code.append(&mut value);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
@@ -259,7 +263,8 @@ macro_rules! i_w_a_a {
         let (resolved, op_span) = $self.resolve_operand(&$operands[2])?;
         match resolved {
             ResolvedOperand::Literal(literal) => {
-                $self.code.append(&mut value_as_word(&literal).unwrap());
+                let mut value = $self.value_as_word(&literal, op_span).unwrap();
+                $self.code.append(&mut value);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
@@ -306,7 +311,8 @@ macro_rules! i_w_a_b {
         let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
         match resolved {
             ResolvedOperand::Literal(literal) => {
-                $self.code.append(&mut value_as_word(&literal).unwrap());
+                let mut value = $self.value_as_word(&literal, op_span).unwrap();
+                $self.code.append(&mut value);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
@@ -325,7 +331,8 @@ macro_rules! i_w_a_b {
         let (resolved, op_span) = $self.resolve_operand(&$operands[1])?;
         match resolved {
             ResolvedOperand::Literal(literal) => {
-                $self.code.append(&mut value_as_word(&literal).unwrap());
+                let mut value = $self.value_as_word(&literal, op_span).unwrap();
+                $self.code.append(&mut value);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
@@ -345,7 +352,7 @@ macro_rules! i_w_a_b {
         let (resolved, op_span) = $self.resolve_operand(&$operands[2])?;
         match resolved {
             ResolvedOperand::Literal(literal) => {
-                $self.code.append(&mut value_as_byte(&literal)
+                $self.code.append(&mut CodeGenerator::value_as_byte(&literal)
                     .ok_or_else(|| SaltError {
                         span: op_span,
                         message: "Literal too large: expected single byte.".into(),

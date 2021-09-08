@@ -14,5 +14,10 @@ CodegenFailure {
             message: "Operation not applicable to floats.",
         },
     ],
-    warnings: [],
+    warnings: [
+        SaltError {
+            span: 48..51,
+            message: "Integer literal being used as a float.",
+        },
+    ],
 }

@@ -7,27 +7,27 @@ Ok(
     [
         LiteralValue {
             value: 97,
-            min_size: 1,
+            min_reg_type: Byte,
         },
         LiteralValue {
             value: 98,
-            min_size: 1,
+            min_reg_type: Byte,
         },
         LiteralValue {
             value: 99,
-            min_size: 1,
+            min_reg_type: Byte,
         },
         LiteralValue {
             value: 1,
-            min_size: 1,
+            min_reg_type: Byte,
         },
         LiteralValue {
             value: 2,
-            min_size: 1,
+            min_reg_type: Byte,
         },
         LiteralValue {
             value: 3,
-            min_size: 1,
+            min_reg_type: Byte,
         },
     ],
 )

@@ -7,7 +7,7 @@ Ok(
     [
         LiteralValue {
             value: 4294897296,
-            min_size: 4,
+            min_reg_type: Word,
         },
     ],
 )

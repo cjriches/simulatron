@@ -7,7 +7,7 @@ expression: "instruction.operands().iter().map(Operand::value).map(Result::unwra
     Lit(
         LiteralValue {
             value: 13,
-            min_size: 1,
+            min_reg_type: Byte,
         },
     ),
     Ident(
