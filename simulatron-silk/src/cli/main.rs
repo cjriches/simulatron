@@ -1,15 +1,14 @@
 mod error;
-mod file_utils;
 
 use clap::{App, app_from_crate, Arg, arg_enum, ArgMatches,
            crate_authors, crate_description,
            crate_name, crate_version, value_t_or_exit};
 use log::{info, error, LevelFilter};
+use simulatron_utils::file::{Output, TransientFile};
 use std::fs::File;
 use std::io::{self, BufReader, Write};
 
 use crate::error::LinkError;
-use crate::file_utils::{Output, TransientFile};
 
 const LINK_TARGET: &str = "link-target";
 const OUTPUT_PATH: &str = "output-path";

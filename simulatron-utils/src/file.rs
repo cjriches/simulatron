@@ -2,15 +2,15 @@ use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Stdout, Write};
 use std::path::PathBuf;
 
+/// A created file that will be deleted when the handle is dropped, unless you
+/// call `self.set_persist(true)`, or `self.into_persisted`, which returns the
+/// wrapped `File`.
 pub struct TransientFile {
     file: Option<File>,
     path: PathBuf,
     persist: bool,
 }
 
-/// A created file that will be deleted when the handle is dropped, unless you
-/// call `self.set_persist(true)`, or `self.into_persisted`, which returns the
-/// wrapped `File`.
 impl TransientFile {
     pub fn create<P: Into<PathBuf>>(path: P) -> io::Result<Self> {
         let path = path.into();
@@ -26,7 +26,6 @@ impl TransientFile {
         self.persist = persist;
     }
 
-    #[allow(dead_code)]  // Currently unused.
     pub fn into_persisted(mut self) -> File {
         self.file.take().unwrap()
     }
@@ -64,7 +63,7 @@ impl Write for TransientFile {
     }
 }
 
-/// Possible outputs for the linker.
+/// An output stream that might be a file or stdout.
 pub enum Output {
     File(TransientFile),
     Stdout(Stdout),

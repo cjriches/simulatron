@@ -1,6 +1,6 @@
 pub mod ast;
 pub mod codegen;
-mod error;
+pub mod error;
 mod language;
 pub mod lexer;
 pub mod parser;

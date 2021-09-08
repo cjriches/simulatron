@@ -4,8 +4,8 @@ use std::ops::Range;
 /// Error representation.
 #[derive(Debug)]
 pub struct SaltError {
-    pub(crate) span: Range<usize>,
-    pub(crate) message: Cow<'static, str>,
+    pub span: Range<usize>,
+    pub message: Cow<'static, str>,
 }
 
 pub type SaltResult<T> = Result<T, SaltError>;

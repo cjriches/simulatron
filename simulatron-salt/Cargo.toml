@@ -20,6 +20,8 @@ path = "src/cli/main.rs"
 
 [dependencies]
 ast-gen = { path = "ast-gen" }
+clap = "2.33.3"
+colored = "2.0.0"
 env_logger = "0.9.0"
 itertools = "0.10.1"
 log = "0.4.14"
