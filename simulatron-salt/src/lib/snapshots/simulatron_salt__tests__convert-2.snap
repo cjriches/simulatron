@@ -1,0 +1,22 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 11..14,
+            message: "Expected a float register reference.",
+        },
+        SaltError {
+            span: 23..27,
+            message: "Expected a word or float register reference.",
+        },
+        SaltError {
+            span: 42..44,
+            message: "Cannot use a literal here.",
+        },
+    ],
+    warnings: [],
+}

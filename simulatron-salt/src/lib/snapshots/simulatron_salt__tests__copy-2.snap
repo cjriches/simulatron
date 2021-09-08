@@ -1,0 +1,18 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 8..11,
+            message: "Cannot operate between differently-sized registers.",
+        },
+        SaltError {
+            span: 16..18,
+            message: "Cannot use a literal here.",
+        },
+    ],
+    warnings: [],
+}

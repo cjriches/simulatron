@@ -1,3 +1,4 @@
 const LEN 64
 
 blockset LEN 0x12345678 256
+blockset r0 0x12345678 255 255

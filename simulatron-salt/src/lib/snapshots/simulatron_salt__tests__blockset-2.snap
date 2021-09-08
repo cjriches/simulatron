@@ -1,0 +1,18 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 37..41,
+            message: "Literal too large: expected single byte.",
+        },
+        SaltError {
+            span: 42..72,
+            message: "Expected 3 operands, but found 4.",
+        },
+    ],
+    warnings: [],
+}

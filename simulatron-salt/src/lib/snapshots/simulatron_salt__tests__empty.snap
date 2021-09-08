@@ -1,0 +1,14 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 0..0,
+            message: "Cannot compile an empty file.",
+        },
+    ],
+    warnings: [],
+}

@@ -1,1 +1,3 @@
 sconvert r0 r1
+uconvert r0h f0
+sconvert f0 5

@@ -62,100 +62,6 @@ impl SymbolTable {
         }
     }
 
-    fn add_constants(&mut self, consts: &Vec<ast::ConstDecl>) -> SaltResult<()> {
-        for const_ in consts.iter() {
-            let name = const_.name();
-            let public = const_.public();
-            let value = const_.value()?;
-            let span: Range<usize> = const_.syntax().text_range().into();
-
-            let existing = self.table.insert(name, SymbolTableEntry::C(Constant {
-                public,
-                value,
-                span: span.clone(),
-            }));
-            if let Some(_) = existing {
-                return Err(SaltError {
-                    span,
-                    message: "Name already in use.".into(),
-                });
-            }
-        }
-        Ok(())
-    }
-
-    fn add_data(&mut self, data_decls: &Vec<ast::DataDecl>) -> SaltResult<()> {
-        for data in data_decls.iter() {
-            let name = data.name();
-            let public = data.public();
-            let mutable = data.mutable();
-            let type_ = data.type_();
-            let initialiser = data.initialiser()?;
-            let span: Range<usize> = data.syntax().text_range().into();
-
-            // Calculate the full initialiser.
-            let base_size = type_.base_size();
-            let size = type_.total_size()?;
-            let initialiser = {
-                let mut buf = Vec::with_capacity(size);
-                for literal in initialiser.iter() {
-                    let mut bytes = match base_size {
-                        1 => value_as_byte(literal),
-                        2 => value_as_half(literal),
-                        4 => value_as_word(literal),
-                        _ => unreachable!(),
-                    }.ok_or_else(|| SaltError {
-                        span: span.clone(),
-                        message: "Initialiser too big for type.".into(),
-                    })?;
-                    buf.append(&mut bytes);
-                }
-                buf.resize(size, 0);
-                buf
-            };
-            assert_eq!(initialiser.len(), size);
-
-            let existing = self.table.insert(name, SymbolTableEntry::D(Data {
-                public,
-                mutable,
-                size,
-                initialiser,
-                span: span.clone(),
-                references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
-            }));
-            if let Some(_) = existing {
-                return Err(SaltError {
-                    span,
-                    message: "Name already in use.".into(),
-                });
-            }
-        }
-        Ok(())
-    }
-
-    fn add_labels(&mut self, labels: &Vec<ast::Label>) -> SaltResult<()> {
-        for label in labels.iter() {
-            let name = label.name();
-            let public = label.public();
-            let instruction = label.instruction()?;
-            let span: Range<usize> = label.syntax().text_range().into();
-
-            let existing = self.table.insert(name, SymbolTableEntry::L(Label {
-                public,
-                location: LabelLocation::Reference(instruction),
-                span: span.clone(),
-                references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
-            }));
-            if let Some(_) = existing {
-                return Err(SaltError {
-                    span,
-                    message: "Name already in use.".into(),
-                });
-            }
-        }
-        Ok(())
-    }
-
     fn iter_labels(&mut self) -> impl Iterator<Item = &mut Label> {
         self.table.values_mut().filter_map(|entry| {
             if let SymbolTableEntry::L(label) = entry {
@@ -325,8 +231,15 @@ struct InstructionVariant {
 
 /// The result of successful codegen.
 #[derive(Debug)]
-pub struct ObjectCode {
-    pub code: Vec<u8>,
+pub struct CodegenSuccess {
+    pub simobj: Vec<u8>,
+    pub warnings: Vec<SaltError>,
+}
+
+/// The result of unsuccessful codegen.
+#[derive(Debug)]
+pub struct CodegenFailure {
+    pub errors: Vec<SaltError>,
     pub warnings: Vec<SaltError>,
 }
 
@@ -334,13 +247,27 @@ pub struct ObjectCode {
 pub struct CodeGenerator {
     symbol_table: SymbolTable,
     code: Vec<u8>,
+    errors: Vec<SaltError>,
     warnings: Vec<SaltError>,
     instructions: Option<Vec<ast::Instruction>>,
 }
 
+/// Unwrap the given SaltResult or add it as an error and continue the current loop.
+macro_rules! ok_or_continue {
+    ($self:ident, $result:expr) => {{
+        match $result {
+            Ok(value) => value,
+            Err(e) => {
+                $self.errors.push(e);
+                continue;
+            }
+        }
+    }}
+}
+
 impl CodeGenerator {
     pub fn new(program: ast::Program,
-               extra_consts: &Vec<ast::ConstDecl>) -> SaltResult<Self> {
+               extra_consts: &Vec<ast::ConstDecl>) -> Result<Self, CodegenFailure> {
         // Extract program components.
         let mut consts = program.const_decls();
         consts.reserve_exact(extra_consts.len());
@@ -352,35 +279,59 @@ impl CodeGenerator {
         let instructions = program.instructions();
 
         // Allocate data structures.
-        let mut symbol_table = SymbolTable::with_capacity(
+        let symbol_table = SymbolTable::with_capacity(
             consts.len() + data.len() + labels.len() + 32  // Extra space for external references.
         );
         let code: Vec<u8> = Vec::with_capacity(
             data.len() * AVG_DATA_LEN + instructions.len() * AVG_INSTRUCTION_LEN
         );
-        let warnings: Vec<SaltError> = Vec::new();
-
-        // Populate symbol table.
-        symbol_table.add_constants(&consts)?;
-        symbol_table.add_data(&data)?;
-        symbol_table.add_labels(&labels)?;
-
-        Ok(Self {
+        let mut generator = Self {
             symbol_table,
             code,
-            warnings,
+            errors: Vec::new(),
+            warnings: Vec::new(),
             instructions: Some(instructions),
-        })
+        };
+
+        // Populate symbol table.
+        generator.add_constants(&consts);
+        generator.add_data(&data);
+        generator.add_labels(&labels);
+
+        // Check for errors.
+        if generator.errors.is_empty() {
+            Ok(generator)
+        } else {
+            Err(CodegenFailure {
+                errors: generator.errors,
+                warnings: generator.warnings,
+            })
+        }
     }
 
-    /// Top-level codegen entrypoint.
-    pub fn codegen(mut self, entrypoint: bool) -> SaltResult<ObjectCode> {
+    /// Run the code generator.
+    pub fn run(mut self, entrypoint: bool) -> Result<CodegenSuccess, CodegenFailure> {
+        let simobj = self.codegen(entrypoint);
+        if self.errors.is_empty() {
+            Ok(CodegenSuccess {
+                simobj,
+                warnings: self.warnings,
+            })
+        } else {
+            Err(CodegenFailure {
+                errors: self.errors,
+                warnings: self.warnings,
+            })
+        }
+    }
+
+    fn codegen(&mut self, entrypoint: bool) -> Vec<u8> {
         // Process all instructions.
         for instruction in self.instructions.take().unwrap().iter() {
             // Resolve any labels pointing here.
             self.resolve_labels(instruction);
             // Codegen the instruction.
-            self.codegen_instruction(instruction)?;
+            ok_or_continue!(self, self.codegen_instruction(instruction));
         }
 
         // Generate object code.
@@ -406,10 +357,11 @@ impl CodeGenerator {
             + if st_stats.readwrite_size > 0 {1} else {0};
 
         if num_sections == 0 {
-            return Err(SaltError {
+            self.errors.push(SaltError {
                 span: 0..0,
                 message: "Cannot compile an empty file.".into(),
             });
+            return simobj;
         }
 
         simobj.write_be_u32(st_stats.num_entries.try_into().unwrap()).unwrap();
@@ -433,10 +385,13 @@ impl CodeGenerator {
             ($name:expr, $span:expr) => {{
                 match $name.len().try_into() {
                     Ok(val) => val,
-                    Err(_) => return Err(SaltError {
-                        span: $span,
-                        message: "Symbol name too long (max 255 chars).".into(),
-                    })
+                    Err(_) => {
+                        self.errors.push(SaltError {
+                            span: $span,
+                            message: "Symbol name too long (max 255 chars).".into(),
+                        });
+                        continue;
+                    }
                 }
             }}
         }
@@ -552,10 +507,114 @@ impl CodeGenerator {
             simobj.write_all(readwrite_data.as_slice()).unwrap();
         }
 
-        Ok(ObjectCode {
-            code: simobj,
-            warnings: self.warnings,
-        })
+        simobj
+    }
+
+    fn add_constants(&mut self, consts: &Vec<ast::ConstDecl>) {
+        for const_ in consts.iter() {
+            let name = const_.name();
+            let public = const_.public();
+            let value = ok_or_continue!(self, const_.value());
+            let span: Range<usize> = const_.syntax().text_range().into();
+
+            let existing = self.symbol_table.table
+                .insert(name, SymbolTableEntry::C(Constant {
+                    public,
+                    value,
+                    span: span.clone(),
+                }));
+            if let Some(_) = existing {
+                self.errors.push(SaltError {
+                    span,
+                    message: "Name already in use.".into(),
+                });
+            }
+        }
+    }
+
+    fn add_data(&mut self, data_decls: &Vec<ast::DataDecl>) {
+        for data in data_decls.iter() {
+            let name = data.name();
+            let public = data.public();
+            let mutable = data.mutable();
+            let type_ = data.type_();
+            let initialiser = ok_or_continue!(self, data.initialiser());
+            let span: Range<usize> = data.syntax().text_range().into();
+
+            // Calculate the full initialiser.
+            let base_size = type_.base_size();
+            let size = ok_or_continue!(self, type_.total_size());
+            let initialiser = {
+                let mut buf = Vec::with_capacity(size);
+                for literal in initialiser.iter() {
+                    let bytes = match base_size {
+                        1 => value_as_byte(literal),
+                        2 => value_as_half(literal),
+                        4 => value_as_word(literal),
+                        _ => unreachable!(),
+                    };
+                    let mut bytes = match bytes {
+                        Some(bytes) => bytes,
+                        None => {
+                            self.errors.push(SaltError {
+                                span: span.clone(),
+                                message: "Initialiser too big for type.".into(),
+                            });
+                            break;
+                        }
+                    };
+                    buf.append(&mut bytes);
+                }
+                if buf.len() > size {
+                    self.errors.push(SaltError {
+                        span: span.clone(),
+                        message: "Initialiser too big for type.".into(),
+                    });
+                    continue;
+                }
+                buf.resize(size, 0);
+                buf
+            };
+
+            let existing = self.symbol_table.table
+                .insert(name, SymbolTableEntry::D(Data {
+                    public,
+                    mutable,
+                    size,
+                    initialiser,
+                    span: span.clone(),
+                    references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
+                }));
+            if let Some(_) = existing {
+                self.errors.push(SaltError {
+                    span,
+                    message: "Name already in use.".into(),
+                });
+            }
+        }
+    }
+
+    fn add_labels(&mut self, labels: &Vec<ast::Label>) {
+        for label in labels.iter() {
+            let name = label.name();
+            let public = label.public();
+            let instruction = ok_or_continue!(self, label.instruction());
+            let span: Range<usize> = label.syntax().text_range().into();
+
+            let existing = self.symbol_table.table
+                .insert(name, SymbolTableEntry::L(Label {
+                    public,
+                    location: LabelLocation::Reference(instruction),
+                    span: span.clone(),
+                    references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
+                }));
+            if let Some(_) = existing {
+                self.errors.push(SaltError {
+                    span,
+                    message: "Name already in use.".into(),
+                });
+            }
+        }
     }
 
     /// Resolve any labels pointing to the given instruction, making them point

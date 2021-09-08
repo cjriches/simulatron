@@ -1,0 +1,18 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 4..6,
+            message: "Cannot use a literal here.",
+        },
+        SaltError {
+            span: 10..16,
+            message: "Symbol references resolve to addresses, which can't be used here.",
+        },
+    ],
+    warnings: [],
+}

@@ -1,3 +1,4 @@
 static byte[64] message "Hello There!"
 
 blockcopy message 0x4000 0x5000
+blockcopy 0 1

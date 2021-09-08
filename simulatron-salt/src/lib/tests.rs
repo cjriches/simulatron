@@ -3,7 +3,6 @@ use insta::{assert_snapshot, assert_debug_snapshot};
 use crate::{
     ast::{AstNode, Program},
     codegen::CodeGenerator,
-    error::SaltError,
     init_test_logging,
     lexer::Lexer,
     parser::Parser,
@@ -90,9 +89,9 @@ fn test_success(path: &str, entrypoint: bool) {
     let cst = parser.run().unwrap();
     let ast = Program::cast(cst).unwrap();
     let codegen = CodeGenerator::new(ast, &Vec::new()).unwrap();
-    let object_code = codegen.codegen(entrypoint).unwrap();
-    assert_eq!(object_code.warnings.len(), 0);
-    assert_snapshot!(pretty_print_hex_block(&object_code.code));
+    let success = codegen.run(entrypoint).unwrap();
+    assert_eq!(success.warnings.len(), 0);
+    assert_snapshot!(pretty_print_hex_block(&success.simobj));
 }
 
 fn test_success_with_warnings(path: &str, entrypoint: bool) {
@@ -102,21 +101,22 @@ fn test_success_with_warnings(path: &str, entrypoint: bool) {
     let cst = parser.run().unwrap();
     let ast = Program::cast(cst).unwrap();
     let codegen = CodeGenerator::new(ast, &Vec::new()).unwrap();
-    let object_code = codegen.codegen(entrypoint).unwrap();
-    assert!(object_code.warnings.len() > 0);
-    assert_snapshot!(pretty_print_hex_block(&object_code.code));
-    assert_debug_snapshot!(object_code.warnings);
+    let success = codegen.run(entrypoint).unwrap();
+    assert!(success.warnings.len() > 0);
+    assert_snapshot!(pretty_print_hex_block(&success.simobj));
+    assert_debug_snapshot!(success.warnings);
 }
 
-fn test_failure(path: &str) -> SaltError {
+fn test_failure(path: &str) {
     init_test_logging();
     let input = std::fs::read_to_string(path).unwrap();
     let parser = Parser::new(Lexer::new(&input));
     let cst = parser.run().unwrap();
     let ast = Program::cast(cst).unwrap();
-    CodeGenerator::new(ast, &Vec::new()).and_then(|cg| {
-        cg.codegen(true)
-    }).unwrap_err()
+    let failure = CodeGenerator::new(ast, &Vec::new()).and_then(|cg| {
+        cg.run(true)
+    }).unwrap_err();
+    assert_debug_snapshot!(failure);
 }
 
 #[test]
@@ -128,16 +128,13 @@ fn test_addressing_modes() {
 #[test]
 fn test_blockcopy() {
     test_success("examples/blockcopy.simasm", false);
-    let err = test_failure("examples/blockcopy-bad.simasm");
-    assert_eq!(err.message.as_ref(), "Symbol references resolve to addresses, \
-                                      which can't be used here.");
+    test_failure("examples/blockcopy-bad.simasm");
 }
 
 #[test]
 fn test_blockset() {
     test_success("examples/blockset.simasm", true);
-    let err = test_failure("examples/blockset-bad.simasm");
-    assert_eq!(err.message.as_ref(), "Literal too large: expected single byte.");
+    test_failure("examples/blockset-bad.simasm");
 }
 
 #[test]
@@ -148,22 +145,18 @@ fn test_comments() {
 #[test]
 fn test_convert() {
     test_success("examples/convert.simasm", true);
-    let err = test_failure("examples/convert-bad.simasm");
-    assert_eq!(err.message.as_ref(), "Expected a float register reference.");
+    test_failure("examples/convert-bad.simasm");
 }
 
 #[test]
 fn test_copy() {
     test_success("examples/copy.simasm", true);
-    let err = test_failure("examples/copy-bad.simasm");
-    assert_eq!(err.message.as_ref(), "Cannot operate between differently-sized \
-                                      registers.");
+    test_failure("examples/copy-bad.simasm");
 }
 
 #[test]
 fn test_empty() {
-    let err = test_failure("examples/empty-file.simasm");
-    assert_eq!(err.message.as_ref(), "Cannot compile an empty file.");
+    test_failure("examples/empty-file.simasm");
 }
 
 #[test]
@@ -179,8 +172,7 @@ fn test_minimal() {
 #[test]
 fn test_push_pop() {
     test_success("examples/push-pop.simasm", true);
-    let err = test_failure("examples/push-pop-bad.simasm");
-    assert_eq!(err.message.as_ref(), "Cannot use a literal here.");
+    test_failure("examples/push-pop-bad.simasm");
 }
 
 #[test]

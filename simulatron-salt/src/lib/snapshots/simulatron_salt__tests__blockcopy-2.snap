@@ -1,0 +1,18 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 49..57,
+            message: "Symbol references resolve to addresses, which can't be used here.",
+        },
+        SaltError {
+            span: 72..85,
+            message: "Expected 3 operands, but found 2.",
+        },
+    ],
+    warnings: [],
+}
