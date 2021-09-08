@@ -19,12 +19,13 @@ name = "salt"
 path = "src/cli/main.rs"
 
 [dependencies]
+ast-gen = { path = "ast-gen" }
 env_logger = "0.9.0"
 itertools = "0.10.1"
 log = "0.4.14"
 logos = "0.12.0"
 rowan = "0.13.2"
-ast-gen = { path = "ast-gen" }
+simulatron-utils = { path = "../simulatron-utils" }
 
 [dev-dependencies]
 insta = "1.7.2"

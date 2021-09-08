@@ -376,8 +376,13 @@ dependencies = [
  "insta",
  "itertools",
  "log",
+ "simulatron-utils",
  "tempfile",
 ]
+
+[[package]]
+name = "simulatron-utils"
+version = "2.0.0-alpha"
 
 [[package]]
 name = "strsim"

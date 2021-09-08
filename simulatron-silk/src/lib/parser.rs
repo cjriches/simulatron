@@ -1,12 +1,11 @@
 use log::{trace, debug, info};
+use simulatron_utils::{hexprint::pretty_print_hex_block, read_be::ReadBE};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 
-use crate::data::{ObjectFile, pretty_print_hex_block,
-                  Section, SymbolTable, SymbolTableEntry,
+use crate::data::{ObjectFile, Section, SymbolTable, SymbolTableEntry,
                   SYMBOL_TYPE_EXTERNAL, symbol_type_name};
 use crate::error::{OFError, OFResult};
-use crate::read_be::ReadBE;
 
 // File header constants.
 const MAGIC_HEADER: [u8; 6] = *b"SIMOBJ";

@@ -4,7 +4,6 @@ mod error;
 mod language;
 pub mod lexer;
 pub mod parser;
-mod write_be;
 
 #[cfg(test)]
 mod tests;

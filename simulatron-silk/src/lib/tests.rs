@@ -2,9 +2,10 @@ use super::*;
 
 use insta::{assert_snapshot, assert_display_snapshot};
 use log::info;
+use simulatron_utils::hexprint::pretty_print_hex_block_zero;
 use std::fs::File;
 
-use crate::data::{DISK_ALIGN, ROM_SIZE, pretty_print_hex_block};
+use crate::data::{DISK_ALIGN, ROM_SIZE};
 
 /// Initialise logging.
 pub fn init() {
@@ -52,7 +53,7 @@ macro_rules! parse_files {
 
 /// Format the given Vec<u8> nicely and then snapshot it.
 macro_rules! assert_image_snapshot {
-    ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img, 0)) }
+    ($img:expr) => { assert_snapshot!(pretty_print_hex_block_zero($img)) }
 }
 
 /// The simplest possible file: no symbols, one entrypoint section

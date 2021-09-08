@@ -1,10 +1,10 @@
 ---
-source: src/tests.rs
+source: src/lib/tests.rs
 expression: parsed
 
 ---
 ---Symbols---
 ---Sections---
 Section 0 flags: 00010001 start: 0x00000000 length: 0x00000001
-0x00000000    00
+0x00000000    00                                                  |.|
 

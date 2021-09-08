@@ -1,8 +1,9 @@
 use itertools::Itertools;
+use simulatron_utils::hexprint::pretty_print_hex_block;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::cmp::Ordering;
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Display, Formatter};
 
 use crate::error::{OFError, OFResult};
 
@@ -122,40 +123,4 @@ impl Display for ObjectFile {
 
         Ok(())
     }
-}
-
-/// Nicely format the given Vec<u8> as a hex block. The listed addresses
-/// will start from `start`.
-pub fn pretty_print_hex_block(image: &Vec<u8>, start: usize) -> String {
-    // Each 16 bytes of the input produces a line consisting of:
-    // - a 10-character address
-    // - 32 characters of bytes
-    // - 22 spaces
-    // - 1 newline
-    // Therefore, each 16 bytes of input produces about 65 bytes of output.
-    let mut str = String::with_capacity((image.len()/16 + 1) * 65);
-    for (i, byte) in image.iter().enumerate() {
-        match i % 16 {
-            0 => {
-                // At the start of each 16 bytes, print an address header.
-                write!(str, "{:#010X}    ", start + i).unwrap();
-            }
-            4 | 8 | 12 => {
-                // After each 4 bytes, print a double space.
-                str.push_str("  ");
-            },
-            _ => {
-                // Single-space between bytes.
-                str.push(' ');
-            }
-        }
-        // Write each byte as two hex digits.
-        write!(str, "{:02X}", byte).unwrap();
-        // If this is the last byte of the not-last row, add a newline.
-        if (i % 16 == 15) && (i + 1 != image.len()) {
-            str.push('\n');
-        }
-    }
-
-    return str;
 }

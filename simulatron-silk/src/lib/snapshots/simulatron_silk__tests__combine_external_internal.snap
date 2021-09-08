@@ -1,5 +1,5 @@
 ---
-source: src/tests.rs
+source: src/lib/tests.rs
 expression: parsed
 
 ---
@@ -10,7 +10,7 @@ foobaz0 I 0x00000004
   0x00000000
 ---Sections---
 Section 0 flags: 00010001 start: 0x00000000 length: 0x00000008
-0x00000000    00 00 00 00  42 42 42 42
+0x00000000    00 00 00 00  42 42 42 42                            |....BBBB|
 Section 1 flags: 00010001 start: 0x00000008 length: 0x00000004
-0x00000008    00 00 00 00
+0x00000008    00 00 00 00                                         |....|
 

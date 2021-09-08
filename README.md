@@ -5,6 +5,7 @@ This is the root repository for Simulatron and its associated tools. This projec
 * `simulatron` - the virtual machine itself.
 * `simulatron-salt` - an assembler for Simulatron.
 * `simulatron-silk` - a linker for Simulatron.
+* `simulatron-utils` - utilities that are shared or don't fit anywhere else.
 
 General documentation can be found in [Documentation](Documentation). Package-specific information like usage and build guides can be found in each package's `README.md`.
 

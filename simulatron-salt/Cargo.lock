@@ -351,7 +351,12 @@ dependencies = [
  "log",
  "logos",
  "rowan",
+ "simulatron-utils",
 ]
+
+[[package]]
+name = "simulatron-utils"
+version = "2.0.0-alpha"
 
 [[package]]
 name = "syn"

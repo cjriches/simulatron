@@ -3,10 +3,11 @@ mod data;
 mod error;
 mod linker;
 mod parser;
-mod read_be;
 
 #[cfg(test)]
 mod tests;
+
+use simulatron_utils::read_be::ReadBE;
 
 // Public API.
 pub use data::ObjectFile;
@@ -17,7 +18,7 @@ pub use parser::Parser;
 /// Parse a whole list of inputs and combine them into a single linker.
 pub fn parse_and_combine<I, S>(inputs: I) -> OFResult<Linker>
     where I: IntoIterator<Item=S>,
-          S: read_be::ReadBE
+          S: ReadBE
 {
     let mut linker = Linker::new();
 

@@ -1,5 +1,5 @@
 ---
-source: src/tests.rs
+source: src/lib/tests.rs
 expression: parsed
 
 ---
@@ -9,5 +9,5 @@ foo I 0x00000006
   0x0000000C
 ---Sections---
 Section 0 flags: 00010001 start: 0x00000000 length: 0x00000010
-0x00000000    FF FF 00 00  00 00 FF FF  FF FF FF FF  00 00 00 00
+0x00000000    FF FF 00 00  00 00 FF FF  FF FF FF FF  00 00 00 00  |................|
 

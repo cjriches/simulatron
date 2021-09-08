@@ -3,6 +3,7 @@ mod instruction_macros;
 
 use itertools::Itertools;
 use log::{trace, debug, info, warn, error};
+use simulatron_utils::write_be::WriteBE;
 use std::collections::HashMap;
 use std::convert::{TryInto, TryFrom};
 use std::io::Write;
@@ -10,7 +11,6 @@ use std::ops::Range;
 
 use crate::ast::{self, AstNode, LiteralValue, OperandValue, RegisterType};
 use crate::error::{SaltError, SaltResult};
-use crate::write_be::WriteBE;
 
 // The following constants are used to provide guesses for initial vector
 // capacities. Thus, they are important for performance but not correctness.
