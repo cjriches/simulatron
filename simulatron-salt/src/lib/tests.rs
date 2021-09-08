@@ -170,6 +170,11 @@ fn test_minimal() {
 }
 
 #[test]
+fn test_negate() {
+    test_success("examples/negate.simasm", true);
+}
+
+#[test]
 fn test_push_pop() {
     test_success("examples/push-pop.simasm", true);
     test_failure("examples/push-pop-bad.simasm");

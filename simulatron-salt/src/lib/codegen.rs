@@ -656,6 +656,7 @@ impl CodeGenerator {
                                           0x14, 0x15, 0x16, 0x17)),
             "blockset" => def!(i_w_a_b, (0x18, 0x19, 0x1A, 0x1B,
                                          0x1C, 0x1D, 0x1E, 0x1F)),
+            "negate" => def!(i_BHWF, 0x20),
             // TODO more
             "sconvert" => def!(i_WF_WF, 0x6C),
             "uconvert" => def!(i_WF_WF, 0x6D),
