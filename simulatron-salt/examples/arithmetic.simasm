@@ -1,0 +1,11 @@
+const FOO 1000
+
+add r0h FOO
+addcarry r0 1
+sub r1 r0
+subborrow r1 1
+mult r0 r1
+udiv r1 3
+
+add f0 12.34
+sdiv f0 2.0

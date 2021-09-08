@@ -442,3 +442,55 @@ macro_rules! i_WF_WF {
         Ok(())
     }}
 }
+
+/// An instruction with operands BHW. bhw.
+macro_rules! i_BHW_bhw {
+    ($self:ident, $opcodes:expr, $operands:expr, $span:expr) => {{
+        num_operands!(2, $operands, $span);
+
+        // Push placeholder opcode.
+        let opcode_pos = $self.code.len();
+        $self.code.push(0);
+
+        // First operand: destination register (no floats).
+        let (resolved, op_span) = $self.resolve_operand(&$operands[0])?;
+        let reg_type = match resolved {
+            ResolvedOperand::Literal(_) => no_literals!(op_span),
+            ResolvedOperand::RegRef(reg_ref, reg_type) => {
+                if let RegisterType::Float = reg_type {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Operation not applicable to floats.".into(),
+                    });
+                } else {
+                    $self.code.push(reg_ref);
+                    reg_type
+                }
+            },
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        };
+
+        // Second operand: source value or register.
+        let (resolved, op_span) = $self.resolve_operand(&$operands[1])?;
+        match resolved {
+            ResolvedOperand::Literal(literal) => {
+                $self.code[opcode_pos] = $opcodes.0;
+                $self.push_value_as_reg_type(&literal, reg_type, op_span)?;
+            },
+            ResolvedOperand::RegRef(reg_ref, reg_type_2) => {
+                if reg_type != reg_type_2 {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Cannot operate between differently-sized \
+                                  registers.".into(),
+                    });
+                }
+                $self.code[opcode_pos] = $opcodes.1;
+                $self.code.push(reg_ref);
+            },
+            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+        }
+
+        Ok(())
+    }}
+}

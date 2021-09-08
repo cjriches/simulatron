@@ -1,0 +1,5 @@
+const FOO 1000
+
+add r0b FOO
+addcarry f0 1
+add f0 12

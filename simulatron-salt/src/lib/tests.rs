@@ -126,6 +126,12 @@ fn test_addressing_modes() {
 }
 
 #[test]
+fn test_arithmetic() {
+    test_success("examples/arithmetic.simasm", true);
+    test_failure("examples/arithmetic-bad.simasm");
+}
+
+#[test]
 fn test_blockcopy() {
     test_success("examples/blockcopy.simasm", false);
     test_failure("examples/blockcopy-bad.simasm");

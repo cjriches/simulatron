@@ -1,0 +1,18 @@
+---
+source: src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 23..27,
+            message: "Literal too big for register.",
+        },
+        SaltError {
+            span: 36..39,
+            message: "Operation not applicable to floats.",
+        },
+    ],
+    warnings: [],
+}
