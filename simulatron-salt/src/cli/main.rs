@@ -6,6 +6,7 @@ use itertools::Itertools;
 use log::{info, error, LevelFilter};
 use std::fs::File;
 use std::io::{self, Write, Read};
+use std::ops::Range;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -101,19 +102,77 @@ fn init_logging(level: LevelFilter) {
 
 /// Report compiler errors to the user.
 #[inline]
-fn report_errors(errors: &Vec<SaltError>) {
-    report(errors, "error", Color::BrightRed)
+fn report_errors(errors: &Vec<SaltError>, reference: &str) {
+    report(errors, reference, "error", Color::BrightRed)
 }
 
 /// Report compiler warnings to the user.
 #[inline]
-fn report_warnings(warnings: &Vec<SaltError>) {
-    report(warnings, "warning", Color::BrightYellow)
+fn report_warnings(warnings: &Vec<SaltError>, reference: &str) {
+    report(warnings, reference, "warning", Color::BrightYellow)
 }
 
 /// Generic error/warning/etc reporting function.
-fn report(items: &Vec<SaltError>, prefix: &str, color: Color) {
-    todo!()
+fn report(items: &Vec<SaltError>, reference: &str, prefix: &str, color: Color) {
+    for item in items.iter() {
+        let (line, highlight) = find_context(reference, &item.span);
+        let message = format!("{}: {}", prefix, item.message.as_ref());
+
+        eprintln!("{}", message.color(color));
+        eprintln!("  {}", line);
+        eprintln!("  {}\n", highlight.color(color));
+    }
+}
+
+/// Find the context of `range` within `reference`. Returns two formatted
+/// strings; the first has the whole line of `range`, and the second contains
+/// a series of '^' characters highlighting `range` within it.
+fn find_context(reference: &str, range: &Range<usize>) -> (String, String) {
+    // Find the line that encloses `range`.
+    let mut line: usize = 1;
+    let mut line_start: usize = 0;
+    for (i, c) in reference.bytes().enumerate() {
+        if i == range.start {
+            break;
+        } else if c == b'\n' {
+            line += 1;
+            line_start = i + 1;
+        }
+    }
+    let mut line_end: usize = reference.len();
+    for (i, c) in reference.bytes().enumerate().skip(range.end) {
+        if c == b'\n' {
+            line_end = i;
+            break;
+        }
+    }
+
+    // Construct the context line.
+    let line_num = format!("{} | ", line).bright_cyan();
+    let line_context = format!("{}{}", line_num, &reference[line_start..line_end]);
+    // Find the highlight range, eliminating any whitespace that snuck into
+    // the token.
+    let mut highlight_start = range.start;
+    let mut highlight_end = range.end;
+    while reference.bytes().nth(highlight_start).unwrap() == b' ' {
+        highlight_start += 1;
+    }
+    while reference.bytes().nth(highlight_end - 1).unwrap() == b' ' {
+        highlight_end -= 1;
+    }
+    // Explicitly specify order of operations to avoid wraparound.
+    highlight_start = (highlight_start + line_num.len()) - line_start;
+    highlight_end = (highlight_end + line_num.len()) - line_start;
+    // Build the string.
+    let mut highlight = String::with_capacity(highlight_end);
+    for _ in 0..highlight_start {
+        highlight.push(' ');
+    }
+    for _ in highlight_start..highlight_end {
+        highlight.push('^');
+    }
+
+    (line_context, highlight)
 }
 
 /// Add the public constants from `consts` to `accumulator`.
@@ -212,7 +271,7 @@ fn run(args: ArgMatches) -> u8 {
                 Ok(cst) => Program::cast(cst).unwrap(),
                 Err(errors) => {
                     error!("Parsing failed for file {}.", i+1);
-                    report_errors(&errors);
+                    report_errors(&errors, &source);
                     continue;
                 }
             };
@@ -224,8 +283,8 @@ fn run(args: ArgMatches) -> u8 {
                 Ok(gen) => gen,
                 Err(failure) => {
                     error!("Symbol processing failed for file {}.", i+1);
-                    report_warnings(&failure.warnings);
-                    report_errors(&failure.errors);
+                    report_warnings(&failure.warnings, &source);
+                    report_errors(&failure.errors, &source);
                     continue;
                 }
             };
@@ -236,7 +295,7 @@ fn run(args: ArgMatches) -> u8 {
             match codegen.run(input.entrypoint) {
                 Ok(result) => {
                     info!("Completed codegen for file {}.", i+1);
-                    report_warnings(&result.warnings);
+                    report_warnings(&result.warnings, &source);
                     // Write output.
                     input.write_output(&result.simobj)
                         .map_err(|e| {
@@ -248,8 +307,8 @@ fn run(args: ArgMatches) -> u8 {
                 },
                 Err(failure) => {
                     error!("Codegen failed for file {}.", i+1);
-                    report_warnings(&failure.warnings);
-                    report_errors(&failure.errors);
+                    report_warnings(&failure.warnings, &source);
+                    report_errors(&failure.errors, &source);
                 }
             }
         }
