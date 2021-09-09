@@ -24,6 +24,11 @@ const VERBOSITY: &str = "verbosity";
 
 const SIMOBJ_EXTENSION: &str = "simobj";
 
+const CONTEXT_COLOR: Color = Color::BrightCyan;
+const WARNING_COLOR: Color = Color::BrightYellow;
+const ERROR_COLOR: Color = Color::BrightRed;
+const GENERIC_ERROR_COLOR: Color = Color::Magenta;
+
 /// An input file is tagged with whether it's an entrypoint or not.
 #[derive(Debug)]
 struct InputFile<'a> {
@@ -86,6 +91,7 @@ fn init_logging(level: LevelFilter) {
     env_logger::Builder::new()
         .filter_level(level)
         .format(logging_format)
+        .target(env_logger::Target::Stdout)
         .init();
 }
 
@@ -102,26 +108,40 @@ fn init_logging(level: LevelFilter) {
 
 /// Report compiler errors to the user.
 #[inline]
-fn report_errors(errors: &Vec<SaltError>, reference: &str) {
-    report(errors, reference, "error", Color::BrightRed)
+fn report_errors(errors: &Vec<SaltError>, reference: &str, reference_path: &str) {
+    report(errors, reference, reference_path, "error", ERROR_COLOR)
 }
 
 /// Report compiler warnings to the user.
 #[inline]
-fn report_warnings(warnings: &Vec<SaltError>, reference: &str) {
-    report(warnings, reference, "warning", Color::BrightYellow)
+fn report_warnings(warnings: &Vec<SaltError>, reference: &str, reference_path: &str) {
+    report(warnings, reference, reference_path, "warning", WARNING_COLOR)
 }
 
-/// Generic error/warning/etc reporting function.
-fn report(items: &Vec<SaltError>, reference: &str, prefix: &str, color: Color) {
+/// Compilation error/warning/etc. reporting function.
+fn report(items: &Vec<SaltError>, reference: &str, reference_path: &str,
+          prefix: &str, color: Color) {
     for item in items.iter() {
         let (line, highlight) = find_context(reference, &item.span);
-        let message = format!("{}: {}", prefix, item.message.as_ref());
+        let message = format!("{}: {}: {}", reference_path, prefix,
+                              item.message.as_ref());
 
         eprintln!("{}", message.color(color));
-        eprintln!("  {}", line);
-        eprintln!("  {}\n", highlight.color(color));
+        if highlight.is_empty() {
+            eprintln!();
+        } else {
+            eprintln!("  {}", line);
+            eprintln!("  {}\n", highlight.color(color));
+        }
     }
+}
+
+/// Report a generic error that's not related to a specific source span.
+macro_rules! report_generic_error {
+    ($($args:expr),*) => {{
+        let message = format!($($args),*);
+        eprintln!("{}\n", message.color(GENERIC_ERROR_COLOR));
+    }}
 }
 
 /// Find the context of `range` within `reference`. Returns two formatted
@@ -148,8 +168,14 @@ fn find_context(reference: &str, range: &Range<usize>) -> (String, String) {
     }
 
     // Construct the context line.
-    let line_num = format!("{} | ", line).bright_cyan();
+    let line_num = format!("{} | ", line).color(CONTEXT_COLOR);
     let line_context = format!("{}{}", line_num, &reference[line_start..line_end]);
+
+    // If there's no highlight, return early.
+    if range.start == range.end {
+        return (line_context, String::new())
+    }
+
     // Find the highlight range, eliminating any whitespace that snuck into
     // the token.
     let mut highlight_start = range.start;
@@ -218,8 +244,8 @@ fn run(args: ArgMatches) -> u8 {
         for path in normal_inputs.iter() {
             let file = File::open(path)
                 .map_err(|e| {
-                    eprintln!(
-                        "Failed to open input file '{}': {}", path, e)
+                    report_generic_error!(
+                        "IO Error: Failed to open input file '{}': {}", path, e)
                 }).ok()?;
             info!("Opened non-entrypoint '{}'", path);
             inputs.push(InputFile {
@@ -231,8 +257,8 @@ fn run(args: ArgMatches) -> u8 {
         for path in entrypoint_inputs.iter() {
             let file = File::open(path)
                 .map_err(|e| {
-                    eprintln!(
-                        "Failed to open input file '{}': {}", path, e)
+                    report_generic_error!(
+                        "IO Error: Failed to open input file '{}': {}", path, e)
                 }).ok()?;
             info!("Opened entrypoint '{}'", path);
             inputs.push(InputFile {
@@ -259,8 +285,8 @@ fn run(args: ArgMatches) -> u8 {
             let mut source = String::new();
             input.file.read_to_string(&mut source)
                 .map_err(|e| {
-                    eprintln!(
-                        "Failed to read input file '{}': {}", input.path, e)
+                    report_generic_error!(
+                        "IO Error: Failed to read input file '{}': {}", input.path, e)
                 }).ok()?;
             info!("Read file {}.", i+1);
 
@@ -271,7 +297,8 @@ fn run(args: ArgMatches) -> u8 {
                 Ok(cst) => Program::cast(cst).unwrap(),
                 Err(errors) => {
                     error!("Parsing failed for file {}.", i+1);
-                    report_errors(&errors, &source);
+                    report_errors(&errors, &source, input.path);
+                    report_generic_error!("File '{}' failed to assemble.", input.path);
                     continue;
                 }
             };
@@ -283,8 +310,9 @@ fn run(args: ArgMatches) -> u8 {
                 Ok(gen) => gen,
                 Err(failure) => {
                     error!("Symbol processing failed for file {}.", i+1);
-                    report_warnings(&failure.warnings, &source);
-                    report_errors(&failure.errors, &source);
+                    report_warnings(&failure.warnings, &source, input.path);
+                    report_errors(&failure.errors, &source, input.path);
+                    report_generic_error!("File '{}' failed to assemble.", input.path);
                     continue;
                 }
             };
@@ -295,20 +323,21 @@ fn run(args: ArgMatches) -> u8 {
             match codegen.run(input.entrypoint) {
                 Ok(result) => {
                     info!("Completed codegen for file {}.", i+1);
-                    report_warnings(&result.warnings, &source);
+                    report_warnings(&result.warnings, &source, input.path);
                     // Write output.
                     input.write_output(&result.simobj)
                         .map_err(|e| {
-                            eprintln!(
-                                "Failed to write output file '{}': {}",
+                            report_generic_error!(
+                                "IO Error: Failed to write output file '{}': {}",
                                 input.output_path().display(), e)
                         }).ok()?;
                     info!("Written result for file {}.", i+1);
                 },
                 Err(failure) => {
                     error!("Codegen failed for file {}.", i+1);
-                    report_warnings(&failure.warnings, &source);
-                    report_errors(&failure.errors, &source);
+                    report_warnings(&failure.warnings, &source, input.path);
+                    report_errors(&failure.errors, &source, input.path);
+                    report_generic_error!("File '{}' failed to assemble.", input.path);
                 }
             }
         }
