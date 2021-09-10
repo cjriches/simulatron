@@ -393,17 +393,12 @@ impl CodeGenerator {
         simobj.write_be_u32(num_sections).unwrap();
 
         // Calculate the start offset of each section.
-        let instruction_base = SIMOBJ_HEADER_LEN
-            + st_stats.size        // Symbol table.
-            + SECTION_HEADER_LEN;  // Instruction section header.
-        let readonly_base = instruction_base
-            - if self.code.len() > 0 {0} else {SECTION_HEADER_LEN}  // Instructions might be missing.
-            + self.code.len()      // Instruction section.
-            + SECTION_HEADER_LEN;  // Readonly section header.
-        let readwrite_base = readonly_base
-            - if st_stats.readonly_size > 0 {0} else {SECTION_HEADER_LEN}  // Readonly might be missing.
-            + st_stats.readonly_size  // Readonly section.
-            + SECTION_HEADER_LEN;     // Readwrite section header.
+        let instruction_base =
+              SIMOBJ_HEADER_LEN
+            + st_stats.size
+            + SECTION_HEADER_LEN * usize::try_from(num_sections).unwrap();
+        let readonly_base = instruction_base + self.code.len();
+        let readwrite_base = readonly_base + st_stats.readonly_size;
 
         // Helper macro for symbol names.
         macro_rules! symbol_name_len {
@@ -521,39 +516,49 @@ impl CodeGenerator {
         }
         debug!("Written symbol table.");
 
-        // Sanity check.
-        assert_eq!(readonly_data.len(), st_stats.readonly_size);
-        assert_eq!(readwrite_data.len(), st_stats.readwrite_size);
-        assert_eq!(simobj.len(),
-                   usize::try_from(instruction_base).unwrap() - SECTION_HEADER_LEN);
-
-        // Write code section.
+        // Write section headers.
         if self.code.len() > 0 {
             let flags = FLAG_EXECUTE | if entrypoint {FLAG_ENTRYPOINT} else {0};
             simobj.write_u8(flags).unwrap();
             simobj.write_be_u32(self.code.len().try_into().unwrap()).unwrap();
+            debug!("Written code section header.");
+        }
+        if st_stats.readonly_size > 0 {
+            simobj.write_u8(FLAG_READ).unwrap();
+            simobj.write_be_u32(readonly_data.len().try_into().unwrap()).unwrap();
+            debug!("Written read-only section header.");
+        }
+        if st_stats.readwrite_size > 0 {
+            simobj.write_u8(FLAG_READ | FLAG_WRITE).unwrap();
+            simobj.write_be_u32(readwrite_data.len().try_into().unwrap()).unwrap();
+            debug!("Written read-write section header.");
+        }
+
+        // Sanity check.
+        assert_eq!(readonly_data.len(), st_stats.readonly_size);
+        assert_eq!(readwrite_data.len(), st_stats.readwrite_size);
+        assert_eq!(simobj.len(), usize::try_from(instruction_base).unwrap());
+
+        // Write code section.
+        if self.code.len() > 0 {
             simobj.write_all(self.code.as_slice()).unwrap();
             debug!("Written code section.");
         }
 
         // Sanity check.
-        assert_eq!(simobj.len(), readonly_base - SECTION_HEADER_LEN);
+        assert_eq!(simobj.len(), readonly_base);
 
         // Write read-only data section.
         if st_stats.readonly_size > 0 {
-            simobj.write_u8(FLAG_READ).unwrap();
-            simobj.write_be_u32(readonly_data.len().try_into().unwrap()).unwrap();
             simobj.write_all(readonly_data.as_slice()).unwrap();
             debug!("Written read-only section.");
         }
 
         // Sanity check.
-        assert_eq!(simobj.len(), readwrite_base - SECTION_HEADER_LEN);
+        assert_eq!(simobj.len(), readwrite_base);
 
         // Write read-write data section.
         if st_stats.readwrite_size > 0 {
-            simobj.write_u8(FLAG_READ | FLAG_WRITE).unwrap();
-            simobj.write_be_u32(readwrite_data.len().try_into().unwrap()).unwrap();
             simobj.write_all(readwrite_data.as_slice()).unwrap();
             debug!("Written read-write section.");
         }
