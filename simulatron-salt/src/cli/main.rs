@@ -60,6 +60,10 @@ fn cli() -> App<'static, 'static> {
     include_str!("../../Cargo.toml");
 
     app_from_crate!()
+        .after_help("\
+            Example compilation from assembly to disk image:\n    \
+                salt lib.simasm -E main-func.simasm\n    \
+                silk -t DISK -o disk.img main-func.simobj lib.simobj")
         .arg(Arg::with_name(INPUT_FILES)
             .help("Input assembly files.")
             .takes_value(true)
