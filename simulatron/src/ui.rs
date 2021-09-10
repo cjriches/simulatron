@@ -1,173 +1,323 @@
-use serde_json;
-use std::sync::mpsc::{Receiver, Sender};
+use crossterm::{
+    cursor,
+    event::{
+        self,
+        Event,
+        KeyCode,
+        KeyModifiers,
+    },
+    style::{
+        self,
+        Color,
+    },
+    terminal,
+    queue,
+    QueueableCommand,
+};
+use std::io::{self, Stdout, Write};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc::{Receiver, Sender},
+};
 use std::thread;
-use web_view::{self, Content};
 
 use crate::keyboard::KeyMessage;
 
+// UI Constants.
+const TITLE: &str          = "                             Simulatron 2.0 Terminal                              ";
+const TOP_BORDER: &str     = "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓";
+const SIDE_BORDER: &str    = "┃                                                                                ┃";
+const BOTTOM_BORDER: &str  = "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛";
+
+// Simulatron constants.
+const ROWS: u16 = 25;
+const COLS: u16 = 80;
+const BUF_LEN: usize = ROWS as usize * COLS as usize;
+
+/// Commands that get sent to the UI listener thread.
 #[derive(Debug, PartialEq, Eq)]
-enum InternalUICommand {
-    SetChar {row: u32, col: u32, character: char},
-    SetFg {row: u32, col: u32, r: u8, g: u8, b: u8},
-    SetBg {row: u32, col: u32, r: u8, g: u8, b: u8},
-    SetEnabled(bool),
-    JoinThread,  // This is not exposed by UICommand; only this module can use it.
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct UICommand(InternalUICommand);
-
-#[allow(non_snake_case)]  // We're breaking method naming conventions to simulate the enum names.
-impl UICommand {
-    pub fn SetChar(row: u32, col: u32, character: char) -> Self {
-        UICommand(InternalUICommand::SetChar {row, col, character})
-    }
-
-    pub fn SetFg(row: u32, col: u32, r: u8, g: u8, b: u8) -> Self {
-        UICommand(InternalUICommand::SetFg {row, col, r, g, b})
-    }
-
-    pub fn SetBg(row: u32, col: u32, r: u8, g: u8, b: u8) -> Self {
-        UICommand(InternalUICommand::SetBg {row, col, r, g, b})
-    }
-
-    pub fn SetEnabled(enabled: bool) -> Self {
-        UICommand(InternalUICommand::SetEnabled(enabled))
-    }
-
-    fn JoinThread() -> Self {
-        UICommand(InternalUICommand::JoinThread)
-    }
-
-    fn internal(&self) -> &InternalUICommand {
-        &self.0
-    }
+pub enum UICommand {
+    SetChar {row: u16, col: u16, character: char},
+    SetFg {row: u16, col: u16, r: u8, g: u8, b: u8},
+    SetBg {row: u16, col: u16, r: u8, g: u8, b: u8},
+    CPUHalted,
 }
 
 pub struct UI {
-    ui_tx: Sender<UICommand>,
-    ui_rx: Option<Receiver<UICommand>>,
+    ui_tx: Option<Sender<UICommand>>,
+    ui_rx: Receiver<UICommand>,
     keyboard_tx: Option<Sender<KeyMessage>>,
+    char_buf: Vec<char>,
+    fg_buf: Vec<Color>,
+    bg_buf: Vec<Color>,
 }
 
 impl UI {
-        pub fn new(display_tx: Sender<UICommand>,
-               display_rx: Receiver<UICommand>,
+    pub fn new(ui_tx: Sender<UICommand>,
+               ui_rx: Receiver<UICommand>,
                keyboard_tx: Sender<KeyMessage>) -> Self {
-        UI {
-            ui_tx: display_tx,
-            ui_rx: Some(display_rx),
+        Self {
+            ui_tx: Some(ui_tx),
+            ui_rx,
             keyboard_tx: Some(keyboard_tx),
+            char_buf: vec![' '; BUF_LEN],
+            fg_buf: vec![Color::White; BUF_LEN],
+            bg_buf: vec![Color::Black; BUF_LEN],
         }
     }
 
-    const TITLE_DISABLED: &'static str = "Simulatron 2.0 Standard Terminal [PROCESSOR HALTED]";
-    const TITLE_ENABLED: &'static str = "Simulatron 2.0 Standard Terminal";
+    /// Run the UI, blocking the current thread till it exits.
+    pub fn run(&mut self) -> crossterm::Result<()> {
+        // Initial setup.
+        terminal::enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        queue!(stdout,
+            terminal::EnterAlternateScreen,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::Hide,
+            cursor::MoveTo(0, 0),
+            style::SetForegroundColor(Color::White),
+            style::SetBackgroundColor(Color::Black),
+        )?;
+        write!(stdout, "{}", TITLE)?;
+        stdout.queue(cursor::MoveTo(0, 1))?;
+        write!(stdout, "{}", TOP_BORDER)?;
+        stdout.queue(cursor::MoveTo(0, 2))?;
+        for i in 0..ROWS {
+            write!(stdout, "{}", SIDE_BORDER)?;
+            stdout.queue(cursor::MoveTo(0, i+3))?;
+        }
+        write!(stdout, "{}", BOTTOM_BORDER)?;
+        stdout.flush()?;
 
-    pub fn run(&mut self) {
-        // Take temporary ownership of the channels.
-        // The unwrap is safe, as the only place where those variables are None
-        // is within this method itself.
-        let display_rx = self.ui_rx.take().unwrap();
+        // Launch the keyboard listener thread.
+        let join = Arc::new(AtomicBool::new(false));
+        let join1 = join.clone();
+        let ui_tx = self.ui_tx.take().unwrap();
         let keyboard_tx = self.keyboard_tx.take().unwrap();
 
-        // The frontend gets included in the binary at compile time. However, format! must
-        // wait till run-time.
-        let frontend = format!(include_str!("terminal.html"),
-                               css = include_str!("terminal.css"),
-                               js = include_str!("terminal.js"));
-
-        // Construct the UI. The WebView struct temporarily takes ownership of the keyboard_tx,
-        // it will give it back at the end.
-        // The mut is only necessary in release mode, so disable the warning if in debug mode.
-        #[cfg_attr(debug_assertions, allow(unused_mut))]
-        let mut wv = web_view::builder()
-            .title(UI::TITLE_DISABLED)
-            .content(Content::Html(&frontend))
-            .size(1060, 600)
-            .resizable(false)
-            .user_data(keyboard_tx)
-            .invoke_handler(|web_view, json| {
-                // Parse the JSON message.
-                let (key, ctrl, alt) = serde_json::from_str(json).ok()
-                        .and_then(|value: serde_json::Value| {
-                    let obj = value.as_object()?;
-                    let key = obj.get("key")?.as_str()?;
-                    let ctrl = obj.get("ctrl")?.as_bool()?;
-                    let alt = obj.get("alt")?.as_bool()?;
-                    Some((String::from(key), ctrl, alt))
-                }).ok_or(web_view::Error::Custom(Box::new("Failed to parse JSON")))?;
-                // Inform the keyboard controller.
-                let key_message = KeyMessage::Key(&key, ctrl, alt)
-                    .ok_or(web_view::Error::Custom(Box::new("Unrecognised key.")))?;
-                web_view.user_data().send(key_message).unwrap();
-                Ok(())
-            })
-            .build()
-            .expect("UI failed to load.");
-
-        // Disable right-click and select unless running in debug mode.
-        #[cfg(not(debug_assertions))]
-        {
-            wv.eval("prevent_interaction()").unwrap();
-        }
-
-        // Set up listener thread for display changes. This thread temporarily takes ownership
-        // of display_rx, it will give it back at the end.
-        let wv_handle = wv.handle();
-        let thread_handle = thread::spawn(move || loop {
-            // Receive the next command.
-            let command = display_rx.recv().unwrap();
-            // Match it to the action, executing the corresponding Javascript function.
-            match *command.internal() {
-                InternalUICommand::SetChar {row, col, character} => {
-                    // Turn spaces into nbsps so the cells are properly filled.
-                    let character = if character == ' '
-                        {String::from("&nbsp;")} else {character.to_string()};
-                    wv_handle.dispatch(move |web_view|
-                        web_view.eval(&format!("set_char({},{},'{}')", row, col, character)))
-                            .unwrap();
-                }
-                InternalUICommand::SetFg {row, col, r, g, b} => {
-                    wv_handle.dispatch(move |web_view|
-                        web_view.eval(&format!("set_fg({},{},'rgb({},{},{})')",
-                                               row, col, r, g, b)))
-                            .unwrap();
-                }
-                InternalUICommand::SetBg {row, col, r, g, b} => {
-                    wv_handle.dispatch(move |web_view|
-                        web_view.eval(&format!("set_bg({},{},'rgb({},{},{})')",
-                                               row, col, r, g, b)))
-                            .unwrap();
-                }
-                InternalUICommand::SetEnabled(enable) => {
-                    if enable {
-                        wv_handle.dispatch(|web_view| {
-                            web_view.eval("enable()")?;
-                            web_view.set_title(UI::TITLE_ENABLED)
-                        }).unwrap();
+        let join_handle = thread::spawn(move || loop {
+            match event::read().unwrap() {
+                Event::Key(key) => {
+                    // End on Alt+Shift+C.
+                    if key.code == KeyCode::Char('C') && key.modifiers.contains(
+                        KeyModifiers::union(KeyModifiers::ALT, KeyModifiers::SHIFT)) {
+                        ui_tx.send(UICommand::CPUHalted).unwrap();
                     } else {
-                        wv_handle.dispatch(|web_view| {
-                            web_view.eval("disable()")?;
-                            web_view.set_title(UI::TITLE_DISABLED)
-                        }).unwrap();
+                        // Send the key to the keyboard controller.
+                        if let Some(k) = key_to_u8(key.code) {
+                            let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                            let alt = key.modifiers.contains(KeyModifiers::ALT);
+                            let msg = KeyMessage::Key(k, ctrl, alt);
+                            keyboard_tx.send(msg).unwrap();
+                        }
                     }
                 }
-                InternalUICommand::JoinThread => {
-                    return display_rx;
-                }
+                _ => {}
+            }
+            if join1.load(Ordering::Relaxed) {
+                return (ui_tx, keyboard_tx);
             }
         });
 
-        // Run the UI and wait for it to exit.
-        let keyboard_tx = wv.run().unwrap();
+        // Listen for UICommands.
+        loop {
+            match self.ui_rx.recv().unwrap() {
+                UICommand::SetChar {row, col, character} => {
+                    let index = usize::from(row * COLS + col);
+                    self.char_buf[index] = character;
+                    self.redraw_char(&mut stdout, col, row)?;
+                }
+                UICommand::SetFg {row, col, r, g, b} => {
+                    let index = usize::from(row * COLS + col);
+                    self.fg_buf[index] = Color::from((r, g, b));
+                    self.redraw_char(&mut stdout, col, row)?;
+                }
+                UICommand::SetBg {row, col, r, g, b} => {
+                    let index = usize::from(row * COLS + col);
+                    self.bg_buf[index] = Color::from((r, g, b));
+                    self.redraw_char(&mut stdout, col, row)?;
+                }
+                UICommand::CPUHalted => break,
+            }
+        }
 
-        // Join the listener thread.
-        self.ui_tx.send(UICommand::JoinThread()).unwrap();
-        let display_rx = thread_handle.join().unwrap();
-
-        // Re-acquire ownership of resources.
+        // Join the keyboard thread.
+        join.store(true, Ordering::Relaxed);
+        queue!(stdout,
+            cursor::MoveTo(20, ROWS + 3),
+            style::SetForegroundColor(Color::White),
+            style::SetBackgroundColor(Color::DarkRed),
+        )?;
+        write!(stdout, "Processor halted. Press any key to exit.")?;
+        stdout.flush()?;
+        let (ui_tx, keyboard_tx) = join_handle.join().unwrap();
+        self.ui_tx = Some(ui_tx);
         self.keyboard_tx = Some(keyboard_tx);
-        self.ui_rx = Some(display_rx);
+
+        // Cleanup.
+        queue!(stdout,
+            cursor::Show,
+            terminal::LeaveAlternateScreen,
+        )?;
+        stdout.flush()?;
+        terminal::disable_raw_mode()?;
+        Ok(())
+    }
+
+    /// Redraw the given character.
+    fn redraw_char(&self, stdout: &mut Stdout,
+                   col: u16, row: u16) -> crossterm::Result<()> {
+        let index = usize::from(row * COLS + col);
+        let fg = self.fg_buf[index];
+        let bg = self.bg_buf[index];
+        let character = self.char_buf[index];
+        queue!(stdout,
+            cursor::MoveTo(col + 1, row + 2),  // Account for border.
+            style::SetForegroundColor(fg),
+            style::SetBackgroundColor(bg),
+        )?;
+        write!(stdout, "{}", character)?;
+        stdout.flush()
+    }
+}
+
+fn key_to_u8(key: KeyCode) -> Option<u8> {
+    match key {
+        // 0 is NULL
+        KeyCode::F(1) => Some(1),
+        KeyCode::F(2) => Some(2),
+        KeyCode::F(3) => Some(3),
+        KeyCode::F(4) => Some(4),
+        KeyCode::F(5) => Some(5),
+        KeyCode::F(6) => Some(6),
+        KeyCode::F(7) => Some(7),
+        KeyCode::F(8) => Some(8),
+        KeyCode::F(9) => Some(9),
+        KeyCode::F(10) => Some(10),
+        KeyCode::F(11) => Some(11),
+        KeyCode::F(12) => Some(12),
+        KeyCode::Esc => Some(13),
+        KeyCode::Backspace => Some(14),
+        KeyCode::Enter => Some(15),
+        KeyCode::Insert => Some(16),
+        KeyCode::Delete => Some(17),
+        KeyCode::Home => Some(18),
+        KeyCode::End => Some(19),
+        KeyCode::PageUp => Some(20),
+        KeyCode::PageDown => Some(21),
+        KeyCode::Tab => Some(22),
+        KeyCode::Up => Some(23),
+        KeyCode::Down => Some(24),
+        KeyCode::Left => Some(25),
+        KeyCode::Right => Some(26),
+        // 27 is N/A
+        // 28 is N/A
+        // 29 is N/A
+        // 30 is N/A
+        KeyCode::Char(c) => {
+            match c {
+                '£' => Some(31),
+                ' ' => Some(32),
+                '!' => Some(33),
+                '"' => Some(34),
+                '#' => Some(35),
+                '$' => Some(36),
+                '%' => Some(37),
+                '&' => Some(38),
+                '\'' => Some(39),
+                '(' => Some(40),
+                ')' => Some(41),
+                '*' => Some(42),
+                '+' => Some(43),
+                ',' => Some(44),
+                '-' => Some(45),
+                '.' => Some(46),
+                '/' => Some(47),
+                '0' => Some(48),
+                '1' => Some(49),
+                '2' => Some(50),
+                '3' => Some(51),
+                '4' => Some(52),
+                '5' => Some(53),
+                '6' => Some(54),
+                '7' => Some(55),
+                '8' => Some(56),
+                '9' => Some(57),
+                ':' => Some(58),
+                ';' => Some(59),
+                '<' => Some(60),
+                '=' => Some(61),
+                '>' => Some(62),
+                '?' => Some(63),
+                '@' => Some(64),
+                'A' => Some(65),
+                'B' => Some(66),
+                'C' => Some(67),
+                'D' => Some(68),
+                'E' => Some(69),
+                'F' => Some(70),
+                'G' => Some(71),
+                'H' => Some(72),
+                'I' => Some(73),
+                'J' => Some(74),
+                'K' => Some(75),
+                'L' => Some(76),
+                'M' => Some(77),
+                'N' => Some(78),
+                'O' => Some(79),
+                'P' => Some(80),
+                'Q' => Some(81),
+                'R' => Some(82),
+                'S' => Some(83),
+                'T' => Some(84),
+                'U' => Some(85),
+                'V' => Some(86),
+                'W' => Some(87),
+                'X' => Some(88),
+                'Y' => Some(89),
+                'Z' => Some(90),
+                '[' => Some(91),
+                '\\' => Some(92),
+                ']' => Some(93),
+                '^' => Some(94),
+                '_' => Some(95),
+                '`' => Some(96),
+                'a' => Some(97),
+                'b' => Some(98),
+                'c' => Some(99),
+                'd' => Some(100),
+                'e' => Some(101),
+                'f' => Some(102),
+                'g' => Some(103),
+                'h' => Some(104),
+                'i' => Some(105),
+                'j' => Some(106),
+                'k' => Some(107),
+                'l' => Some(108),
+                'm' => Some(109),
+                'n' => Some(110),
+                'o' => Some(111),
+                'p' => Some(112),
+                'q' => Some(113),
+                'r' => Some(114),
+                's' => Some(115),
+                't' => Some(116),
+                'u' => Some(117),
+                'v' => Some(118),
+                'w' => Some(119),
+                'x' => Some(120),
+                'y' => Some(121),
+                'z' => Some(122),
+                '{' => Some(123),
+                '|' => Some(124),
+                '}' => Some(125),
+                '~' => Some(126),
+                '¬' => Some(127),
+                _ => None,
+            }
+        }
+        _  => None,
     }
 }

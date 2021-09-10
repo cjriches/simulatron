@@ -10,14 +10,6 @@ macro_rules! privileged {
     }}
 }
 
-// Println only in debug mode.
-macro_rules! debug {
-    ($($x:expr),*) => {{
-        #[cfg(debug_assertions)]
-        println!($($x),*);
-    }}
-}
-
 // Make flags from the result of an integer operation.
 macro_rules! make_flags_int {
     ($ans:expr, $carry:expr, $overflow:expr) => {{

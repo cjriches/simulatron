@@ -6,6 +6,7 @@ mod macros;   // Macros moved to separate file due to length.
 #[cfg(test)]  // Unit tests moved to separate file due to length.
 mod tests;
 
+use log::debug;
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Sub};
 use std::sync::mpsc;
 use std::thread;
@@ -266,13 +267,12 @@ impl<D: DiskController + 'static> CPU<D> {
             // Setup.
             internal.mmu.start();
             internal.start_timer();
-            internal.ui_tx.send(UICommand::SetEnabled(true)).unwrap();
 
             // Main loop.
             internal.cpu_loop();
 
             // Cleanup.
-            internal.ui_tx.send(UICommand::SetEnabled(false)).unwrap();
+            internal.ui_tx.send(UICommand::CPUHalted).unwrap();
             internal.stop_timer();
             internal.mmu.stop();
 
@@ -457,7 +457,6 @@ impl<D: DiskController> CPUInternal<D> {
         // Fetch next instruction.
         let opcode: u8 = fetch!(Byte);
         // Decode and execute instruction.
-        debug!();
         match opcode {
             0x00 => {  // HALT
                 debug!("HALT");
