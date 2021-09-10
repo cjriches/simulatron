@@ -1,9 +1,11 @@
 use std::sync::mpsc::Sender;
 
-use crate::cpu::{CPUError::TryAgainError, CPUResult, INTERRUPT_ILLEGAL_OPERATION, INTERRUPT_PAGE_FAULT};
+use crate::cpu::{CPUError::TryAgainError, CPUResult,
+                 INTERRUPT_ILLEGAL_OPERATION, INTERRUPT_PAGE_FAULT};
 use crate::disk::DiskController;
 use crate::display::DisplayController;
 use crate::keyboard::KeyboardController;
+use crate::ram::RAM;
 
 pub const PAGE_FAULT_INVALID_PAGE: u32 = 0;
 pub const PAGE_FAULT_ILLEGAL_ACCESS: u32 = 1;
@@ -29,8 +31,7 @@ const BEGIN_RAM: u32 = 0x4000;                  // Read/Write
 const INTERRUPT_VECTOR_SIZE: usize = (BEGIN_RESERVED_1 - BEGIN_INTERRUPT_VECTOR) as usize;
 type InterruptVector = [u8; INTERRUPT_VECTOR_SIZE];
 
-const RAM_SIZE: usize = (u32::MAX - BEGIN_RAM + 1) as usize;
-type RAM = Vec<u8>;
+pub const RAM_SIZE: usize = (u32::MAX - BEGIN_RAM + 1) as usize;
 
 pub const ROM_SIZE: usize = (BEGIN_DISPLAY - BEGIN_ROM) as usize;
 pub type ROM = [u8; ROM_SIZE];
@@ -67,7 +68,7 @@ impl<D: DiskController> MMU<D> {
             disk_b,
             display,
             keyboard,
-            ram: vec![0; RAM_SIZE],
+            ram: RAM::new(),
             rom,
             pfsr: 0,
         }

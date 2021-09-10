@@ -3,6 +3,7 @@ mod display;
 mod disk;
 mod keyboard;
 mod mmu;
+mod ram;
 mod ui;
 
 use std::sync::mpsc;
