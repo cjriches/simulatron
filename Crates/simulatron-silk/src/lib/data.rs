@@ -32,6 +32,8 @@ pub const INVALID_FLAGS: u8 = !(FLAG_ENTRYPOINT | FLAG_READ
 // Simulatron-specific constants.
 pub const ROM_SIZE: usize = 512;
 pub const DISK_ALIGN: usize = 4096;
+pub const ROM_BASE: u32 = 0x40;
+pub const DISK_BASE: u32 = 0x4000;
 
 /// An object code section.
 #[derive(Debug)]

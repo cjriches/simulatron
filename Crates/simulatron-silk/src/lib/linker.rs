@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::{Display, Formatter};
 
-use crate::data::{DISK_ALIGN, FLAG_ENTRYPOINT, FLAG_EXECUTE,
-                  FLAG_WRITE, INVALID_FLAGS,
-                  ObjectFile, ROM_SIZE, Section,
+use crate::data::{DISK_ALIGN, DISK_BASE, FLAG_ENTRYPOINT,
+                  FLAG_EXECUTE, FLAG_WRITE, INVALID_FLAGS,
+                  ObjectFile, ROM_BASE, ROM_SIZE, Section,
                   SYMBOL_TYPE_EXTERNAL,
                   SYMBOL_TYPE_INTERNAL, SYMBOL_TYPE_PUBLIC};
 use crate::error::{OFError, OFResult};
@@ -138,7 +138,7 @@ impl Linker {
     pub fn link_as_rom(self) -> OFResult<Vec<u8>> {
         // Generate image.
         info!("Generating ROM image.");
-        let mut image = self.link_as_image(READ_ONLY)?;
+        let mut image = self.link_as_image(READ_ONLY, ROM_BASE)?;
         info!("Image generated.");
         debug!("Raw size: {} bytes.", image.len());
         // Ensure it is the correct size.
@@ -154,7 +154,7 @@ impl Linker {
     pub fn link_as_disk(self) -> OFResult<Vec<u8>> {
         // Generate image.
         info!("Generating disk image.");
-        let mut image = self.link_as_image(READ_WRITE)?;
+        let mut image = self.link_as_image(READ_WRITE, DISK_BASE)?;
         info!("Image generated.");
         debug!("Raw size: {} bytes.", image.len());
         // Pad it to the next multiple of DISK_ALIGN.
@@ -169,7 +169,8 @@ impl Linker {
     }
 
     /// Process into a generic, unpadded image.
-    fn link_as_image(mut self, read_only: ImageAccess) -> OFResult<Vec<u8>> {
+    fn link_as_image(mut self, read_only: ImageAccess,
+                     base_address: u32) -> OFResult<Vec<u8>> {
         let data = &mut self.data;
 
         // Find the entrypoint section.
@@ -226,7 +227,11 @@ impl Linker {
             assert_or_error!(symbol.value.is_some(),
                 format!("Unresolved symbol: {}", name));
             // Relocate the value.
-            let value = relocate(symbol.value.unwrap()).to_be_bytes();
+            let value = {
+                let value = symbol.value.unwrap();
+                let value = base_address + relocate(value);
+                value.to_be_bytes()
+            };
             // Resolve the references.
             for reference in symbol.references.iter() {
                 // Relocate the reference.

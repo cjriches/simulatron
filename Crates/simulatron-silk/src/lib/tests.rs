@@ -2,10 +2,11 @@ use super::*;
 
 use insta::{assert_snapshot, assert_display_snapshot};
 use log::info;
-use simulatron_utils::hexprint::pretty_print_hex_block_zero;
+use simulatron_utils::hexprint::pretty_print_hex_block;
+use std::convert::TryInto;
 use std::fs::File;
 
-use crate::data::{DISK_ALIGN, ROM_SIZE};
+use crate::data::{DISK_ALIGN, DISK_BASE, ROM_BASE, ROM_SIZE};
 
 /// Initialise logging.
 pub fn init() {
@@ -51,9 +52,14 @@ macro_rules! parse_files {
     }};
 }
 
-/// Format the given Vec<u8> nicely and then snapshot it.
-macro_rules! assert_image_snapshot {
-    ($img:expr) => { assert_snapshot!(pretty_print_hex_block_zero($img)) }
+macro_rules! assert_rom_snapshot {
+    ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img,
+                        ROM_BASE.try_into().unwrap())) }
+}
+
+macro_rules! assert_disk_snapshot {
+    ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img,
+                        DISK_BASE.try_into().unwrap())) }
 }
 
 /// The simplest possible file: no symbols, one entrypoint section
@@ -94,7 +100,7 @@ fn test_single_symbol_link() {
     init();
     let parsed = parse_files!("examples/single-symbol.simobj").unwrap();
     let rom = parsed.link_as_rom().unwrap();
-    assert_image_snapshot!(&rom);
+    assert_rom_snapshot!(&rom);
 }
 
 /// A file with a single symbol called foo, and multiple sections.
@@ -110,7 +116,7 @@ fn test_multi_section_link() {
     init();
     let parsed = parse_files!("examples/multi-section.simobj").unwrap();
     let rom = parsed.link_as_rom().unwrap();
-    assert_image_snapshot!(&rom);
+    assert_rom_snapshot!(&rom);
 }
 
 /// A file with multiple symbols, and a single entrypoint section.
@@ -126,7 +132,7 @@ fn test_multi_symbol_link() {
     init();
     let parsed = parse_files!("examples/multi-symbol.simobj").unwrap();
     let rom = parsed.link_as_rom().unwrap();
-    assert_image_snapshot!(&rom);
+    assert_rom_snapshot!(&rom);
 }
 
 /// Combine the single-symbol and multi-section files.
@@ -219,7 +225,7 @@ fn test_writable() {
 
     let parsed = parse_files!("examples/writable-section.simobj").unwrap();
     let disk = parsed.link_as_disk().unwrap();
-    assert_image_snapshot!(&disk);
+    assert_disk_snapshot!(&disk);
 }
 
 /// Test with a single empty section.
