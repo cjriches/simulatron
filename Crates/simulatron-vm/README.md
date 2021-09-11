@@ -15,4 +15,4 @@ However, if you do not have enough free memory and the 4GiB allocation is failin
 This has a small performance penalty due to the extra indirection.
 
 ## Usage
-TODO
+`simulatron --help`

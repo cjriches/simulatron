@@ -12,8 +12,14 @@ fn cli() -> App<'static, 'static> {
     include_str!("../../Cargo.toml");
 
     app_from_crate!()
+        .max_term_width(100)
+        .after_help("\
+This is the Simulatron Virtual Machine. To launch a Simulatron VM, simply \
+specify the ROM file to load. This will launch the Simulatron Terminal in \
+your console, which will capture all keyboard input. The terminal will exit \
+when the VM halts; this can be triggered manually by pressing Alt+Shift+C.")
         .arg(Arg::with_name(ROM_PATH)
-            .help("The path to the ROM file to use.")
+            .help("The path to the ROM file to use (must be exactly 512 bytes).")
             .takes_value(true)
             .required(true))
         .arg(Arg::with_name(DISK_A_PATH)
