@@ -1,11 +1,19 @@
 [package]
-name = "simulatron"
+name = "simulatron-vm"
 description = "Simulatron Virtual Machine"
 version = "2.0.0-alpha"
 authors = ["Chris Riches <chrisriches42@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "simulatron_vm"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "simulatron"
+path = "src/cli/main.rs"
 
 [features]
 lazy-ram = ["ahash"]

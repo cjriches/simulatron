@@ -1,4 +1,4 @@
-use ast_gen::{derive_ast_nodes, derive_token_casts};
+use ast_sourcegen::{derive_ast_nodes, derive_token_casts};
 use std::convert::TryInto;
 use std::ops::Range;
 use std::str::FromStr;

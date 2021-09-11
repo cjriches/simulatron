@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "simulatron-salt",
+    "simulatron-salt/ast-sourcegen",
+    "simulatron-silk",
+    "simulatron-utils",
+    "simulatron-vm",
+]
