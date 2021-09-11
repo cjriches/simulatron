@@ -15,6 +15,3 @@ Files specified with the `-E` option will be compiled as entrypoints, starting a
 
 ## Usage
 `salt --help`
-
-## Build Prerequisites
-None; a simple `cargo build --release` should succeed.

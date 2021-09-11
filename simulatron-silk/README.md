@@ -17,6 +17,3 @@ Silk can create a disk image when passed `-t 'DISK'`. This produces a Simulatron
 Silk can create ROM images when passed `-t 'ROM'`. This produces a Simulatron-executable file exactly 512 bytes in size, padding with zero if too small and failing if too large. Since ROM is by definition read-only, any section with the write permission set will produce an error.
 
 Note that the only difference between creating a disk image and a ROM image is the length/padding/permissions. Both create a directly executable image that is otherwise identical.
-
-## Build Prerequisites
-None; a simple `cargo build --release` should succeed.
