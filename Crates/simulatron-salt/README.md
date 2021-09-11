@@ -4,7 +4,7 @@
 ## Overview
 Salt transforms assembly language files (`*.simasm`) into object code files (`*.simobj`). Object code files can then be linked into different forms of executable by [Silk](../simulatron-silk/README.md).
 
-For a definition of the assembly language, see [Assembly Language](../Documentation/assembly-language.md).
+For a definition of the assembly language, see [Assembly Language](../../Documentation/assembly-language.md).
 
 ## Implementation-Specific Behaviour
 The SimAsm assembly specification leaves a few things as implementation-defined: the behaviour of public constants, and the selection of an entrypoint.

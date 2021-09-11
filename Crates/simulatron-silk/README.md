@@ -4,7 +4,7 @@
 ## Overview
 Silk links together one or more object code files (`*.simobj`) into various forms of executable.
 
-For a definition of the object code format, see [Object Code](../Documentation/object-code.md).
+For a definition of the object code format, see [Object Code](../../Documentation/object-code.md).
 
 ## Usage
 `silk --help`

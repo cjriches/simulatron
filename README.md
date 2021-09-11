@@ -18,11 +18,14 @@ General documentation can be found in [Documentation](Documentation). Package-sp
 * Assembly language and object code format specification, with an assembler and linker.
 * Cross-platform support: Simulatron runs on Linux and Windows, and should run on Mac too (although this is untested).
 
-## History
-Simulatron V1 was a similar project smaller in scope, with a 16-bit CPU design that lacked memory management or privilege modes. It was never made open-source. Simulatron V2 is a from-scratch redesign and rewrite, designed to be more powerful, more performant, and capable of supporting an operating system. Indeed, the long-term goal is to create an operating system that runs on Simulatron.
+## Building
+The Simulatron project is written in 100% Rust, and uses the standard Cargo build system. Ensure you have an [up-to-date Rust toolchain](https://www.rust-lang.org/learn/get-started). Each package can then be built by navigating to its directory (e.g. [Crates/simulatron-vm/](Crates/simulatron-vm)) and running `cargo build --release`. The resulting binaries can be found at `Crates/target/release/`. To install to your system path, instead run `cargo install --path .`.
 
 ## Project State
 Simulatron V2 is nearing the end of its alpha period during which a minimal working system is developed. Soon, a beta polish/bugfix period will begin.
+
+## History
+Simulatron V1 was a similar project smaller in scope, with a 16-bit CPU design that lacked memory management or privilege modes. It was never made open-source. Simulatron V2 is a from-scratch redesign and rewrite, designed to be more powerful, more performant, and capable of supporting an operating system. Indeed, the long-term goal is to create an operating system that runs on Simulatron.
 
 ## Contributing
 As Simulatron is a hobby project undertaken for my own learning, I neither expect nor desire any other contributors. However, feel free to hack the code locally. The project is licensed under MIT; see [the full license](LICENSE).
