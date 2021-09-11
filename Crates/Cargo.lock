@@ -804,6 +804,7 @@ name = "simulatron-vm"
 version = "2.0.0-alpha"
 dependencies = [
  "ahash",
+ "clap",
  "crossterm",
  "log",
  "notify",

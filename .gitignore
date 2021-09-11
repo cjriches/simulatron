@@ -3,3 +3,6 @@
 
 # Rust compiled results
 target/
+
+# ROM files for Simulatron.
+ROM
