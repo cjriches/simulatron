@@ -158,6 +158,7 @@ impl UI {
 
         // Cleanup.
         queue!(stdout,
+            style::ResetColor,
             cursor::Show,
             terminal::LeaveAlternateScreen,
         )?;
