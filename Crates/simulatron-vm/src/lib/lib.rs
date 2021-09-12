@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use crate::disk::RealDiskController;
 pub use crate::mmu::ROM_SIZE;
 
-pub fn run(rom: [u8; ROM_SIZE]) {
+pub fn run(rom: [u8; ROM_SIZE], disk_a_path: &str, disk_b_path: &str) {
     // Create communication channels.
     let (interrupt_tx, interrupt_rx) = mpsc::channel();
     let interrupt_tx_keyboard = interrupt_tx.clone();
@@ -26,11 +26,11 @@ pub fn run(rom: [u8; ROM_SIZE]) {
 
     // Create components.
     let disk_a = RealDiskController::new(
-        String::from("DiskA"),
+        disk_a_path,
         interrupt_tx_disk_a,
         cpu::INTERRUPT_DISK_A);
     let disk_b = RealDiskController::new(
-        String::from("DiskB"),
+        disk_b_path,
         interrupt_tx_disk_b,
         cpu::INTERRUPT_DISK_B);
     let display = display::DisplayController::new(ui_tx_display);
