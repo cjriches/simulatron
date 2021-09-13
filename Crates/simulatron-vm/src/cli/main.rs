@@ -4,12 +4,14 @@ use clap::{App, app_from_crate, Arg, arg_enum, ArgMatches,
 use simplelog::{ConfigBuilder, LevelFilter, LevelPadding, WriteLogger};
 use std::convert::TryInto;
 use std::fs::{self, File};
+use std::io::{self, Write};
 
 const ROM_PATH: &str = "ROM_PATH";
 const DISK_A_PATH: &str = "DISK_A_PATH";
 const DISK_B_PATH: &str = "DISK_B_PATH";
 const LOG_PATH: &str = "LOG_PATH";
 const LOG_LEVEL: &str = "LOG_LEVEL";
+const INIT: &str = "INIT";
 
 const DISK_MSG: &str = "\
 Simulatron needs a directory for each virtual disk; these must be\n\
@@ -41,18 +43,19 @@ keyboard input. The terminal will exit when the VM halts; this can be \
 triggered manually by pressing Alt+Shift+Q.")
         .arg(Arg::with_name(ROM_PATH)
             .help("The path to the ROM file to use (must be exactly 512 bytes).")
+            .long("rom")
             .takes_value(true)
-            .required(true))
+            .default_value("./ROM"))
         .arg(Arg::with_name(DISK_A_PATH)
-            .help("The path to the folder for Disk A (defaults to ./DiskA).")
+            .help("The path to the folder for Disk A.")
             .long("disk-a")
             .takes_value(true)
-            .default_value("DiskA"))
+            .default_value("./DiskA"))
         .arg(Arg::with_name(DISK_B_PATH)
-            .help("The path to the folder for Disk B (defaults to ./DiskB).")
+            .help("The path to the folder for Disk B.")
             .long("disk-b")
             .takes_value(true)
-            .default_value("DiskB"))
+            .default_value("./DiskB"))
         .arg(Arg::with_name(LOG_PATH)
             .help("If set, a debug log will be written to the given path.")
             .short("l")
@@ -67,6 +70,13 @@ triggered manually by pressing Alt+Shift+Q.")
             .default_value("TRACE")
             .possible_values(&LogLevel::variants())
             .case_insensitive(true))
+        .arg(Arg::with_name(INIT)
+            .help("Instead of running the VM, create a new skeleton directory \
+                   layout suitable for running a VM. Creates the following \
+                   directories: './simulatron/', './simulatron/DiskA/', \
+                   './simulatron/DiskB/', and a placeholder './simulatron/ROM' \
+                   file that simply halts the processor.")
+            .long("init"))
 }
 
 /// Ensure that the given path exists and is a directory.
@@ -113,6 +123,27 @@ fn run(args: ArgMatches) -> u8 {
     };
 
     fn _run(args: ArgMatches) -> Result<(), String> {
+        // Check for init option.
+        if args.is_present(INIT) {
+            return match create_skeleton() {
+                Ok(_) => {
+                    eprintln!("Successfully created simulatron skeleton.");
+                    Ok(())
+                }
+                Err(e) => {
+                    Err(format!(
+                        "Failed to create simulatron skeleton: {}", e))
+                }
+            };
+
+            fn create_skeleton() -> io::Result<()> {
+                fs::create_dir_all("./simulatron/DiskA")?;
+                fs::create_dir_all("./simulatron/DiskB")?;
+                File::create("./simulatron/ROM").and_then(|mut f|
+                    f.write_all(&[0; simulatron_vm::ROM_SIZE]))
+            }
+        }
+
         // Load ROM.
         let path = args.value_of(ROM_PATH).unwrap();
         let rom = match fs::read(path) {
