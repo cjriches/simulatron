@@ -89,25 +89,12 @@ fn logging_format(formatter: &mut env_logger::fmt::Formatter,
     writeln!(formatter, "{:>7}  {}", style.value(record.level()), record.args())
 }
 
-/// Logging setup for normal build (not testing).
-#[cfg(not(test))]
 fn init_logging(level: LevelFilter) {
     env_logger::Builder::new()
         .filter_level(level)
         .format(logging_format)
         .target(env_logger::Target::Stdout)
         .init();
-}
-
-/// Logging setup for testing build (properly captures stdout and ignores
-/// multiple invocations).
-#[cfg(test)]
-fn init_logging(level: LevelFilter) {
-    let _ = env_logger::Builder::new()
-        .filter_level(level)
-        .format(logging_format)
-        .is_test(true)
-        .try_init();
 }
 
 /// Report compiler errors to the user.
