@@ -53,15 +53,18 @@ pub fn run(rom: [u8; ROM_SIZE], disk_a_path: &str, disk_b_path: &str) {
 /// Initialise logging for tests.
 #[cfg(test)]
 pub fn init_test_logging() {
-    use std::io::Write;
+    use simplelog::{ConfigBuilder, LevelFilter, LevelPadding, TestLogger};
+
+    let config = ConfigBuilder::new()
+        .set_level_padding(LevelPadding::Right)
+        .set_location_level(LevelFilter::Off)
+        .set_target_level(LevelFilter::Off)
+        .set_thread_level(LevelFilter::Off)
+        .set_time_level(LevelFilter::Off)
+        .add_filter_ignore_str("mio")
+        .build();
 
     // The logger can only be initialised once, but we don't know the order of
-    // tests. Therefore we use `try_init` and ignore the result.
-    let _ = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("trace"))
-        .format(|out, record| {
-            writeln!(out, "{:>7} {}", record.level(), record.args())
-        })
-        .is_test(true)
-        .try_init();
+    // tests. Therefore ignore the result.
+    let _ = TestLogger::init(LevelFilter::Trace, config);
 }

@@ -24,7 +24,7 @@ clap = "2.33.3"
 crossterm = "0.21.0"
 log = "0.4.14"
 notify = "=5.0.0-pre.13"  # Since this is a pre-release, pin the exact version.
-simplelog = "0.10.0"
+simplelog = { version = "0.10.0", features = ["test"] }
 
 [dev-dependencies]
 ntest="0.7.3"
