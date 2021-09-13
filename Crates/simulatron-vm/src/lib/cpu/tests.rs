@@ -2,6 +2,7 @@ use super::*;
 
 use ntest::{assert_about_eq, timeout};
 
+use crate::init_test_logging;
 use crate::disk::MockDiskController;
 use crate::display::DisplayController;
 use crate::keyboard::{KeyboardController, KeyMessage};
@@ -11,6 +12,8 @@ use crate::ui::UICommand;
 fn run(rom: ROM, keypress: Option<KeyMessage>,
        interrupt_tx: mpsc::Sender<u32>,
        interrupt_rx: mpsc::Receiver<u32>) -> (CPU<MockDiskController>, Vec<UICommand>) {
+    init_test_logging();
+
     // Create communication channels.
     let interrupt_tx_keyboard = interrupt_tx.clone();
     let interrupt_tx_mmu = interrupt_tx.clone();

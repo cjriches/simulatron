@@ -14,6 +14,7 @@ use crossterm::{
     queue,
     QueueableCommand,
 };
+use log::info;
 use std::io::{self, Stdout, Write};
 use std::sync::{
     Arc,
@@ -44,6 +45,7 @@ pub enum UICommand {
     CPUHalted,
 }
 
+/// The UI state.
 pub struct UI {
     ui_tx: Option<Sender<UICommand>>,
     ui_rx: Receiver<UICommand>,
@@ -54,6 +56,7 @@ pub struct UI {
 }
 
 impl UI {
+    /// Construct a new UI state. Nothing happens till it is run.
     pub fn new(ui_tx: Sender<UICommand>,
                ui_rx: Receiver<UICommand>,
                keyboard_tx: Sender<KeyMessage>) -> Self {
@@ -69,17 +72,20 @@ impl UI {
 
     /// Run the UI, blocking the current thread till it exits.
     pub fn run(&mut self) -> crossterm::Result<()> {
+        info!("Initialising UI.");
         // Initial setup.
         terminal::enable_raw_mode()?;
         let mut stdout = io::stdout();
+        // Move to alternate screen and clear it.
         queue!(stdout,
             terminal::EnterAlternateScreen,
+            style::SetForegroundColor(Color::White),
+            style::SetBackgroundColor(Color::Black),
             terminal::Clear(terminal::ClearType::All),
             cursor::Hide,
             cursor::MoveTo(0, 0),
-            style::SetForegroundColor(Color::White),
-            style::SetBackgroundColor(Color::Black),
         )?;
+        // Draw the border.
         write!(stdout, "{}", TITLE)?;
         stdout.queue(cursor::MoveTo(0, 1))?;
         write!(stdout, "{}", TOP_BORDER)?;
@@ -100,8 +106,8 @@ impl UI {
         let join_handle = thread::spawn(move || loop {
             match event::read().unwrap() {
                 Event::Key(key) => {
-                    // End on Alt+Shift+C.
-                    if key.code == KeyCode::Char('C') && key.modifiers.contains(
+                    // Quit on Alt+Shift+Q.
+                    if key.code == KeyCode::Char('Q') && key.modifiers.contains(
                         KeyModifiers::union(KeyModifiers::ALT, KeyModifiers::SHIFT)) {
                         ui_tx.send(UICommand::CPUHalted).unwrap();
                     } else {
@@ -114,14 +120,16 @@ impl UI {
                         }
                     }
                 }
-                _ => {}
+                _ => {}  // Ignore non-keyboard events.
             }
+            // Check if we should join the thread.
             if join1.load(Ordering::Relaxed) {
                 return (ui_tx, keyboard_tx);
             }
         });
 
         // Listen for UICommands.
+        info!("UI online.");
         loop {
             match self.ui_rx.recv().unwrap() {
                 UICommand::SetChar {row, col, character} => {
@@ -143,7 +151,7 @@ impl UI {
             }
         }
 
-        // Join the keyboard thread.
+        // Join the keyboard listener thread.
         join.store(true, Ordering::Relaxed);
         queue!(stdout,
             cursor::MoveTo(20, ROWS + 3),
@@ -158,12 +166,15 @@ impl UI {
 
         // Cleanup.
         queue!(stdout,
+            terminal::Clear(terminal::ClearType::All),
             style::ResetColor,
             cursor::Show,
             terminal::LeaveAlternateScreen,
         )?;
         stdout.flush()?;
         terminal::disable_raw_mode()?;
+
+        info!("UI exited.");
         Ok(())
     }
 
@@ -184,6 +195,8 @@ impl UI {
     }
 }
 
+/// Try to convert a `KeyCode` to the Simulatron character set representation
+/// of that key.
 fn key_to_u8(key: KeyCode) -> Option<u8> {
     match key {
         // 0 is NULL

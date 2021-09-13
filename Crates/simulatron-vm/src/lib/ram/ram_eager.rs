@@ -2,6 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use crate::mmu::RAM_SIZE;
 
+/// Eager RAM implementation: single monolithic vector.
 pub struct RAM {
     data: Vec<u8>,
 }

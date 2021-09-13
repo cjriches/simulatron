@@ -9,7 +9,10 @@ const PAGE_MASK: usize = PAGE_SIZE - 1;
 const NUM_PAGES: usize = (RAM_SIZE >> PAGE_SHIFT)
     + if RAM_SIZE % PAGE_SIZE > 0 {1} else {0};
 
+/// Lazy RAM implementation: hashmap from page number to page.
 pub struct RAM {
+    /// `ahash` is faster than the standard hasher, and cryptographic security
+    /// doesn't matter here.
     data: AHashMap<usize, Vec<u8>>,
 }
 

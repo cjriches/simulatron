@@ -1,5 +1,6 @@
 use super::disk_interface::*;
 
+/// A mock disk controller that does nothing, used when testing other components.
 pub struct MockDiskController;
 
 impl DiskController for MockDiskController {

@@ -11,6 +11,7 @@ use std::sync::mpsc;
 use crate::disk::RealDiskController;
 pub use crate::mmu::ROM_SIZE;
 
+/// Run the simulatron with the given ROM and disk directories.
 pub fn run(rom: [u8; ROM_SIZE], disk_a_path: &str, disk_b_path: &str) {
     // Create communication channels.
     let (interrupt_tx, interrupt_rx) = mpsc::channel();
@@ -47,4 +48,20 @@ pub fn run(rom: [u8; ROM_SIZE], disk_a_path: &str, disk_b_path: &str) {
     cpu.start();
     ui.run().unwrap();
     cpu.stop();
+}
+
+/// Initialise logging for tests.
+#[cfg(test)]
+pub fn init_test_logging() {
+    use std::io::Write;
+
+    // The logger can only be initialised once, but we don't know the order of
+    // tests. Therefore we use `try_init` and ignore the result.
+    let _ = env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("trace"))
+        .format(|out, record| {
+            writeln!(out, "{:>7} {}", record.level(), record.args())
+        })
+        .is_test(true)
+        .try_init();
 }

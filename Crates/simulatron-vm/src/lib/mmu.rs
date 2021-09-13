@@ -7,11 +7,13 @@ use crate::display::DisplayController;
 use crate::keyboard::KeyboardController;
 use crate::ram::RAM;
 
+// Page fault types.
 pub const PAGE_FAULT_INVALID_PAGE: u32 = 0;
 pub const PAGE_FAULT_ILLEGAL_ACCESS: u32 = 1;
 pub const PAGE_FAULT_NOT_PRESENT: u32 = 2;
 pub const PAGE_FAULT_COW: u32 = 3;
 
+// Memory-mapped zones.
 const BEGIN_INTERRUPT_VECTOR: u32 = 0x0000;     // Read/Write
 const BEGIN_RESERVED_1: u32 = 0x0020;           // No access
 const BEGIN_ROM: u32 = 0x0040;                  // Read-only
@@ -36,14 +38,17 @@ pub const RAM_SIZE: usize = (u32::MAX - BEGIN_RAM + 1) as usize;
 pub const ROM_SIZE: usize = (BEGIN_DISPLAY - BEGIN_ROM) as usize;
 pub type ROM = [u8; ROM_SIZE];
 
+/// The intent behind a memory access: important for checking virtual
+/// memory permissions.
 enum Intent {
     Read,
     Write,
     Execute,
 }
 
-pub struct MMU<D: DiskController> {
-    interrupt_channel: Sender<u32>,
+/// A memory management unit.
+pub struct MMU<D> {
+    interrupt_tx: Sender<u32>,
     interrupt_vector: InterruptVector,
     disk_a: D,
     disk_b: D,
@@ -55,14 +60,15 @@ pub struct MMU<D: DiskController> {
 }
 
 impl<D: DiskController> MMU<D> {
-    pub fn new(interrupt_channel: Sender<u32>,
+    /// Construct a new MMU.
+    pub fn new(interrupt_tx: Sender<u32>,
                disk_a: D,
                disk_b: D,
                display: DisplayController,
                keyboard: KeyboardController,
                rom: ROM) -> Self {
         MMU {
-            interrupt_channel,
+            interrupt_tx,
             interrupt_vector: [0; INTERRUPT_VECTOR_SIZE],
             disk_a,
             disk_b,
@@ -74,18 +80,21 @@ impl<D: DiskController> MMU<D> {
         }
     }
 
+    /// Start all the peripherals mapped by the MMU. Panics if already running.
     pub fn start(&mut self) {
         self.disk_a.start();
         self.disk_b.start();
         self.keyboard.start();
     }
 
+    /// Stop all the peripherals mapped by the MMU. Panics if not running.
     pub fn stop(&mut self) {
         self.disk_a.stop();
         self.disk_b.stop();
         self.keyboard.stop();
     }
 
+    /// Read the page fault status register.
     pub fn page_fault_status_register(&self) -> u32 {
         self.pfsr
     }
@@ -132,7 +141,7 @@ impl<D: DiskController> MMU<D> {
     pub fn store_physical_8(&mut self, address: u32, value: u8) -> CPUResult<()> {
         macro_rules! reject {
             () => {{
-                self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                 Err(TryAgainError)
             }};
         }
@@ -184,7 +193,7 @@ impl<D: DiskController> MMU<D> {
     pub fn load_physical_8(&self, address: u32) -> CPUResult<u8> {
         macro_rules! reject {
             () => {{
-                self.interrupt_channel.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                 Err(TryAgainError)
             }};
         }
@@ -240,7 +249,7 @@ impl<D: DiskController> MMU<D> {
         // Check it's valid.
         if (directory_entry & 1) == 0 {
             self.pfsr = PAGE_FAULT_INVALID_PAGE;
-            self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
+            self.interrupt_tx.send(INTERRUPT_PAGE_FAULT).unwrap();
             return Err(TryAgainError);
         }
         // Find the page table entry.
@@ -250,13 +259,13 @@ impl<D: DiskController> MMU<D> {
         // Check it's valid.
         if (page_table_entry & 1) == 0 {
             self.pfsr = PAGE_FAULT_INVALID_PAGE;
-            self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
+            self.interrupt_tx.send(INTERRUPT_PAGE_FAULT).unwrap();
             return Err(TryAgainError);
         }
         // Check it's present.
         if (page_table_entry & 2) == 0 {
             self.pfsr = PAGE_FAULT_NOT_PRESENT;
-            self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
+            self.interrupt_tx.send(INTERRUPT_PAGE_FAULT).unwrap();
             return Err(TryAgainError);
         }
         // Check permissions.
@@ -267,14 +276,14 @@ impl<D: DiskController> MMU<D> {
         };
         if legal == 0 {
             self.pfsr = PAGE_FAULT_ILLEGAL_ACCESS;
-            self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
+            self.interrupt_tx.send(INTERRUPT_PAGE_FAULT).unwrap();
             return Err(TryAgainError);
         }
         // Check COW.
         if let Intent::Write = intent {
             if (page_table_entry & 32) != 0 {
                 self.pfsr = PAGE_FAULT_COW;
-                self.interrupt_channel.send(INTERRUPT_PAGE_FAULT).unwrap();
+                self.interrupt_tx.send(INTERRUPT_PAGE_FAULT).unwrap();
                 return Err(TryAgainError);
             }
         }
@@ -294,6 +303,7 @@ mod tests {
     use std::sync::mpsc::{self, Receiver};
     use std::time::Duration;
 
+    use crate::init_test_logging;
     use crate::disk::MockDiskController;
 
     struct MMUFixture {
@@ -303,6 +313,8 @@ mod tests {
 
     impl MMUFixture {
         fn new() -> Self {
+            init_test_logging();
+
             let (interrupt_tx, interrupt_rx) = mpsc::channel();
             let disk_a = MockDiskController;
             let disk_b = MockDiskController;
