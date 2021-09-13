@@ -1,5 +1,5 @@
 # Instruction Set
-### Version 2.0.0-alpha
+### Version 2.0.0-beta
 
 ## Registers Available
 | Register Reference (hex) | Short name | Full Name                       | Description                                      |

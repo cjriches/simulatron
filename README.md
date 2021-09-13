@@ -22,7 +22,7 @@ General documentation can be found in [Documentation](Documentation). Package-sp
 The Simulatron project is written in 100% Rust, and uses the standard Cargo build system. Ensure you have an [up-to-date Rust toolchain](https://www.rust-lang.org/learn/get-started). Each package can then be built by navigating to its directory (e.g. [Crates/simulatron-vm/](Crates/simulatron-vm)) and running `cargo build --release`. The resulting binaries can be found at `Crates/target/release/`. To install to your system path, instead run `cargo install --path .`.
 
 ## Project State
-Simulatron V2 is nearing the end of its alpha period during which a minimal working system is developed. Soon, a beta polish/bugfix period will begin.
+The core VM, linker, and assembler are feature-complete, and currently in a beta polish phase before I commit to the 2.0.0 release.
 
 ## History
 Simulatron V1 was a similar project smaller in scope, with a 16-bit CPU design that lacked memory management or privilege modes. It was never made open-source. Simulatron V2 is a from-scratch redesign and rewrite, designed to be more powerful, more performant, and capable of supporting an operating system. Indeed, the long-term goal is to create an operating system that runs on Simulatron.

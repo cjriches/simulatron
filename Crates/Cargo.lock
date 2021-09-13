@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "ast-sourcegen"
-version = "2.0.0-alpha"
+version = "2.0.0-beta"
 dependencies = [
  "quote",
  "syn",
@@ -811,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "simulatron-salt"
-version = "2.0.0-alpha"
+version = "2.0.0-beta"
 dependencies = [
  "ast-sourcegen",
  "clap",
@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "simulatron-silk"
-version = "2.0.0-alpha"
+version = "2.0.0-beta"
 dependencies = [
  "clap",
  "env_logger",
@@ -840,11 +840,11 @@ dependencies = [
 
 [[package]]
 name = "simulatron-utils"
-version = "2.0.0-alpha"
+version = "2.0.0-beta"
 
 [[package]]
 name = "simulatron-vm"
-version = "2.0.0-alpha"
+version = "2.0.0-beta"
 dependencies = [
  "ahash",
  "clap",

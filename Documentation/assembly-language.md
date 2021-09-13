@@ -1,5 +1,5 @@
 # Simulatron Assembly Language Definition
-### Version 2.0.0-alpha
+### Version 2.0.0-beta
 
 ## Overview
 A single assembly file (`*.simasm`) gets [translated](../simulatron-salt/README.md) to a single [object code](object-code.md) file (`*.simobj`). One or more object code files can then be [linked](../simulatron-silk/README.md) together to form a final executable.

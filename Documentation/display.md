@@ -1,5 +1,5 @@
 # Simulatron Display
-### Version 2.0.0-alpha
+### Version 2.0.0-beta
 
 The Simulatron is attached to a simple terminal display. The terminal has 25 rows and 80 columns; each cell can display a single character, with a configurable foreground and background colour. Both columns and rows are zero-indexed.
 

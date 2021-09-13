@@ -1,6 +1,6 @@
 [package]
 name = "simulatron-utils"
-version = "2.0.0-alpha"
+version = "2.0.0-beta"
 authors = ["Chris Riches <chrisriches42@gmail.com>"]
 edition = "2018"
 

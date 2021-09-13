@@ -1,5 +1,5 @@
 # Simulatron Object Code Definition
-### Version 2.0.0-alpha
+### Version 2.0.0-beta
 
 ## Overview
 A single object code file (`*.simobj`) contains four things in the following order:
