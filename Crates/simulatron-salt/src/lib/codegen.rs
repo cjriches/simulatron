@@ -3,7 +3,7 @@ mod instruction_macros;
 
 use itertools::Itertools;
 use log::{trace, debug, info, warn, error};
-use simulatron_utils::write_be::WriteBE;
+use simulatron_utils::{hexprint, write_be::WriteBE};
 use std::collections::HashMap;
 use std::convert::{TryInto, TryFrom};
 use std::io::Write;
@@ -313,7 +313,7 @@ impl CodeGenerator {
     /// Run the code generator, consuming it.
     pub fn run(mut self, entrypoint: bool) -> Result<CodegenSuccess, CodegenFailure> {
         let simobj = self.codegen(entrypoint);
-        // TODO log result.
+        info!("Code generated:\n{}", hexprint::pretty_print_hex_block_zero(&simobj));
         if self.errors.is_empty() {
             Ok(CodegenSuccess {
                 simobj,
