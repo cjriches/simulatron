@@ -1,0 +1,18 @@
+---
+source: simulatron-salt/src/lib/tests.rs
+expression: failure
+
+---
+CodegenFailure {
+    errors: [
+        SaltError {
+            span: 18..45,
+            message: "Initialiser too long for stated dimensions.",
+        },
+        SaltError {
+            span: 163..204,
+            message: "Initialiser too long for stated dimensions.",
+        },
+    ],
+    warnings: [],
+}

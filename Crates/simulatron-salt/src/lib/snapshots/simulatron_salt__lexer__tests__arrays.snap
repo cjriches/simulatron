@@ -1,0 +1,149 @@
+---
+source: simulatron-salt/src/lib/lexer.rs
+expression: output
+
+---
+Static `static`
+Whitespace ` `
+Byte `byte`
+OpenSquare `[`
+DoubleDot `..`
+CloseSquare `]`
+Whitespace ` `
+Identifier `arr`
+Whitespace ` `
+OpenSquare `[`
+Whitespace ` `
+CharLiteral `'a'`
+Comma `,`
+Whitespace ` `
+CharLiteral `'b'`
+Comma `,`
+Whitespace ` `
+CharLiteral `'c'`
+Comma `,`
+Whitespace ` `
+IntLiteral `1`
+Comma `,`
+Whitespace ` `
+IntLiteral `2`
+Comma `,`
+Whitespace ` `
+IntLiteral `3`
+Whitespace ` `
+CloseSquare `]`
+Newline
+Static `static`
+Whitespace ` `
+Word `word`
+OpenSquare `[`
+IntLiteral `5`
+CloseSquare `]`
+OpenSquare `[`
+DoubleDot `..`
+CloseSquare `]`
+Whitespace ` `
+Identifier `primes_and_doubles`
+Whitespace ` `
+OpenSquare `[`
+OpenSquare `[`
+IntLiteral `2`
+Comma `,`
+IntLiteral `4`
+CloseSquare `]`
+Comma `,`
+Whitespace ` `
+OpenSquare `[`
+IntLiteral `3`
+Comma `,`
+IntLiteral `6`
+CloseSquare `]`
+Comma `,`
+Whitespace ` `
+OpenSquare `[`
+IntLiteral `5`
+Comma `,`
+IntLiteral `10`
+CloseSquare `]`
+Comma `,`
+Whitespace ` `
+OpenSquare `[`
+IntLiteral `7`
+Comma `,`
+IntLiteral `14`
+CloseSquare `]`
+Comma `,`
+Whitespace ` `
+OpenSquare `[`
+IntLiteral `9`
+Comma `,`
+IntLiteral `18`
+CloseSquare `]`
+CloseSquare `]`
+Newline
+Static `static`
+Whitespace ` `
+Half `half`
+OpenSquare `[`
+DoubleDot `..`
+CloseSquare `]`
+Whitespace ` `
+Identifier `empty`
+Whitespace ` `
+OpenSquare `[`
+CloseSquare `]`
+Newline
+Static `static`
+Whitespace ` `
+Mut `mut`
+Whitespace ` `
+Byte `byte`
+OpenSquare `[`
+DoubleDot `..`
+CloseSquare `]`
+OpenSquare `[`
+IntLiteral `2`
+CloseSquare `]`
+OpenSquare `[`
+IntLiteral `2`
+CloseSquare `]`
+Whitespace ` `
+Identifier `mega_nested`
+Whitespace ` `
+OpenSquare `[`
+OpenSquare `[`
+OpenSquare `[`
+CharLiteral `'a'`
+Comma `,`
+CharLiteral `'b'`
+CloseSquare `]`
+Comma `,`
+Whitespace ` `
+StringLiteral `"cd"`
+CloseSquare `]`
+Comma `,`
+Whitespace ` `
+OpenSquare `[`
+StringLiteral `"ef"`
+Comma `,`
+Whitespace ` `
+OpenSquare `[`
+CharLiteral `'g'`
+Comma `,`
+CharLiteral `'h'`
+CloseSquare `]`
+CloseSquare `]`
+CloseSquare `]`
+Newline
+Static `static`
+Whitespace ` `
+Byte `byte`
+OpenSquare `[`
+DoubleDot `..`
+CloseSquare `]`
+Whitespace ` `
+Identifier `msg`
+Whitespace ` `
+StringLiteral `"Hello there!"`
+Newline
+

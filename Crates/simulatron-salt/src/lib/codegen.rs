@@ -9,7 +9,7 @@ use std::convert::{TryInto, TryFrom};
 use std::io::Write;
 use std::ops::Range;
 
-use crate::ast::{self, AstNode, LiteralValue, OperandValue, RegisterType};
+use crate::ast::{self, ArrayLength, AstNode, LiteralValue, OperandValue, RegisterType};
 use crate::error::{SaltError, SaltResult};
 
 // The following constants are used to provide guesses for initial vector
@@ -571,7 +571,6 @@ impl CodeGenerator {
             let name = const_.name();
             let public = const_.public();
             let value = ok_or_continue!(self, const_.value());
-            let span: Range<usize> = const_.syntax().text_range().into();
 
             if !is_uppercase(&name) {
                 self.warning(SaltError {
@@ -585,11 +584,11 @@ impl CodeGenerator {
                 .insert(name, SymbolTableEntry::C(Constant {
                     public,
                     value,
-                    span: span.clone(),
+                    span: const_.name_span(),
                 }));
             if let Some(_) = existing {
                 self.error(SaltError {
-                    span,
+                    span: const_.name_span(),
                     message: "Name already in use.".into(),
                 });
             }
@@ -602,8 +601,9 @@ impl CodeGenerator {
             let public = data.public();
             let mutable = data.mutable();
             let type_ = data.type_();
-            let initialiser = ok_or_continue!(self, data.initialiser());
-            let span: Range<usize> = data.syntax().text_range().into();
+            let base_size = type_.base_size();
+            let type_dims = ok_or_continue!(self, type_.dimensions());
+            let (initialiser, mut init_dims) = ok_or_continue!(self, data.initialiser());
 
             if !is_lowercase(&name) {
                 self.warning(SaltError {
@@ -613,9 +613,59 @@ impl CodeGenerator {
                 });
             }
 
+            // Check the number of dimensions matches.
+            if type_dims.len() != init_dims.len() {
+                self.error(SaltError {
+                    span: type_.span(),
+                    message: format!(
+                        "Dimensions mismatch. Type specifies {} dimensions but \
+                         initialiser has {}.", type_dims.len(), init_dims.len()
+                    ).into(),
+                });
+                continue;
+            }
+            // Unify the type dimensions with the initialiser dimensions.
+            let mut okay = true;
+            for i in 0..type_dims.len() {
+                if let ArrayLength::Literal(d) = type_dims[i] {
+                    if d < init_dims[i] {
+                        self.error(SaltError {
+                            span: data.init_span(),
+                            message: "Initialiser too long for \
+                                      stated dimensions.".into(),
+                        });
+                        okay = false;
+                        break;
+                    }
+                    // If the initialiser is shorter than the type, we want
+                    // to preserve the empty space.
+                    init_dims[i] = d;
+                }
+            }
+            if !okay {
+                continue;
+            }
+
+            // Calculate the total size.
+            let mut size = base_size;
+            for dim in init_dims {
+                size = match size.checked_mul(dim) {
+                    Some(val) => val,
+                    None => {
+                        self.error(SaltError {
+                            span: type_.span(),
+                            message: "Array size is out of range.".into(),
+                        });
+                        okay = false;
+                        break;
+                    }
+                };
+            }
+            if !okay {
+                continue;
+            }
+
             // Calculate the full initialiser.
-            let base_size = type_.base_size();
-            let size = ok_or_continue!(self, type_.total_size());
             let initialiser = {
                 let mut buf = Vec::with_capacity(size);
                 for literal in initialiser.iter() {
@@ -629,7 +679,7 @@ impl CodeGenerator {
                         Some(bytes) => bytes,
                         None => {
                             self.error(SaltError {
-                                span: span.clone(),
+                                span: data.name_span(),
                                 message: "Initialiser too big for type.".into(),
                             });
                             break;
@@ -639,7 +689,7 @@ impl CodeGenerator {
                 }
                 if buf.len() > size {
                     self.error(SaltError {
-                        span: span.clone(),
+                        span: data.name_span(),
                         message: "Initialiser too big for type.".into(),
                     });
                     continue;
@@ -654,12 +704,12 @@ impl CodeGenerator {
                     mutable,
                     size,
                     initialiser,
-                    span: span.clone(),
+                    span: data.name_span(),
                     references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
                 }));
             if let Some(_) = existing {
                 self.error(SaltError {
-                    span,
+                    span: data.name_span(),
                     message: "Name already in use.".into(),
                 });
             }

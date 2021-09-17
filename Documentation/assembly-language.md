@@ -2,7 +2,7 @@
 ### Version 2.0.0-beta
 
 ## Overview
-A single assembly file (`*.simasm`) gets [translated](../simulatron-salt/README.md) to a single [object code](object-code.md) file (`*.simobj`). One or more object code files can then be [linked](../simulatron-silk/README.md) together to form a final executable.
+A single assembly file (`*.simasm`) gets [translated](../Crates/simulatron-salt/README.md) to a single [object code](object-code.md) file (`*.simobj`). One or more object code files can then be [linked](../Crates/simulatron-silk/README.md) together to form a final executable.
 
 An assembly file contains a combination of four types of element, all of which are optional:
 1. Constant declarations
@@ -104,7 +104,7 @@ Syntax:
 [pub] static [mut] <type> <name> <initialiser>
 ```
 where the type is one of `byte`, `half`, or `word`, or any of those three with an array suffix (e.g. `byte[5]`).
-The initialiser is a literal. Note that arrays of arrays are allowed, and an array initialiser that is too short will be padded with zero.
+The initialiser is a literal. Note that arrays of arrays are allowed, and an array initialiser that is too short will be padded with zero. If the length of the array is replaced with `..` (e.g. `byte[..]`), it will be inferred from the length of the initialiser.
 
 Types do not persist beyond the point of declaration; they simply determine the size to allocate. Simulatron assembly is not a typed language.
 
@@ -254,7 +254,8 @@ Const = [ "pub" ] "const" Identifier Literal ;
 Data = [ "pub" ] "static" [ "mut" ] Type Identifier ArrayLiteral ;
 
 Type = "byte" | "half" | "word"
-    | Type "[" IntLiteral "]" ;
+    | Type "[" IntLiteral "]"
+    | Type "[" ".." "]" ;
 
 Label = [ "pub" ] Identifier ":" ;
 

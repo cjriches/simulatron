@@ -46,6 +46,13 @@ pub enum RegisterType {
     Float,
 }
 
+/// Array lengths may be either a literal, or inferred from the initialiser.
+#[derive(Debug)]
+pub enum ArrayLength {
+    Literal(usize),
+    Inferred,
+}
+
 /// An enum for Operands, which can be either Identifiers or Literals.
 #[derive(Debug)]
 pub enum OperandValue {
@@ -140,6 +147,11 @@ impl DataDecl {
         self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().1
     }
 
+    pub fn init_span(&self) -> Range<usize> {
+        self.syntax.children().find_map(ArrayLiteral::cast).unwrap()
+            .syntax().text_range().into()
+    }
+
     pub fn public(&self) -> bool {
         node_contains_kind(&self.syntax, SyntaxKind::KwPub)
     }
@@ -154,7 +166,7 @@ impl DataDecl {
             .unwrap()
     }
 
-    pub fn initialiser(&self) -> SaltResult<Vec<LiteralValue>> {
+    pub fn initialiser(&self) -> SaltResult<(Vec<LiteralValue>, Vec<usize>)> {
         self.syntax.children()
             .find_map(ArrayLiteral::cast)
             .unwrap()
@@ -162,7 +174,7 @@ impl DataDecl {
     }
 }
 
-/// DataTypes have a base size and a total size.
+/// DataTypes have a base size and a set of dimensions.
 impl DataType {
     pub fn base_size(&self) -> usize {
         if node_contains_kind(&self.syntax, SyntaxKind::KwByte) {
@@ -174,35 +186,36 @@ impl DataType {
         } else { unreachable!() }
     }
 
-    pub fn total_size(&self) -> SaltResult<usize> {
-        // Find all the array lengths and multiply the base size by them.
-        let mut size = self.base_size();
+    pub fn dimensions(&self) -> SaltResult<Vec<ArrayLength>> {
+        let mut lengths = Vec::new();
         for child in self.syntax.children_with_tokens() {
-            if let Some((text, span)) = int_literal_cast(child) {
+            if let SyntaxKind::DoubleDot = child.kind() {
+                lengths.push(ArrayLength::Inferred);
+            } else if let Some((text, span)) = int_literal_cast(child) {
                 // Parse the integer value.
                 let value = int_literal_value(&text, span.clone())?;
                 // Ensure positive.
-                let value = if value >= 0 {
-                    value.try_into().unwrap()
+                if value >= 0 {
+                    lengths.push(ArrayLength::Literal(
+                        value.try_into().unwrap()
+                    ));
                 } else {
                     return Err(SaltError {
                         span,
                         message: "Array lengths cannot be negative.".into(),
                     });
                 };
-                // Multiply.
-                size = match size.checked_mul(value) {
-                    Some(val) => val,
-                    None => {
-                        return Err(SaltError {
-                            span,
-                            message: "Array size is out of range.".into(),
-                        });
-                    }
-                };
             }
         }
-        Ok(size)
+
+        // Count the base size.
+        lengths.push(ArrayLength::Literal(1));
+
+        Ok(lengths)
+    }
+
+    pub fn span(&self) -> Range<usize> {
+        self.syntax.text_range().into()
     }
 }
 
@@ -263,12 +276,12 @@ impl Operand {
     }
 }
 
-/// ArrayLiterals are a vector of literal values.
+/// ArrayLiterals are a vector of literal values and a vector of dimensions.
 impl ArrayLiteral {
-    pub fn values(&self) -> SaltResult<Vec<LiteralValue>> {
+    pub fn values(&self) -> SaltResult<(Vec<LiteralValue>, Vec<usize>)> {
         // Just a single literal.
         if let Some(lit) = self.syntax.children().find_map(Literal::cast) {
-            Ok(vec![lit.value()?])
+            Ok((vec![lit.value()?], vec![1]))
         } else if let Some((text, _)) = self.syntax.children_with_tokens()
                 .find_map(string_literal_cast) {
             // A string literal. Convert character by character.
@@ -289,18 +302,38 @@ impl ArrayLiteral {
                     i += 1;
                 }
             }
-            Ok(values)
+            let len = values.len();
+            Ok((values, vec![len, 1]))
         } else if let Some(_) = self.syntax().children_with_tokens()
                 .find(|child| child.kind() == SyntaxKind::OpenSquare) {
-            // A full array literal. Parse the internal array literals and
-            // concatenate them together.
-            Ok(self.syntax.children()
+            // A full array literal.
+            let (child_values, child_dims): (Vec<_>, Vec<_>) = self.syntax.children()
                 .filter_map(ArrayLiteral::cast)   // Select the ArrayLiterals.
                 .map(|arr_lit| arr_lit.values())  // Extract the values.
                 .collect::<Result<Vec<_>, _>>()?  // Merge the Results.
-                .into_iter()                      // Flatten the nested Vecs.
-                .flatten()
-                .collect())
+                .into_iter()
+                .unzip();                         // Separate the components.
+
+            // Concatenate the child literals.
+            let values = child_values.into_iter().flatten().collect();
+
+            // Take the maximum of each child dimension.
+            let num_dims = child_dims.iter()
+                .map(|c| c.len())
+                .max().unwrap_or(1) + 1;
+            let mut dims = Vec::with_capacity(num_dims);
+            dims.push(child_dims.len());
+            dims.resize(num_dims, 1);
+            for child_dim in child_dims.iter() {
+                for i in 1..num_dims {
+                    let dim = *child_dim.get(i-1).unwrap_or(&1);
+                    if dim > dims[i] {
+                        dims[i] = dim;
+                    }
+                }
+            }
+
+            Ok((values, dims))
         } else {
             unreachable!()
         }
@@ -531,7 +564,7 @@ mod tests {
         fn test(decl: &DataDecl, name: &str, mutable: bool) {
             assert_eq!(decl.name(), name);
             assert_eq!(decl.mutable(), mutable);
-            assert_debug_snapshot!(decl.type_().total_size());
+            assert_debug_snapshot!(decl.type_().dimensions());
             assert_debug_snapshot!(decl.initialiser());
         }
 

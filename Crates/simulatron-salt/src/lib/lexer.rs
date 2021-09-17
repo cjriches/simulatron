@@ -28,6 +28,8 @@ pub enum TokenType {
     Comma,
     #[token(":")]
     Colon,
+    #[token("..")]
+    DoubleDot,
 
     // Literal components
     #[regex(r"-?([0-9]+(e-?[0-9]+)?|0b[01]+|0x[A-Fa-f0-9]+)")]
@@ -166,5 +168,11 @@ mod tests {
     #[test]
     fn test_pub() {
         assert_tokens_snapshot("examples/publics.simasm");
+    }
+
+    /// Test a program with array literals.
+    #[test]
+    fn test_arrays() {
+        assert_tokens_snapshot("examples/array-inferred.simasm");
     }
 }

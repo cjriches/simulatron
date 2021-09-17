@@ -1,8 +1,14 @@
 ---
-source: src/lib/ast.rs
+source: simulatron-salt/src/lib/ast.rs
 expression: decl.initialiser()
 
 ---
 Ok(
-    [],
+    (
+        [],
+        [
+            0,
+            1,
+        ],
+    ),
 )

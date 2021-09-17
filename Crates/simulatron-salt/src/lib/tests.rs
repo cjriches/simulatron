@@ -59,6 +59,12 @@ fn test_arithmetic() {
 }
 
 #[test]
+fn test_array_inferred() {
+    test_success("examples/array-inferred.simasm", true);
+    test_failure("examples/array-bad.simasm");
+}
+
+#[test]
 fn test_bitwise() {
     test_success("examples/bitwise.simasm", true);
     test_failure("examples/bitwise-bad.simasm");

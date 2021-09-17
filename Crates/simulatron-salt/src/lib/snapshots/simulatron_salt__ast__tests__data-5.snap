@@ -1,8 +1,15 @@
 ---
-source: src/lib/ast.rs
-expression: decl.size()
+source: simulatron-salt/src/lib/ast.rs
+expression: decl.type_().dimensions()
 
 ---
 Ok(
-    0,
+    [
+        Literal(
+            0,
+        ),
+        Literal(
+            1,
+        ),
+    ],
 )

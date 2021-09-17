@@ -1,13 +1,18 @@
 ---
-source: src/lib/ast.rs
+source: simulatron-salt/src/lib/ast.rs
 expression: decl.initialiser()
 
 ---
 Ok(
-    [
-        LiteralValue {
-            value: 256,
-            min_reg_type: Half,
-        },
-    ],
+    (
+        [
+            LiteralValue {
+                value: 256,
+                min_reg_type: Half,
+            },
+        ],
+        [
+            1,
+        ],
+    ),
 )

@@ -420,8 +420,15 @@ impl<'a> Parser<'a> {
         // Optional sequence of array length specifiers.
         while let TokenType::OpenSquare = self.peek()? {
             self.consume()?;
-            self.consume_exact(TokenType::IntLiteral,
-                               "Expected array length literal.")?;
+            // Integer literal or ".." inferred length.
+            match self.peek()? {
+                TokenType::IntLiteral
+                | TokenType::DoubleDot => self.consume()?,
+                _ => {
+                    self.error_consume("Expected array length.");
+                    return Err(Failure::WrongToken);
+                }
+            }
             self.consume_exact(TokenType::CloseSquare, "Expected ']'.")?;
         }
 
@@ -614,6 +621,11 @@ mod tests {
     #[test]
     fn test_arrays() {
         assert_syntax_tree_snapshot("examples/array-literals.simasm");
+    }
+
+    #[test]
+    fn test_arrays_inferred() {
+        assert_syntax_tree_snapshot("examples/array-inferred.simasm");
     }
 
     #[test]

@@ -1,33 +1,39 @@
 ---
-source: src/lib/ast.rs
+source: simulatron-salt/src/lib/ast.rs
 expression: decl.initialiser()
 
 ---
 Ok(
-    [
-        LiteralValue {
-            value: 97,
-            min_reg_type: Byte,
-        },
-        LiteralValue {
-            value: 98,
-            min_reg_type: Byte,
-        },
-        LiteralValue {
-            value: 99,
-            min_reg_type: Byte,
-        },
-        LiteralValue {
-            value: 1,
-            min_reg_type: Byte,
-        },
-        LiteralValue {
-            value: 2,
-            min_reg_type: Byte,
-        },
-        LiteralValue {
-            value: 3,
-            min_reg_type: Byte,
-        },
-    ],
+    (
+        [
+            LiteralValue {
+                value: 97,
+                min_reg_type: Byte,
+            },
+            LiteralValue {
+                value: 98,
+                min_reg_type: Byte,
+            },
+            LiteralValue {
+                value: 99,
+                min_reg_type: Byte,
+            },
+            LiteralValue {
+                value: 1,
+                min_reg_type: Byte,
+            },
+            LiteralValue {
+                value: 2,
+                min_reg_type: Byte,
+            },
+            LiteralValue {
+                value: 3,
+                min_reg_type: Byte,
+            },
+        ],
+        [
+            6,
+            1,
+        ],
+    ),
 )
