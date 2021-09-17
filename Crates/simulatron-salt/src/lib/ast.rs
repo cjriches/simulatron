@@ -61,10 +61,10 @@ pub enum OperandValue {
 }
 
 /// The value of a literal.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub struct LiteralValue {
-    pub value: u32,
-    pub min_reg_type: RegisterType,
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum LiteralValue {
+    Lit {value: u32, min_reg_type: RegisterType},
+    Sizeof {ident: String},
 }
 
 /// Programs contain Const Declarations, Data Declarations, Labels,
@@ -295,7 +295,7 @@ impl ArrayLiteral {
                 // is an escape sequence.
                 let char_slice = &text[(i-1)..=(i+1)];
                 let (value, escape) = char_literal_value(char_slice);
-                values.push(LiteralValue {value, min_reg_type: RegisterType::Byte});
+                values.push(LiteralValue::Lit {value, min_reg_type: RegisterType::Byte});
                 if escape {
                     i += 2;
                 } else {
@@ -351,19 +351,23 @@ impl Literal {
             // We know value is in the range of i32+u32, so just keep its
             // u32 bit-representation.
             let value = value as u32;
-            Ok(LiteralValue {value, min_reg_type})
+            Ok(LiteralValue::Lit {value, min_reg_type})
         } else if let Some((text, _)) = self.syntax.children_with_tokens()
                 .find_map(float_literal_cast) {
             // Float literal: parse, transmute bit representation to u32, and
             // size is always Word.
             let value = f32::from_str(&text).unwrap();
             let value = unsafe { std::mem::transmute::<f32, u32>(value) };
-            Ok(LiteralValue {value, min_reg_type: RegisterType::Float})
+            Ok(LiteralValue::Lit {value, min_reg_type: RegisterType::Float})
         } else if let Some((text, _)) = self.syntax.children_with_tokens()
                 .find_map(char_literal_cast) {
             // Character literal: parse, and size is always Byte.
             let (value, _) = char_literal_value(&text);
-            Ok(LiteralValue {value, min_reg_type: RegisterType::Byte})
+            Ok(LiteralValue::Lit {value, min_reg_type: RegisterType::Byte})
+        } else if let Some((text, _)) = self.syntax.children_with_tokens()
+                .find_map(identifier_cast) {
+            // Sizeof literal: return the identifier.
+            Ok(LiteralValue::Sizeof {ident: text})
         } else {
             unreachable!()
         }
@@ -488,7 +492,7 @@ fn char_literal_value(text: &str) -> (u32, bool) {
 
 /// Calculate the minimum register size needed to store the given integer value.
 /// The given value must be within the combined range of i32 and u32.
-fn minimum_reg_type(value: i64) -> RegisterType {
+pub fn minimum_reg_type(value: i64) -> RegisterType {
     if value < i32::MIN.into() {
         panic!("Value of {} is out of range!", value);
     } else if value < i16::MIN.into() {
@@ -541,18 +545,18 @@ mod tests {
             .map(ConstDecl::value)
             .map(Result::unwrap)
             .collect();
-        assert_eq!(values[0], LiteralValue {value: 0b01001, min_reg_type: RegisterType::Byte});
-        assert_eq!(values[1], LiteralValue {value: 42, min_reg_type: RegisterType::Byte});
-        assert_eq!(values[2], LiteralValue {value: 42_000_000, min_reg_type: RegisterType::Word});
-        assert_eq!(values[3], LiteralValue {value: 0xDEADB00F, min_reg_type: RegisterType::Word});
-        assert_eq!(values[4], LiteralValue {
+        assert_eq!(values[0], LiteralValue::Lit {value: 0b01001, min_reg_type: RegisterType::Byte});
+        assert_eq!(values[1], LiteralValue::Lit {value: 42, min_reg_type: RegisterType::Byte});
+        assert_eq!(values[2], LiteralValue::Lit {value: 42_000_000, min_reg_type: RegisterType::Word});
+        assert_eq!(values[3], LiteralValue::Lit {value: 0xDEADB00F, min_reg_type: RegisterType::Word});
+        assert_eq!(values[4], LiteralValue::Lit {
             value: unsafe {std::mem::transmute::<f32,u32>(1.0)}, min_reg_type: RegisterType::Float});
-        assert_eq!(values[5], LiteralValue {
+        assert_eq!(values[5], LiteralValue::Lit {
             value: unsafe {std::mem::transmute::<f32,u32>(42e-12)}, min_reg_type: RegisterType::Float});
-        assert_eq!(values[6], LiteralValue {value: (-5_i32) as u32, min_reg_type: RegisterType::Byte});
-        assert_eq!(values[7], LiteralValue {
+        assert_eq!(values[6], LiteralValue::Lit {value: (-5_i32) as u32, min_reg_type: RegisterType::Byte});
+        assert_eq!(values[7], LiteralValue::Lit {
             value: unsafe {std::mem::transmute::<f32,u32>(-9.9432)}, min_reg_type: RegisterType::Float});
-        assert_eq!(values[8], LiteralValue {value: 1000, min_reg_type: RegisterType::Half});
+        assert_eq!(values[8], LiteralValue::Lit {value: 1000, min_reg_type: RegisterType::Half});
     }
 
     #[test]

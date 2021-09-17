@@ -352,11 +352,12 @@ macro_rules! i_w_a_b {
         let (resolved, op_span) = $self.resolve_operand(&$operands[2])?;
         match resolved {
             ResolvedOperand::Literal(literal) => {
-                $self.code.append(&mut CodeGenerator::value_as_byte(&literal)
+                let mut val = $self.value_as_byte(&literal, op_span.clone())
                     .ok_or_else(|| SaltError {
                         span: op_span,
                         message: "Literal too large: expected single byte.".into(),
-                })?);
+                })?;
+                $self.code.append(&mut val);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefByte) {
@@ -558,11 +559,12 @@ macro_rules! i_BHW_b {
         match resolved {
             ResolvedOperand::Literal(literal) => {
                 $self.code[opcode_pos] = $opcodes.0;
-                $self.code.append(&mut CodeGenerator::value_as_byte(&literal)
+                let mut val = $self.value_as_byte(&literal, op_span.clone())
                     .ok_or_else(|| SaltError {
-                        span: op_span,
-                        message: "Literal too large: expected single byte.".into(),
-                })?);
+                            span: op_span,
+                            message: "Literal too large: expected single byte.".into(),
+                })?;
+                $self.code.append(&mut val);
             },
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefByte) {

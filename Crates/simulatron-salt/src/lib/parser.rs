@@ -485,7 +485,8 @@ impl<'a> Parser<'a> {
             Ok(TokenType::Identifier)
             | Ok(TokenType::IntLiteral)
             | Ok(TokenType::FloatLiteral)
-            | Ok(TokenType::CharLiteral) => {
+            | Ok(TokenType::CharLiteral)
+            | Ok(TokenType::Sizeof) => {
                 let _guard = self.start_node(SyntaxKind::Operand);
                 if let Ok(TokenType::Identifier) = tt {
                     self.consume()?;
@@ -512,7 +513,8 @@ impl<'a> Parser<'a> {
         match self.peek()? {
             TokenType::IntLiteral
             | TokenType::FloatLiteral
-            | TokenType::CharLiteral => {
+            | TokenType::CharLiteral
+            | TokenType::Sizeof => {
                 // Scalar literal.
                 self.parse_literal()?;
             },
@@ -568,15 +570,22 @@ impl<'a> Parser<'a> {
             | TokenType::FloatLiteral
             | TokenType::CharLiteral => {
                 self.consume()?;
-                debug!("...Finished Literal.");
-                Ok(())
-            },
+            }
+            TokenType::Sizeof => {
+                self.consume()?;
+                self.consume_exact(TokenType::OpenParen, "Expected '('.")?;
+                self.consume_exact(TokenType::Identifier, "Expected data identifier.")?;
+                self.consume_exact(TokenType::CloseParen, "Expected ')'.")?;
+            }
             _ => {
                 self.error_consume("Expected integer, float, or character literal.");
                 debug!("...Finished literal with error.");
-                Err(Failure::WrongToken)
+                return Err(Failure::WrongToken);
             }
         }
+
+        debug!("...Finished Literal.");
+        Ok(())
     }
 }
 

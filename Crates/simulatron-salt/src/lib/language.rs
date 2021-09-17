@@ -1,5 +1,4 @@
 use crate::lexer::TokenType;
-use crate::language::SyntaxKind::KwWord;
 
 /// All terminals and non-terminals in the grammar, i.e. all possible types for
 /// a node in the AST.
@@ -26,8 +25,11 @@ pub enum SyntaxKind {
     KwByte,
     KwHalf,
     KwWord,
+    KwSizeof,
     OpenSquare,
     CloseSquare,
+    OpenParen,
+    CloseParen,
     Comma,
     Colon,
     DoubleDot,
@@ -55,9 +57,12 @@ impl From<TokenType> for SyntaxKind {
             TokenType::Mut => SyntaxKind::KwMut,
             TokenType::Byte => SyntaxKind::KwByte,
             TokenType::Half => SyntaxKind::KwHalf,
-            TokenType::Word => KwWord,
+            TokenType::Word => SyntaxKind::KwWord,
+            TokenType::Sizeof => SyntaxKind::KwSizeof,
             TokenType::OpenSquare => SyntaxKind::OpenSquare,
             TokenType::CloseSquare => SyntaxKind::CloseSquare,
+            TokenType::OpenParen => SyntaxKind::OpenParen,
+            TokenType::CloseParen => SyntaxKind::CloseParen,
             TokenType::Comma => SyntaxKind::Comma,
             TokenType::Colon => SyntaxKind::Colon,
             TokenType::DoubleDot => SyntaxKind::DoubleDot,

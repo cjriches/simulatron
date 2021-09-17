@@ -16,7 +16,7 @@ Note that constants, static data, and labels all share the same namespace.
 
 Comments are started by a double forward slash (`//`) and continue to the end of the line. These are ignored by the assembler.
 
-## Literals and identifiers
+## Literals
 Integer literals can be specified in decimal, binary, and hexadecimal:
 ```
 42
@@ -64,6 +64,11 @@ String literals are written with double quotes, and expand to character arrays:
 [72, 101, 108, 108, 111]
 ```
 
+A constant, label, or static data name can be used anywhere a literal is expected. Any names that cannot be found will become external symbols in the generated object code and must be resolved at link time.
+
+A `sizeof` expression can also be used in place of a literal. The syntax for this is `sizeof(identifier)`, where `identifier` is the name of a static data declaration made in this file. This resolves to the size of the data.
+
+## Identifiers
 Names, used for constants, static data, and labels, may contain alphanumeric characters and underscores, but must not start with a digit. They are case-sensitive.
 ```
 foo
@@ -113,6 +118,7 @@ Example:
 static byte[13] message "Hello, World!"
 static mut half counter 0
 pub static word[5][2] primes_and_doubles [[2, 4], [3, 6], [5, 10], [7, 14], [9, 18]]
+static byte[..] long_message "Counting characters is dull. Length inference is useful!"
 ```
 
 ## Labels
@@ -175,8 +181,6 @@ f: float literal or register reference.
 ```
 
 A capital letter means that only register references are accepted, not literals.  A dot instead of a letter means this mode is not available. Some `w`/`W` entries are replaced with `a`/`A`; this indicates that the word is interpreted as an address.
-
-A constant name can be used anywhere a literal is expected, and a label or static data name can be used anywhere an address literal is expected. Any references to labels or static data that cannot be resolved within the current file will become external symbols in the generated object code and must be resolved at link time. Note that this means 
 
 Examples:
 ```
@@ -277,7 +281,7 @@ StringLiteral = Quote { StringCharacter } Quote ;
 
 Quote = ? Literal " ? ;
 
-Literal = IntLiteral | FloatLiteral | CharLiteral ;
+Literal = IntLiteral | FloatLiteral | CharLiteral | SizeofLiteral ;
 
 IntLiteral = [ "-" ] ( DecLiteral [ Exponent ] | BinLiteral | HexLiteral ) ;
 
@@ -308,4 +312,7 @@ StringCharacter = ? Any non-newline and non-backslash character ?
     | ? Escaped newline \n ?
     | ? Escaped double quote \" ?
     | ? Escaped backslash \\ ? ;
+
+SizeofLiteral = "sizeof" "(" Identifier ")" ;
+
 ```

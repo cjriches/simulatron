@@ -1,13 +1,12 @@
 ---
-source: src/lib/ast.rs
+source: simulatron-salt/src/lib/ast.rs
 expression: "instruction.operands().iter().map(Operand::value).map(Result::unwrap).collect::<Vec<_>>()"
 
 ---
 [
     Lit(
-        LiteralValue {
-            value: 13,
-            min_reg_type: Byte,
+        Sizeof {
+            ident: "greeting",
         },
     ),
     Ident(

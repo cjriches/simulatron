@@ -1,5 +1,5 @@
 ---
-source: src/lib/lexer.rs
+source: simulatron-salt/src/lib/lexer.rs
 expression: output
 
 ---
@@ -40,7 +40,7 @@ Static `static`
 Whitespace ` `
 Byte `byte`
 OpenSquare `[`
-IntLiteral `13`
+DoubleDot `..`
 CloseSquare `]`
 Whitespace ` `
 Identifier `greeting`
@@ -79,7 +79,10 @@ Identifier `DISPLAY`
 Newline
 Identifier `blockcopy`
 Whitespace ` `
-IntLiteral `13`
+Sizeof `sizeof`
+OpenParen `(`
+Identifier `greeting`
+CloseParen `)`
 Whitespace ` `
 Identifier `r0`
 Whitespace ` `

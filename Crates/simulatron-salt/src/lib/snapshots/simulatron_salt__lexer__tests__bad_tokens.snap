@@ -1,5 +1,5 @@
 ---
-source: src/lib/lexer.rs
+source: simulatron-salt/src/lib/lexer.rs
 expression: output
 
 ---
@@ -50,7 +50,7 @@ Newline
 Identifier `int`
 Whitespace ` `
 Identifier `main`
-Unknown `(`
+OpenParen `(`
 Identifier `int`
 Whitespace ` `
 Identifier `argc`
@@ -61,7 +61,7 @@ Whitespace ` `
 Unknown `*`
 Unknown `*`
 Identifier `argv`
-Unknown `)`
+CloseParen `)`
 Newline
 Unknown `{`
 Newline
@@ -89,9 +89,9 @@ Unknown `/`
 Newline
 Whitespace `    `
 Identifier `printf`
-Unknown `(`
+OpenParen `(`
 StringLiteral `"Hello, World!"`
-Unknown `)`
+CloseParen `)`
 Unknown `;`
 Newline
 Unknown `}`
@@ -104,8 +104,8 @@ Colon `:`
 Whitespace ` `
 Identifier `IO`
 Whitespace ` `
-Unknown `(`
-Unknown `)`
+OpenParen `(`
+CloseParen `)`
 Newline
 Identifier `main`
 Whitespace ` `
@@ -143,9 +143,9 @@ Colon `:`
 Newline
 Whitespace `    `
 Identifier `print`
-Unknown `(`
+OpenParen `(`
 StringLiteral `"Hello, world!"`
-Unknown `)`
+CloseParen `)`
 Whitespace `  `
 Unknown `#`
 Whitespace ` `
@@ -161,8 +161,8 @@ Const `const`
 Whitespace ` `
 Identifier `YEET`
 Whitespace ` `
-Unknown `(`
+OpenParen `(`
 IntLiteral `42`
-Unknown `)`
+CloseParen `)`
 Newline
 

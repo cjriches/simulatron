@@ -6,43 +6,43 @@ expression: decl.initialiser()
 Ok(
     (
         [
-            LiteralValue {
+            Lit {
                 value: 2,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 4,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 3,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 6,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 5,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 10,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 7,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 14,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 9,
                 min_reg_type: Byte,
             },
-            LiteralValue {
+            Lit {
                 value: 18,
                 min_reg_type: Byte,
             },

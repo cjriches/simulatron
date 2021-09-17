@@ -6,7 +6,7 @@ expression: decl.initialiser()
 Ok(
     (
         [
-            LiteralValue {
+            Lit {
                 value: 4294897296,
                 min_reg_type: Word,
             },

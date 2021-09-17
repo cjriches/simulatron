@@ -118,6 +118,11 @@ fn test_external_refs() {
 }
 
 #[test]
+fn test_hello_world() {
+    test_success("examples/hello-world.simasm", true);
+}
+
+#[test]
 fn test_minimal() {
     test_success("examples/minimal.simasm", true);
 }

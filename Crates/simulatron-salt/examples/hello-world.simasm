@@ -8,12 +8,12 @@ const COL 32
 // Base address of display characters.
 const DISPLAY 0x240
 
-static byte[13] greeting "Hello, World!"
+static byte[..] greeting "Hello, World!"
 
 main:
 copy r0b ROW        // Calculate the address.
 mult r0 COLS
 add r0 COL
 add r0 DISPLAY
-blockcopy 13 r0 greeting
+blockcopy sizeof(greeting) r0 greeting
 halt

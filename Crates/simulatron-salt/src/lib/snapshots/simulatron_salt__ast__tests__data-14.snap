@@ -6,7 +6,7 @@ expression: decl.initialiser()
 Ok(
     (
         [
-            LiteralValue {
+            Lit {
                 value: 256,
                 min_reg_type: Half,
             },

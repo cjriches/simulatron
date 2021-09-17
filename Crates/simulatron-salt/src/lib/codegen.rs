@@ -670,9 +670,9 @@ impl CodeGenerator {
                 let mut buf = Vec::with_capacity(size);
                 for literal in initialiser.iter() {
                     let bytes = match base_size {
-                        1 => CodeGenerator::value_as_byte(literal),
-                        2 => CodeGenerator::value_as_half(literal),
-                        4 => CodeGenerator::value_as_word_or_float(literal),
+                        1 => self.value_as_byte(literal, data.init_span()),
+                        2 => self.value_as_half(literal, data.init_span()),
+                        4 => self.value_as_word_or_float(literal, data.init_span()),
                         _ => unreachable!(),
                     };
                     let mut bytes = match bytes {
@@ -861,7 +861,7 @@ impl CodeGenerator {
             return Ok((match entry {
                 SymbolTableEntry::C(constant) => {
                     trace!("Operand resolved to constant {}", ident);
-                    ResolvedOperand::Literal(constant.value)
+                    ResolvedOperand::Literal(constant.value.clone())
                 },
                 SymbolTableEntry::D(data) => {
                     trace!("Operand resolved to static data {}", ident);
@@ -906,8 +906,8 @@ impl CodeGenerator {
     fn push_value_as_reg_type(&mut self, val: &LiteralValue, reg_type: RegisterType,
                               span: Range<usize>) -> SaltResult<()> {
         match reg_type {
-            RegisterType::Byte => Self::value_as_byte(val),
-            RegisterType::Half => Self::value_as_half(val),
+            RegisterType::Byte => self.value_as_byte(val, span.clone()),
+            RegisterType::Half => self.value_as_half(val, span.clone()),
             RegisterType::Word => self.value_as_word(val, span.clone()),
             RegisterType::Float => self.value_as_float(val, span.clone()),
         }.map(|mut bytes| self.code.append(&mut bytes))
@@ -917,46 +917,81 @@ impl CodeGenerator {
          })
     }
 
-    fn value_as_byte(val: &LiteralValue) -> Option<Vec<u8>> {
-        if let RegisterType::Byte = val.min_reg_type {
-            Some(vec![val.value as u8])
+    fn value_as_byte(&mut self, val: &LiteralValue,
+                     span: Range<usize>) -> Option<Vec<u8>> {
+        let (value, min_reg_type) = self.resolve_literal(val, span)?;
+        if let RegisterType::Byte = min_reg_type {
+            Some(vec![value as u8])
         } else {
             None
         }
     }
 
-    fn value_as_half(val: &LiteralValue) -> Option<Vec<u8>> {
-        if let RegisterType::Byte | RegisterType::Half = val.min_reg_type {
-            Some((val.value as u16).to_be_bytes().to_vec())
+    fn value_as_half(&mut self, val: &LiteralValue,
+                     span: Range<usize>) -> Option<Vec<u8>> {
+        let (value, min_reg_type) = self.resolve_literal(val, span)?;
+        if let RegisterType::Byte | RegisterType::Half = min_reg_type {
+            Some((value as u16).to_be_bytes().to_vec())
         } else {
             None
         }
     }
 
-    fn value_as_word(&mut self, val: &LiteralValue, span: Range<usize>) -> Option<Vec<u8>> {
-        if let RegisterType::Float = val.min_reg_type {
+    fn value_as_word(&mut self, val: &LiteralValue,
+                     span: Range<usize>) -> Option<Vec<u8>> {
+        let (value, min_reg_type) = self.resolve_literal(val, span.clone())?;
+        if let RegisterType::Float = min_reg_type {
             self.warning(SaltError {
                 span,
                 message: "Float literal being used as an integer.".into(),
             });
         }
 
-        Some(val.value.to_be_bytes().to_vec())
+        Some(value.to_be_bytes().to_vec())
     }
 
-    fn value_as_float(&mut self, val: &LiteralValue, span: Range<usize>) -> Option<Vec<u8>> {
-        if let RegisterType::Float = val.min_reg_type { /* no-op */ } else {
+    fn value_as_float(&mut self, val: &LiteralValue,
+                      span: Range<usize>) -> Option<Vec<u8>> {
+        let (value, min_reg_type) = self.resolve_literal(val, span.clone())?;
+        if let RegisterType::Float = min_reg_type { /* no-op */ } else {
             self.warning(SaltError {
                 span,
                 message: "Integer literal being used as a float.".into(),
             });
         }
 
-        Some(val.value.to_be_bytes().to_vec())
+        Some(value.to_be_bytes().to_vec())
     }
 
-    fn value_as_word_or_float(val: &LiteralValue) -> Option<Vec<u8>> {
-        Some(val.value.to_be_bytes().to_vec())
+    fn value_as_word_or_float(&mut self, val: &LiteralValue,
+                              span: Range<usize>) -> Option<Vec<u8>> {
+        let (value, _) = self.resolve_literal(val, span)?;
+        Some(value.to_be_bytes().to_vec())
+    }
+
+    /// Resolve the given literal, either returning the actual literal inside,
+    /// or finding the value of a sizeof.
+    fn resolve_literal(&mut self, val: &LiteralValue,
+                       span: Range<usize>) -> Option<(u32, RegisterType)> {
+        match *val {
+            LiteralValue::Lit {value, min_reg_type} => {
+                Some((value, min_reg_type))
+            }
+            LiteralValue::Sizeof {ref ident} => {
+                if let Some(SymbolTableEntry::D(data)) = self.symbol_table.table.get(ident) {
+                    let size: u32 = data.size.try_into().unwrap();
+                    let min_reg_type = ast::minimum_reg_type(size as i64);
+                    Some((size, min_reg_type))
+                } else {
+                    self.error(SaltError {
+                        span,
+                        message: "No corresponding data declaration found \
+                                  in this file.".into(),
+                    });
+                    None
+                }
+            }
+        }
     }
 }
 

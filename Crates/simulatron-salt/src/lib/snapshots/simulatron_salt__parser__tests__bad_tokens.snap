@@ -1,5 +1,5 @@
 ---
-source: src/lib/parser.rs
+source: simulatron-salt/src/lib/parser.rs
 expression: tree
 
 ---
@@ -62,7 +62,7 @@ Program@0..425
       Operand@116..121
         Whitespace@116..117 " "
         Identifier@117..121 "main"
-    Unknown@121..122 "("
+    OpenParen@121..122 "("
     Identifier@122..125 "int"
     Whitespace@125..126 " "
     Identifier@126..130 "argc"
@@ -73,7 +73,7 @@ Program@0..425
     Unknown@137..138 "*"
     Unknown@138..139 "*"
     Identifier@139..143 "argv"
-    Unknown@143..144 ")"
+    CloseParen@143..144 ")"
     Newline@144..145 "\n"
   Line@145..147
     Unknown@145..146 "{"
@@ -105,9 +105,9 @@ Program@0..425
     Instruction@192..202
       Whitespace@192..196 "    "
       Identifier@196..202 "printf"
-    Unknown@202..203 "("
+    OpenParen@202..203 "("
     StringLiteral@203..218 "\"Hello, World!\""
-    Unknown@218..219 ")"
+    CloseParen@218..219 ")"
     Unknown@219..220 ";"
     Newline@220..221 "\n"
   Line@221..223
@@ -124,8 +124,8 @@ Program@0..425
     Whitespace@231..232 " "
     Identifier@232..234 "IO"
     Whitespace@234..235 " "
-    Unknown@235..236 "("
-    Unknown@236..237 ")"
+    OpenParen@235..236 "("
+    CloseParen@236..237 ")"
     Newline@237..238 "\n"
   Line@238..304
     Instruction@238..242
@@ -171,9 +171,9 @@ Program@0..425
     Instruction@332..341
       Whitespace@332..336 "    "
       Identifier@336..341 "print"
-    Unknown@341..342 "("
+    OpenParen@341..342 "("
     StringLiteral@342..357 "\"Hello, world!\""
-    Unknown@357..358 ")"
+    CloseParen@357..358 ")"
     Whitespace@358..360 "  "
     Unknown@360..361 "#"
     Whitespace@361..362 " "
@@ -194,8 +194,8 @@ Program@0..425
       Identifier@415..419 "YEET"
       Literal@419..421
         Whitespace@419..420 " "
-        Unknown@420..421 "("
+        OpenParen@420..421 "("
     IntLiteral@421..423 "42"
-    Unknown@423..424 ")"
+    CloseParen@423..424 ")"
     Newline@424..425 "\n"
 

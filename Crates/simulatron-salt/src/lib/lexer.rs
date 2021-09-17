@@ -18,12 +18,18 @@ pub enum TokenType {
     Half,
     #[token("word")]
     Word,
+    #[token("sizeof")]
+    Sizeof,
 
     // Punctuation
     #[token("[")]
     OpenSquare,
     #[token("]")]
     CloseSquare,
+    #[token("(")]
+    OpenParen,
+    #[token(")")]
+    CloseParen,
     #[token(",")]
     Comma,
     #[token(":")]
