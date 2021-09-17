@@ -62,6 +62,40 @@ fn test_halt() {
 
 #[test]
 #[timeout(100)]
+fn test_pause() {
+    let mut rom = [0; ROM_SIZE];
+    rom[0] = 0x0A;  // Copy literal
+    rom[1] = 0x00;  // into r0
+    rom[2] = 0x00;
+    rom[3] = 0x00;
+    rom[4] = 0x00;
+    rom[5] = 0xC0;  // ROM address 128.
+
+    rom[6] = 0x08;  // Store
+    rom[7] = 0x00;
+    rom[8] = 0x00;
+    rom[9] = 0x00;
+    rom[10] = 0x0C; // into keyboard interrupt handler
+    rom[11] = 0x00; // r0.
+
+    rom[12] = 0x0A; // Copy literal
+    rom[13] = 0x24; // into IMR
+    rom[14] = 0x00;
+    rom[15] = 0x08; // keyboard interrupt only.
+
+    // The interrupt is guaranteed to occur here, before the next instruction.
+
+    rom[16] = 0x01; // Pause (should be skipped due to interrupt occurring directly before).
+
+    let (tx, rx) = mpsc::channel();
+    let (_cpu, ui_commands) = run(rom,
+                               Some(KeyMessage::Key(b'a', false, false)),
+                               tx, rx);
+    assert_eq!(ui_commands.len(), 1);
+}
+
+#[test]
+#[timeout(100)]
 fn test_copy_literal() {
     let mut rom = [0; ROM_SIZE];
     rom[0] = 0x0A;  // Copy literal

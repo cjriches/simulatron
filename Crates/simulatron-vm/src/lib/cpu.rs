@@ -314,6 +314,9 @@ struct CPUInternal<D> {
     kernel_mode: bool,
     ui_tx: Sender<UICommand>,
     interrupt_tx: Sender<u32>,
+    // Per-cycle state.
+    rewind: u32,       // How much to rewind if the last cycle failed.
+    skip_pause: bool,  // Whether to skip PAUSE instructions this cycle.
 }
 
 /// The public-facing CPU interface.
@@ -346,6 +349,8 @@ impl<D: DiskController + 'static> CPU<D> {
                 kernel_mode: true,
                 ui_tx,
                 interrupt_tx,
+                rewind: 0,
+                skip_pause: false,
             }),
         }
     }
@@ -397,14 +402,8 @@ impl<D: DiskController> CPUInternal<D> {
         let mut pausing = false;
         info!("CPU starting.");
         loop {
-            // Yes, `rewind` could be integrated into CPUError::TryAgainError.
-            // However, this would be a pain, as TryAgainError is also generated
-            // by the MMU, which cannot provide the `rewind` value. Having a
-            // &mut u32 parameter is less ugly than giving the MMU a separate
-            // error type and wrapping every MMU access in a conversion macro.
-            let mut rewind = 0;
             // Perform one cycle.
-            match self.interrupt_fetch_decode_execute(pausing, &mut rewind) {
+            match self.interrupt_fetch_decode_execute(pausing) {
                 Ok(PostCycleAction::Halt) => {
                     info!("CPU halting.");
                     break
@@ -418,7 +417,8 @@ impl<D: DiskController> CPUInternal<D> {
                 },
                 Err(CPUError::TryAgainError) => {
                     trace!("CPU cycle resulted in an error.");
-                    self.program_counter = self.program_counter.wrapping_sub(rewind);
+                    self.program_counter = self.program_counter
+                        .wrapping_sub(self.rewind);
                     pausing = false;
                 },
                 Err(CPUError::FatalError) => {
@@ -430,19 +430,16 @@ impl<D: DiskController> CPUInternal<D> {
     }
 
     /// Perform a single cycle. If `pausing` is true, the CPU will pause before
-    /// doing anything and wait for an interrupt. The `rewind` parameter is
-    /// incremented every time the program counter is incremented, so
-    /// subtracting `rewind` from the program counter will always restore it
-    /// to the value it had before this cycle.
-    fn interrupt_fetch_decode_execute(&mut self, pausing: bool,
-                                      rewind: &mut u32) -> CPUResult<PostCycleAction> {
+    /// doing anything and wait for an interrupt.
+    fn interrupt_fetch_decode_execute(&mut self, pausing: bool)
+                                      -> CPUResult<PostCycleAction> {
         /// Fetch the given statically-sized value and increment the program counter.
         macro_rules! fetch {
             ($type:ident) => {{
                 let value = self.load(self.program_counter, true, ValueType::$type)?;
                 let size = value.size_in_bytes();
                 self.program_counter = self.program_counter.wrapping_add(size);
-                *rewind += size;
+                self.rewind += size;
                 value.try_into().unwrap()
             }}
         }
@@ -453,7 +450,7 @@ impl<D: DiskController> CPUInternal<D> {
                 let value = self.load(self.program_counter, true, $value_type)?;
                 let size = value.size_in_bytes();
                 self.program_counter = self.program_counter.wrapping_add(size);
-                *rewind += size;
+                self.rewind += size;
                 value
             }}
         }
@@ -543,6 +540,7 @@ impl<D: DiskController> CPUInternal<D> {
         // Fetch next instruction.
         let opcode: u8 = fetch!(Byte);
         // Decode and execute instruction.
+        let mut skip_pause_next = false;
         match opcode {
             0x00 => {  // HALT
                 trace!("HALT");
@@ -552,7 +550,9 @@ impl<D: DiskController> CPUInternal<D> {
             0x01 => {  // PAUSE
                 trace!("PAUSE");
                 privileged!(self)?;
-                return Ok(PostCycleAction::Pause);
+                if !self.skip_pause {
+                    return Ok(PostCycleAction::Pause);
+                }
             }
             0x02 => {  // TIMER literal
                 trace!("TIMER literal");
@@ -612,6 +612,8 @@ impl<D: DiskController> CPUInternal<D> {
                 self.imr = imr;
                 self.program_counter = pc;
                 self.flags = flags & 0b0111111111111111;
+                // If the next instruction is PAUSE, skip it.
+                skip_pause_next = true;
             }
             0x06 => {  // LOAD ref literal
                 trace!("LOAD ref literal");
@@ -1449,8 +1451,10 @@ impl<D: DiskController> CPUInternal<D> {
             _ => {  // Unrecognised
                 trace!("Unrecognised opcode: {:#x}", opcode);
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
+                return Err(CPUError::TryAgainError);
             }
         }
+        self.skip_pause = skip_pause_next;
         Ok(PostCycleAction::None)
     }
 

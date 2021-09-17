@@ -123,7 +123,7 @@ These are only executable in kernel mode. If the CPU is in user mode, an illegal
 
 `HALT`: Immediately halt the processor. No further instructions will be executed under any circumstances, and the machine is safe to power off.
 
-`PAUSE`: Temporarily halt the processor. Any enabled interrupt will wake the processor, which will resume from where it left off and immediately execute the interrupt handler.
+`PAUSE`: Temporarily halt the processor. Any enabled interrupt will wake the processor, which will resume from where it left off and immediately execute the interrupt handler. Note that if the previously executed instruction was IRETURN (i.e. an interrupt was handled between the previous instruction and PAUSE), then PAUSE will immediately return without waiting; this makes it possible to write race-condition free code.
 
 `TIMER num_milliseconds`: Set the interrupt timer. It will send a timer interrupt after at least the given number of milliseconds, repeating indefinitely with the same period. A value of zero will disable the timer.
 
