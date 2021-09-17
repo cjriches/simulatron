@@ -1,5 +1,5 @@
 ---
-source: src/lib/tests.rs
+source: simulatron-salt/src/lib/tests.rs
 expression: success.warnings
 
 ---
@@ -11,5 +11,29 @@ expression: success.warnings
     SaltError {
         span: 76..80,
         message: "Data names are expected to be lower_snake_case.",
+    },
+    SaltError {
+        span: 6..12,
+        message: "Unused private symbol.",
+    },
+    SaltError {
+        span: 32..38,
+        message: "Unused private symbol.",
+    },
+    SaltError {
+        span: 52..56,
+        message: "Unused private symbol.",
+    },
+    SaltError {
+        span: 76..80,
+        message: "Unused private symbol.",
+    },
+    SaltError {
+        span: 88..99,
+        message: "Unused private symbol.",
+    },
+    SaltError {
+        span: 106..120,
+        message: "Unused private symbol.",
     },
 ]

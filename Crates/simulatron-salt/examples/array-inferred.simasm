@@ -1,5 +1,5 @@
-static byte[..] arr [ 'a', 'b', 'c', 1, 2, 3 ]
-static word[5][..] primes_and_doubles [[2,4], [3,6], [5,10], [7,14], [9,18]]
-static half[..] empty []
-static mut byte[..][2][2] mega_nested [[['a','b'], "cd"], ["ef", ['g','h']]]
-static byte[..] msg "Hello there!"
+pub static byte[..] arr [ 'a', 'b', 'c', 1, 2, 3 ]
+pub static word[5][..] primes_and_doubles [[2,4], [3,6], [5,10], [7,14], [9,18]]
+pub static half[..] empty []
+pub static mut byte[..][2][2] mega_nested [[['a','b'], "cd"], ["ef", ['g','h']]]
+pub static byte[..] msg "Hello there!"

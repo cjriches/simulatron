@@ -5,11 +5,7 @@ expression: success.warnings
 ---
 [
     SaltError {
-        span: 21..25,
-        message: "Unused private symbol.",
-    },
-    SaltError {
-        span: 198..231,
+        span: 216..221,
         message: "Unused private symbol.",
     },
 ]

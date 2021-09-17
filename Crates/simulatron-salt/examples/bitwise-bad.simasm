@@ -1,4 +1,3 @@
-const FOO 0b10000000
 static word bar 0x40
 
 not f0

@@ -77,6 +77,18 @@ impl SymbolTable {
         })
     }
 
+    /// Iterate immutably through only private symbols.
+    fn iter_private(&self) -> impl Iterator<Item = (&String, &SymbolTableEntry)> {
+        self.table.iter().filter(|(_, entry)| {
+            match entry {
+                SymbolTableEntry::C(const_) => !const_.public,
+                SymbolTableEntry::D(data) => !data.public,
+                SymbolTableEntry::L(label) => !label.public,
+                SymbolTableEntry::E(_) => false,  // Always public.
+            }
+        })
+    }
+
     fn stats(&self) -> SymbolTableStats {
         let mut num_entries = 0;
         let mut size = 0;
@@ -131,6 +143,7 @@ struct Constant {
     public: bool,
     value: LiteralValue,
     span: Range<usize>,
+    used: bool,
 }
 
 /// Static data symbol table entry.
@@ -338,6 +351,31 @@ impl CodeGenerator {
             ok_or_continue!(self, self.codegen_instruction(instruction));
         }
         self.instructions = Some(instructions);
+
+        // Generate warnings for any unused private symbols.
+        let mut unused_warnings = Vec::new();
+        for (_, entry) in self.symbol_table.iter_private() {
+            let (used, span) = match entry {
+                SymbolTableEntry::C(const_) =>
+                    (const_.used, const_.span.clone()),
+                SymbolTableEntry::D(data) =>
+                    (!data.references.is_empty(), data.span.clone()),
+                SymbolTableEntry::L(label) =>
+                    (!label.references.is_empty(), label.span.clone()),
+                SymbolTableEntry::E(_) => unreachable!(),
+            };
+            if !used {
+                unused_warnings.push(SaltError {
+                    span,
+                    message: "Unused private symbol.".into(),
+                });
+            }
+        }
+        // Sort by appearance in file.
+        for w in unused_warnings.into_iter()
+                .sorted_by_key(|w| w.span.start) {
+            self.warning(w);
+        }
 
         // Generate object code.
         // Size is instructions plus symbol table plus headers.
@@ -585,6 +623,7 @@ impl CodeGenerator {
                     public,
                     value,
                     span: const_.name_span(),
+                    used: false,
                 }));
             if let Some(_) = existing {
                 self.error(SaltError {
@@ -861,6 +900,7 @@ impl CodeGenerator {
             return Ok((match entry {
                 SymbolTableEntry::C(constant) => {
                     trace!("Operand resolved to constant {}", ident);
+                    constant.used = true;
                     ResolvedOperand::Literal(constant.value.clone())
                 },
                 SymbolTableEntry::D(data) => {

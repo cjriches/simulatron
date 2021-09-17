@@ -3,6 +3,8 @@ source: simulatron-salt/src/lib/lexer.rs
 expression: output
 
 ---
+Pub `pub`
+Whitespace ` `
 Static `static`
 Whitespace ` `
 Byte `byte`
@@ -33,6 +35,8 @@ IntLiteral `3`
 Whitespace ` `
 CloseSquare `]`
 Newline
+Pub `pub`
+Whitespace ` `
 Static `static`
 Whitespace ` `
 Word `word`
@@ -81,6 +85,8 @@ IntLiteral `18`
 CloseSquare `]`
 CloseSquare `]`
 Newline
+Pub `pub`
+Whitespace ` `
 Static `static`
 Whitespace ` `
 Half `half`
@@ -93,6 +99,8 @@ Whitespace ` `
 OpenSquare `[`
 CloseSquare `]`
 Newline
+Pub `pub`
+Whitespace ` `
 Static `static`
 Whitespace ` `
 Mut `mut`
@@ -135,6 +143,8 @@ CloseSquare `]`
 CloseSquare `]`
 CloseSquare `]`
 Newline
+Pub `pub`
+Whitespace ` `
 Static `static`
 Whitespace ` `
 Byte `byte`

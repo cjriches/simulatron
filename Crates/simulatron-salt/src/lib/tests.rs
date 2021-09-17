@@ -84,7 +84,7 @@ fn test_blockset() {
 
 #[test]
 fn test_branching() {
-    test_success("examples/branching.simasm", true);
+    test_success_with_warnings("examples/branching.simasm", true);
     test_failure("examples/branching-bad.simasm");
     test_failure("examples/branching-bad-2.simasm");
 
@@ -92,7 +92,7 @@ fn test_branching() {
 
 #[test]
 fn test_comments() {
-    test_success("examples/comments.simasm", false);
+    test_success_with_warnings("examples/comments.simasm", false);
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn test_external_refs() {
 
 #[test]
 fn test_hello_world() {
-    test_success("examples/hello-world.simasm", true);
+    test_success_with_warnings("examples/hello-world.simasm", true);
 }
 
 #[test]
