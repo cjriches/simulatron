@@ -64,7 +64,7 @@ String literals are written with double quotes, and expand to character arrays:
 [72, 101, 108, 108, 111]
 ```
 
-A constant, label, or static data name can be used anywhere a literal is expected. Any names that cannot be found will become external symbols in the generated object code and must be resolved at link time.
+A constant, label, or static data name can be used anywhere a literal is expected. Any names that cannot be found will become external symbols in the generated object code and must be resolved at link time. Note that label and static data names resolve to word-sized addresses.
 
 A `sizeof` expression can also be used in place of a literal. The syntax for this is `sizeof(identifier)`, where `identifier` is the name of a static data declaration made in this file. This resolves to the size of the data.
 

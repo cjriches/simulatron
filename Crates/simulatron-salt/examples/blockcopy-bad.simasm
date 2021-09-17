@@ -1,4 +1,2 @@
-static byte[64] message "Hello There!"
-
-blockcopy message 0x4000 0x5000
 blockcopy 0 1
+blockcopy 5 0x4000 1234.5678

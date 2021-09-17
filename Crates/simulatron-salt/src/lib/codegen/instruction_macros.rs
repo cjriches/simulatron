@@ -110,7 +110,9 @@ macro_rules! i_w {
                 $self.code.push($opcodes.1);
                 $self.code.push(reg_ref);
             }
-            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+            ResolvedOperand::SymbolReference => {
+                $self.code.push($opcodes.0);
+            }
         }
 
         Ok(())
@@ -190,7 +192,23 @@ macro_rules! i_BHWF_bhwf {
                 $self.code[opcode_pos] = $opcodes.1;
                 $self.code.push(reg_ref);
             },
-            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+            ResolvedOperand::SymbolReference => {
+                if reg_type == RegisterType::Word {
+                    $self.code[opcode_pos] = $opcodes.0;
+                } else if reg_type == RegisterType::Float {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Symbol references resolve to addresses, \
+                                  which make no sense in a float register.".into(),
+                    });
+                } else {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Symbols resolve to addresses, which are too \
+                                  large to use here.".into(),
+                    });
+                }
+            },
         }
 
         Ok(())
@@ -235,7 +253,7 @@ macro_rules! i_w_a_a {
                 opcode_choice += 4;
                 $self.code.push(reg_ref);
             }
-            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+            ResolvedOperand::SymbolReference => {},
         }
 
         // Second operand: address.
@@ -324,7 +342,7 @@ macro_rules! i_w_a_b {
                 opcode_choice += 4;
                 $self.code.push(reg_ref);
             }
-            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+            ResolvedOperand::SymbolReference => {},
         }
 
         // Second operand: address.
@@ -496,7 +514,17 @@ macro_rules! i_BHW_bhw {
                 $self.code[opcode_pos] = $opcodes.1;
                 $self.code.push(reg_ref);
             },
-            ResolvedOperand::SymbolReference => no_symbols!(op_span),
+            ResolvedOperand::SymbolReference => {
+                if reg_type == RegisterType::Word {
+                    $self.code[opcode_pos] = $opcodes.0;
+                } else {
+                    return Err(SaltError {
+                        span: op_span,
+                        message: "Symbol references resolve to addresses, \
+                                  which are too large to use here.".into(),
+                    });
+                }
+            },
         }
 
         Ok(())

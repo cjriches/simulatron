@@ -1,5 +1,5 @@
 static word bar 0x40
 
 not f0
-and r0 bar
+and r0h bar
 srshift r0 256

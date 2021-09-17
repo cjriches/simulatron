@@ -1,18 +1,19 @@
 ---
-source: src/lib/tests.rs
+source: simulatron-salt/src/lib/tests.rs
 expression: failure
 
 ---
 CodegenFailure {
     errors: [
         SaltError {
-            span: 49..57,
-            message: "Symbol references resolve to addresses, which can't be used here.",
-        },
-        SaltError {
-            span: 72..85,
+            span: 0..13,
             message: "Expected 3 operands, but found 2.",
         },
     ],
-    warnings: [],
+    warnings: [
+        SaltError {
+            span: 32..42,
+            message: "Float literal being used as an integer.",
+        },
+    ],
 }

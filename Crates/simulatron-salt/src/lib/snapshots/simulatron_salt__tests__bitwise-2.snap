@@ -10,11 +10,11 @@ CodegenFailure {
             message: "Operation not applicable to floats.",
         },
         SaltError {
-            span: 35..39,
-            message: "Symbol references resolve to addresses, which can't be used here.",
+            span: 36..40,
+            message: "Symbol references resolve to addresses, which are too large to use here.",
         },
         SaltError {
-            span: 50..54,
+            span: 51..55,
             message: "Literal too large: expected single byte.",
         },
     ],
