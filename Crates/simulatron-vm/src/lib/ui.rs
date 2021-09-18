@@ -28,7 +28,8 @@ use crate::keyboard::KeyMessage;
 // UI Constants.
 const TITLE: &str          = "                             Simulatron 2.0 Terminal                              ";
 const TOP_BORDER: &str     = "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓";
-const SIDE_BORDER: &str    = "┃                                                                                ┃";
+const SIDE_BORDER: &str    = "┃";
+const EMPTY_ROW: &str      =  "                                                                                ";
 const BOTTOM_BORDER: &str  = "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛";
 
 // Simulatron constants.
@@ -65,8 +66,8 @@ impl UI {
             ui_rx,
             keyboard_tx: Some(keyboard_tx),
             char_buf: vec![' '; BUF_LEN],
-            fg_buf: vec![Color::White; BUF_LEN],
-            bg_buf: vec![Color::Black; BUF_LEN],
+            fg_buf: vec![Color::from((255, 255, 255)); BUF_LEN],
+            bg_buf: vec![Color::from((0, 0, 0)); BUF_LEN],
         }
     }
 
@@ -85,12 +86,17 @@ impl UI {
             cursor::Hide,
             cursor::MoveTo(0, 0),
         )?;
-        // Draw the border.
+        // Draw the empty screen including border.
         write!(stdout, "{}", TITLE)?;
         stdout.queue(cursor::MoveTo(0, 1))?;
         write!(stdout, "{}", TOP_BORDER)?;
         stdout.queue(cursor::MoveTo(0, 2))?;
         for i in 0..ROWS {
+            write!(stdout, "{}", SIDE_BORDER)?;
+            // Terminal "black" may not be simulatron "black".
+            stdout.queue(style::SetBackgroundColor(Color::from((0, 0, 0))))?;
+            write!(stdout, "{}", EMPTY_ROW)?;
+            stdout.queue(style::SetBackgroundColor(Color::Black))?;
             write!(stdout, "{}", SIDE_BORDER)?;
             stdout.queue(cursor::MoveTo(0, i+3))?;
         }
