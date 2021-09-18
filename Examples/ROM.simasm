@@ -1,0 +1,71 @@
+// Important addresses.
+const DISK_INT     0x0010
+const DISPLAY      0x0240
+const DISK_STATUS  0x1FEC
+const DISK_SIZE    0x1FED
+const DISK_COMMAND 0x1FF5
+const DISK_BUFFER  0x2000
+const RAM_START    0x4000
+
+// Important disk constants.
+const FLAG_CONNECTED 0x01
+const FLAG_FINISHED  0x02
+const FLAG_SUCCESS   0x04
+const CMD_CONT_READ  0x03
+
+// Other important constants.
+const INT_MASK  0x10
+const PAGE_SIZE 0x1000
+
+// Error Messages.
+static byte[..] no_disk_msg "Disk A not present. Nothing to load."
+static byte[..] io_err_msg "IO Error. Could not load program."
+
+// Ensure that Disk A is attached.
+copy  r0 check_disk  // Set the interrupt handler.
+store DISK_INT r0
+copy  imr INT_MASK   // Enable the interrupt.
+pause                // Wait for the interrupt.
+
+// Read the entire disk into RAM.
+load  r1 DISK_SIZE        // Read the number of blocks into r1. We'll use this as a counter.
+copy  r0 io_complete      // Change the interrupt handler.
+store DISK_INT r0
+copy  r2b FLAG_CONNECTED  // Create the expected disk status in r2b.
+or    r2b FLAG_SUCCESS
+or    r2b FLAG_FINISHED
+copy  r3 RAM_START        // Copy the start of RAM into r3.
+copy  r4 CMD_CONT_READ    // Copy the disk command into r4.
+loop:
+store DISK_COMMAND r4  // Instruct the disk to do a contiguous read.
+pause                  // Wait for the operation to complete.
+jump loop              // Repeat.
+
+// Disk check interrupt handler.
+check_disk:
+load      r0b DISK_STATUS     // Load the disk status.
+compare   r0b FLAG_CONNECTED  // Ensure that it is connected.
+jnotequal no_disk
+ireturn
+
+// Disk missing fail condition.
+no_disk:
+blockcopy sizeof(no_disk_msg) DISPLAY no_disk_msg
+halt
+
+// IO error fail condition.
+io_err:
+blockcopy sizeof(io_err_msg) DISPLAY io_err_msg
+halt
+
+// Disk operation complete interrupt handler.
+io_complete:
+load      r0b DISK_STATUS    // Load the disk status.
+compare   r0b r2b            // Ensure it is as expected.
+jnotequal io_err
+blockcopy PAGE_SIZE r3 DISK_BUFFER  // Copy the page into RAM.
+sub       r1 1                      // Decrement the remaining blocks.
+jequal    RAM_START                 // If no more blocks, jump to the loaded program.
+xor       r2b FLAG_FINISHED         // Flip the F bit for next time.
+add       r3 PAGE_SIZE              // Increment the destination by a page.
+ireturn

@@ -18,8 +18,8 @@ General documentation can be found in [Documentation](Documentation). Package-sp
 * Assembly language and object code format specification, with an assembler and linker.
 * Cross-platform support: Simulatron runs on Linux and Windows, and should run on Mac too (although this is untested).
 
-## Building
-The Simulatron project is written in 100% Rust, and uses the standard Cargo build system. Ensure you have an [up-to-date Rust toolchain](https://www.rust-lang.org/learn/get-started). Each package can then be built by navigating to its directory (e.g. [Crates/simulatron-vm/](Crates/simulatron-vm)) and running `cargo build --release`. The resulting binaries can be found at `Crates/target/release/`. To install to your system path, instead run `cargo install --path .`.
+## Getting Started
+See the [examples](Examples/README.md).
 
 ## Project State
 The core VM, linker, and assembler are feature-complete, and currently in a beta polish phase before I commit to the 2.0.0 release.
