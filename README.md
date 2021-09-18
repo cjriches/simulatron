@@ -2,7 +2,7 @@
 The Simulatron project consists of a CPU architecture definition, a virtual machine emulating this architecture, and a compilation toolchain for this architecture. Its purpose is to aid understanding of hardware and low-level software, and to be fun to play around with.
 
 This is the root repository for Simulatron and its associated tools. This project currently consists of the following packages:
-* `simulatron` - the virtual machine itself.
+* `simulatron-vm` - the virtual machine itself.
 * `simulatron-salt` - an assembler for Simulatron.
 * `simulatron-silk` - a linker for Simulatron.
 * `simulatron-utils` - utilities that are shared or don't fit anywhere else.
@@ -22,7 +22,7 @@ General documentation can be found in [Documentation](Documentation). Package-sp
 See the [examples](Examples/README.md).
 
 ## Project State
-The core VM, linker, and assembler are feature-complete, and currently in a beta polish phase before I commit to the 2.0.0 release.
+The VM, linker, and assembler are feature-complete, and currently in a beta polish phase before I commit to the 2.0.0 release.
 
 ## History
 Simulatron V1 was a similar project smaller in scope, with a 16-bit CPU design that lacked memory management or privilege modes. It was never made open-source. Simulatron V2 is a from-scratch redesign and rewrite, designed to be more powerful, more performant, and capable of supporting an operating system. Indeed, the long-term goal is to create an operating system that runs on Simulatron.

@@ -35,11 +35,11 @@ copy  r2b FLAG_CONNECTED  // Create the expected disk status in r2b.
 or    r2b FLAG_SUCCESS
 or    r2b FLAG_FINISHED
 copy  r3 RAM_START        // Copy the start of RAM into r3.
-copy  r4 CMD_CONT_READ    // Copy the disk command into r4.
+copy  r4b CMD_CONT_READ   // Copy the disk command into r4b.
 loop:
-store DISK_COMMAND r4  // Instruct the disk to do a contiguous read.
-pause                  // Wait for the operation to complete.
-jump loop              // Repeat.
+store DISK_COMMAND r4b  // Instruct the disk to do a contiguous read.
+pause                   // Wait for the operation to complete.
+jump loop               // Repeat.
 
 // Disk check interrupt handler.
 check_disk:

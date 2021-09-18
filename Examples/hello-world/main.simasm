@@ -1,0 +1,6 @@
+const DISPLAY 0x0240
+static byte[..] msg "Hello, World!"
+
+// Write the message to the screen.
+blockcopy sizeof(msg) DISPLAY msg
+halt
