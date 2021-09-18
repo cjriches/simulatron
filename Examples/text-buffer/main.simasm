@@ -1,0 +1,78 @@
+const KEY_INT            0x000C
+const DISPLAY_START      0x0240
+const DISPLAY_END        0x0A10
+const CHAR_TO_BACKGROUND 0x0FA0
+const BACKGROUND_END     0x19B0
+const KEY_BUFFER         0x19B0
+
+const INT_MASK 0x08
+const BACKSPACE 14
+const NEWLINE 15
+const BLACK 0b000000
+const WHITE 0b111111
+const COLS 80
+
+copy r7 DISPLAY_START      // Set up the display position counter in r7.
+copy r6b BLACK             // Set up black and white constants in r6b and r5b.
+copy r5b WHITE
+add r7 CHAR_TO_BACKGROUND  // Show the cursor.
+store r7 r5b
+sub r7 CHAR_TO_BACKGROUND
+copy r0 keypress           // Set up the keyboard interrupt handler.
+store KEY_INT r0
+copy imr INT_MASK
+
+// Infinitely read keys.
+loop:
+pause
+jump loop
+
+// Keypress handler.
+keypress:
+load r0b KEY_BUFFER     // Load the key that was pressed.
+compare r0b BACKSPACE   // Check if it was backspace.
+jequal keypress_delete
+compare r0b NEWLINE     // Check if it was newline.
+jequal keypress_newline
+compare r7 DISPLAY_END  // Check if we're at the end of the screen.
+jequal keypress_end
+store r7 r0b               // Print the character.
+add r7 CHAR_TO_BACKGROUND  // Move the cursor.
+store r7 r6b
+add r7 1
+compare r7 BACKGROUND_END  // Avoid overflow.
+jequal keypress_end_sub
+store r7 r5b
+
+keypress_end_sub:
+sub r7 CHAR_TO_BACKGROUND
+keypress_end:
+ireturn
+
+keypress_delete:
+compare r7 DISPLAY_START   // Check if we're at the start of the screen.
+jequal keypress_end
+add r7 CHAR_TO_BACKGROUND  // Move the cursor.
+store r7 r6b
+sub r7 1
+store r7 r5b
+sub r7 CHAR_TO_BACKGROUND
+copy r0b ' '               // Delete a character.
+store r7 r0b
+jump keypress_end
+
+keypress_newline:
+copy r0 r7            // Calculate the index of the next row.
+sub r0 DISPLAY_START  // pos + COLS - ((pos - base) % COLS)
+urem r0 COLS
+copy r1 COLS
+sub r1 r0
+add r1 r7
+compare r1 DISPLAY_END     // Avoid overflow.
+ujgreatereq keypress_end
+add r7 CHAR_TO_BACKGROUND  // Move cursor.
+store r7 r6b
+add r1 CHAR_TO_BACKGROUND
+store r1 r5b
+copy r7 r1
+jump keypress_end_sub
