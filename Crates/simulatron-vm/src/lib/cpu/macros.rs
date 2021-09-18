@@ -262,10 +262,10 @@ macro_rules! bin_op_rotate_carry {
 /// Create a conditional jump to literal opcode.
 macro_rules! cond_jump_literal {
     ($self:ident, $condition:expr) => {{
-        debug!("{} literal", $condition.0);
+        trace!("{} literal", $condition.0);
         let address = fetch!(Word);
         if $condition.1 {
-            debug!("Jumping to {:#x}", address);
+            trace!("Jumping to {:#x}", address);
             $self.program_counter = address;
         }
     }}
@@ -274,12 +274,12 @@ macro_rules! cond_jump_literal {
 /// Create a conditional jump to reference opcode.
 macro_rules! cond_jump_reference {
     ($self:ident, $condition:expr) => {{
-        debug!("{} ref", $condition.0);
+        trace!("{} ref", $condition.0);
         let reg_ref = fetch!(Byte);
-        debug!("{} to address in {:#x}", $condition.0, reg_ref);
+        trace!("{} to address in {:#x}", $condition.0, reg_ref);
         let address = try_tv_into_v!($self.read_from_register(reg_ref)?);
         if $condition.1 {
-            debug!("Jumping to {:#x}", address);
+            trace!("Jumping to {:#x}", address);
             $self.program_counter = address;
         }
     }}
