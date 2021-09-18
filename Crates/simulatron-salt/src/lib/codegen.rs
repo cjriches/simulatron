@@ -804,7 +804,8 @@ impl CodeGenerator {
             }}
         }
 
-        match instruction.opcode().as_str() {
+        let (opcode, op_span) = instruction.opcode();
+        match opcode.as_str() {
             "halt" => def!("halt", i_none, 0x00),
             "pause" => def!("pause", i_none, 0x01),
             "timer" => def!("timer", i_w, (0x02, 0x03)),
@@ -861,7 +862,7 @@ impl CodeGenerator {
             "sconvert" => def!("sconvert", i_WF_WF, 0x6C),
             "uconvert" => def!("uconvert", i_WF_WF, 0x6D),
             _ => Err(SaltError {
-                span: instruction.syntax().text_range().into(),
+                span: op_span,
                 message: "Unrecognised opcode.".into(),
             }),
         }

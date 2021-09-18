@@ -246,12 +246,11 @@ impl Label {
 
 /// Instructions have an opcode and a list of operands.
 impl Instruction {
-    pub fn opcode(&self) -> String {
+    pub fn opcode(&self) -> (String, Range<usize>) {
         let mut opcode = self.syntax.children_with_tokens()
             .find_map(identifier_cast)
-            .unwrap()
-            .0;
-        opcode.make_ascii_lowercase();
+            .unwrap();
+        opcode.0.make_ascii_lowercase();
         opcode
     }
 
@@ -599,7 +598,7 @@ mod tests {
         assert_eq!(instructions.len(), 6);
 
         fn test(instruction: &Instruction, opcode: &str) {
-            assert_eq!(&instruction.opcode(), opcode);
+            assert_eq!(&instruction.opcode().0, opcode);
             assert_debug_snapshot!(instruction.operands()
                 .iter()
                 .map(Operand::value)
