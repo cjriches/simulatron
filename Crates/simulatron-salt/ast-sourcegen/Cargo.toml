@@ -3,8 +3,9 @@ name = "ast-sourcegen"
 version = "2.0.0-beta"
 authors = ["Chris Riches <chrisriches42@gmail.com>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Procedural macros for simulatron-salt"
+repository = "https://github.com/cjriches/simulatron"
+license = "MIT"
 
 [lib]
 path = "lib.rs"
