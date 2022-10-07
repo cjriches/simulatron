@@ -1,5 +1,5 @@
 # Simulatron Character Set
-### Version 2.0.0-beta
+### Version 2.0.0
 
 Simulatron speaks the following 8-bit character representation. It is compatible with ASCII for values 32-126 inclusive and some other characters, but deviates in other ranges.
 

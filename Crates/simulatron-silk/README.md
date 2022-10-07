@@ -1,5 +1,5 @@
 # silk: SImulatron LinKer
-### Version 2.0.0-beta
+### Version 2.0.0
 
 ## Overview
 Silk links together one or more object code files (`*.simobj`) into various forms of executable.

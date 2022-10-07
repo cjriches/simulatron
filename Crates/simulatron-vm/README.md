@@ -1,5 +1,5 @@
 # Simulatron
-### Version 2.0.0-beta
+### Version 2.0.0
 
 ## Overview
 Simulatron is a virtual machine with its own custom architecture, designed to aid understanding of hardware and low-level software, and to be fun to play around with.

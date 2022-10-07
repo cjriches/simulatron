@@ -1,5 +1,5 @@
 # Memory Management
-### Version 2.0.0-beta
+### Version 2.0.0
 The Simulatron has a 32-bit virtual and physical address space. When in kernel mode, the virtual addressing is bypassed, and physical addresses are accessed directly. When in user mode, addresses undergo virtual->physical translation first.
 
 The page/frame size is 4096 bytes.

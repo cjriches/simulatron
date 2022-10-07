@@ -1,5 +1,5 @@
 # Disks
-### Version 2.0.0-beta
+### Version 2.0.0
 
 ## Overview
 Simulatron has two identical disk controllers, A and B. It expects to find two corresponding directories, `./DiskA/` and `./DiskB/`, in the working directory. If either of these does not exist, Simulatron will fail to start. The rest of this document references the controllers in the singular, applying identically to both.

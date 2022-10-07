@@ -22,7 +22,9 @@ General documentation can be found in [Documentation](Documentation). Package-sp
 See the [examples](Examples/README.md).
 
 ## Project State
-The VM, linker, and assembler are feature-complete, and currently in a beta polish phase before I commit to the 2.0.0 release.
+The project is currently paused.
+
+The VM, linker, and assembler are feature-complete. The next goal is to create a simple operating system that can run on Simulatron, but I don't fancy doing that in assembly. I intend to make a higher-level language first.
 
 ## History
 Simulatron V1 was a similar project smaller in scope, with a 16-bit CPU design that lacked memory management or privilege modes. It was never made open-source. Simulatron V2 is a from-scratch redesign and rewrite, designed to be more powerful, more performant, and capable of supporting an operating system. Indeed, the long-term goal is to create an operating system that runs on Simulatron.

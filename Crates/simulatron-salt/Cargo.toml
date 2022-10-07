@@ -1,6 +1,6 @@
 [package]
 name = "simulatron-salt"
-version = "2.0.0-beta"
+version = "2.0.0"
 authors = ["Chris Riches <chrisriches42@gmail.com>"]
 edition = "2021"
 description = "Simulatron Assembly Language Translator: assembler for Simulatron."

@@ -1,5 +1,5 @@
 # salt: Simulatron Assembly Language Translator
-### Version 2.0.0-beta
+### Version 2.0.0
 
 ## Overview
 Salt transforms assembly language files (`*.simasm`) into object code files (`*.simobj`). Object code files can then be linked into different forms of executable by [Silk](../simulatron-silk/README.md).
