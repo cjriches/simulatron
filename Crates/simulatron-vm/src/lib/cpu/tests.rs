@@ -2,16 +2,19 @@ use super::*;
 
 use ntest::{assert_about_eq, timeout};
 
-use crate::init_test_logging;
 use crate::disk::MockDiskController;
 use crate::display::DisplayController;
-use crate::keyboard::{KeyboardController, KeyMessage};
+use crate::init_test_logging;
+use crate::keyboard::{KeyMessage, KeyboardController};
 use crate::mmu::{MMU, ROM, ROM_SIZE};
 use crate::ui::UICommand;
 
-fn run(rom: ROM, keypress: Option<KeyMessage>,
-       interrupt_tx: mpsc::Sender<u32>,
-       interrupt_rx: mpsc::Receiver<u32>) -> (CPU<MockDiskController>, Vec<UICommand>) {
+fn run(
+    rom: ROM,
+    keypress: Option<KeyMessage>,
+    interrupt_tx: Sender<u32>,
+    interrupt_rx: Receiver<u32>,
+) -> (CPU<MockDiskController>, Vec<UICommand>) {
     init_test_logging();
 
     // Create communication channels.
@@ -24,12 +27,10 @@ fn run(rom: ROM, keypress: Option<KeyMessage>,
 
     // Create components.
     let display = DisplayController::new(ui_tx_display);
-    let keyboard = KeyboardController::new(
-        keyboard_tx, keyboard_rx, interrupt_tx_keyboard);
+    let keyboard = KeyboardController::new(keyboard_tx, keyboard_rx, interrupt_tx_keyboard);
     let disk_a = MockDiskController;
     let disk_b = MockDiskController;
-    let mmu = MMU::new(interrupt_tx_mmu, disk_a, disk_b,
-                       display, keyboard, rom);
+    let mmu = MMU::new(interrupt_tx_mmu, disk_a, disk_b, display, keyboard, rom);
     let mut cpu = CPU::new(ui_tx, mmu, interrupt_tx, interrupt_rx);
 
     // Run the CPU till halt.
@@ -49,7 +50,9 @@ fn run_default(rom: ROM) -> (CPU<MockDiskController>, Vec<UICommand>) {
 }
 
 macro_rules! internal {
-    ($cpu:ident) => { $cpu.internal.as_ref().unwrap() }
+    ($cpu:ident) => {
+        $cpu.internal.as_ref().unwrap()
+    };
 }
 
 #[test]
@@ -57,21 +60,21 @@ macro_rules! internal {
 fn test_halt() {
     // Simplest possible test; check the CPU halts immediately on opcode 0.
     let (_, ui_commands) = run_default([0; ROM_SIZE]);
-    assert_eq!(ui_commands.len(), 1);  // Enable and Disable messages.
+    assert_eq!(ui_commands.len(), 1); // Enable and Disable messages.
 }
 
 #[test]
 #[timeout(100)]
 fn test_pause() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x00;  // into r0
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x00; // into r0
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x00;
-    rom[5] = 0xC0;  // ROM address 128.
+    rom[5] = 0xC0; // ROM address 128.
 
-    rom[6] = 0x08;  // Store
+    rom[6] = 0x08; // Store
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x00;
@@ -88,9 +91,7 @@ fn test_pause() {
     rom[16] = 0x01; // Pause (should be skipped due to interrupt occurring directly before).
 
     let (tx, rx) = mpsc::channel();
-    let (_cpu, ui_commands) = run(rom,
-                               Some(KeyMessage::Key(b'a', false, false)),
-                               tx, rx);
+    let (_cpu, ui_commands) = run(rom, Some(KeyMessage::Key(b'a', false, false)), tx, rx);
     assert_eq!(ui_commands.len(), 1);
 }
 
@@ -98,12 +99,12 @@ fn test_pause() {
 #[timeout(100)]
 fn test_copy_literal() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x03;  // into r3
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x03; // into r3
     rom[2] = 0x42;
     rom[3] = 0x06;
     rom[4] = 0x96;
-    rom[5] = 0x96;  // some random number.
+    rom[5] = 0x96; // some random number.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -114,16 +115,16 @@ fn test_copy_literal() {
 #[timeout(100)]
 fn test_copy_reg() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x03;  // into r3
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x03; // into r3
     rom[2] = 0x13;
     rom[3] = 0x57;
     rom[4] = 0x9B;
-    rom[5] = 0xDF;  // some random number.
+    rom[5] = 0xDF; // some random number.
 
-    rom[6] = 0x0B;  // Copy register
-    rom[7] = 0x08;  // into r0h
-    rom[8] = 0x0B;  // from r3h.
+    rom[6] = 0x0B; // Copy register
+    rom[7] = 0x08; // into r0h
+    rom[8] = 0x0B; // from r3h.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -135,14 +136,14 @@ fn test_copy_reg() {
 #[timeout(100)]
 fn test_store_literal_address() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x00;  // into r0
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x00; // into r0
     rom[2] = 0x12;
     rom[3] = 0x34;
     rom[4] = 0x56;
-    rom[5] = 0x78;  // some random number.
+    rom[5] = 0x78; // some random number.
 
-    rom[6] = 0x08;  // Store into
+    rom[6] = 0x08; // Store into
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x4A;
@@ -151,22 +152,25 @@ fn test_store_literal_address() {
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
-    assert_eq!(internal!(cpu).mmu.load_physical_32(0x00004ABC), Ok(0x12345678));
+    assert_eq!(
+        internal!(cpu).mmu.load_physical_32(0x00004ABC),
+        Ok(0x12345678)
+    );
 }
 
 #[test]
 #[timeout(100)]
 fn test_store_reg_address() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x00;  // into r0
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x00; // into r0
     rom[2] = 0xAB;
     rom[3] = 0xCD;
     rom[4] = 0xEF;
-    rom[5] = 0x00;  // some random number.
+    rom[5] = 0x00; // some random number.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x01;  // into r1
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x01; // into r1
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x4A;
@@ -178,22 +182,25 @@ fn test_store_reg_address() {
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
-    assert_eq!(internal!(cpu).mmu.load_physical_32(0x00004ABC), Ok(0xABCDEF00));
+    assert_eq!(
+        internal!(cpu).mmu.load_physical_32(0x00004ABC),
+        Ok(0xABCDEF00)
+    );
 }
 
 #[test]
 #[timeout(100)]
 fn test_load_literal_address() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x07;  // into r7
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x07; // into r7
     rom[2] = 0xFF;
     rom[3] = 0xFF;
     rom[4] = 0xFF;
-    rom[5] = 0xFF;  // some random number.
+    rom[5] = 0xFF; // some random number.
 
-    rom[6] = 0x06;  // Load
-    rom[7] = 0x17;  // into r7b
+    rom[6] = 0x06; // Load
+    rom[7] = 0x17; // into r7b
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x00;
@@ -210,17 +217,17 @@ fn test_load_literal_address() {
 #[timeout(100)]
 fn test_load_reg_address() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x0E;  // into r6h
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x0E; // into r6h
     rom[2] = 0xFF;
-    rom[3] = 0xFF;  // some random number.
+    rom[3] = 0xFF; // some random number.
 
-    rom[4] = 0x0A;  // Copy literal
-    rom[5] = 0x00;  // into r0
+    rom[4] = 0x0A; // Copy literal
+    rom[5] = 0x00; // into r0
     rom[6] = 0x00;
     rom[7] = 0x00;
     rom[8] = 0x00;
-    rom[9] = 0x80;  // ROM byte 0x40 (64).
+    rom[9] = 0x80; // ROM byte 0x40 (64).
 
     rom[10] = 0x07; // Load
     rom[11] = 0x16; // into r6b
@@ -237,16 +244,16 @@ fn test_load_reg_address() {
 #[timeout(100)]
 fn test_swap_literal() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x66;  // some random number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x66; // some random number.
 
-    rom[3] = 0x0C;  // Swap with literal address
-    rom[4] = 0x10;  // r0b
+    rom[3] = 0x0C; // Swap with literal address
+    rom[4] = 0x10; // r0b
     rom[5] = 0x00;
     rom[6] = 0x00;
     rom[7] = 0x40;
-    rom[8] = 0x00;  // address 0x00004000.
+    rom[8] = 0x00; // address 0x00004000.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -258,18 +265,18 @@ fn test_swap_literal() {
 #[timeout(100)]
 fn test_swap_reg() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x77;  // some random number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x77; // some random number.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x01;  // into r1
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x01; // into r1
     rom[5] = 0x00;
     rom[6] = 0x00;
     rom[7] = 0x50;
-    rom[8] = 0x00;  // address 0x00005000.
+    rom[8] = 0x00; // address 0x00005000.
 
-    rom[9] = 0x0D;  // Swap with reg ref address
+    rom[9] = 0x0D; // Swap with reg ref address
     rom[10] = 0x10; // r0b
     rom[11] = 0x01; // address in r1.
 
@@ -283,17 +290,17 @@ fn test_swap_reg() {
 #[timeout(100)]
 fn test_kernel_stack() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x22;  // into kspr
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x22; // into kspr
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x80;
-    rom[5] = 0x00;  // address 0x00008000.
+    rom[5] = 0x00; // address 0x00008000.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x08;  // into r0h
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x08; // into r0h
     rom[8] = 0xFF;
-    rom[9] = 0xFF;  // some random number.
+    rom[9] = 0xFF; // some random number.
 
     rom[10] = 0x0E; // Push to the stack
     rom[11] = 0x08; // r0h.
@@ -312,7 +319,10 @@ fn test_kernel_stack() {
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).r[1], 0x0000AAFF);
     assert_eq!(internal!(cpu).kspr, 0x00007FFF);
-    assert_eq!(internal!(cpu).mmu.load_physical_32(0x00007FFC), Ok(0x00AAFFFF));
+    assert_eq!(
+        internal!(cpu).mmu.load_physical_32(0x00007FFC),
+        Ok(0x00AAFFFF)
+    );
 }
 
 #[test]
@@ -320,19 +330,19 @@ fn test_kernel_stack() {
 fn test_user_mode() {
     let mut rom = [0; ROM_SIZE];
     // Store a number for the user process to find.
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x99;  // some random number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x99; // some random number.
 
-    rom[3] = 0x08;  // Store into
+    rom[3] = 0x08; // Store into
     rom[4] = 0x00;
     rom[5] = 0x00;
     rom[6] = 0x40;
-    rom[7] = 0x40;  // address 0x00004040
-    rom[8] = 0x10;  // r0b.
+    rom[7] = 0x40; // address 0x00004040
+    rom[8] = 0x10; // r0b.
 
     // Set the user stack pointer.
-    rom[9] = 0x0A;  // Copy literal
+    rom[9] = 0x0A; // Copy literal
     rom[10] = 0x21; // into uspr
     rom[11] = 0x00;
     rom[12] = 0x00;
@@ -469,15 +479,15 @@ fn test_user_mode() {
 #[timeout(1000)]
 fn test_keyboard() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x22;  // into kspr
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x22; // into kspr
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x50;
-    rom[5] = 0x00;  // address 0x00005000.
+    rom[5] = 0x00; // address 0x00005000.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x00;  // into r0
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x00; // into r0
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x40;
@@ -502,9 +512,12 @@ fn test_keyboard() {
 
     const KEY: u8 = b'F';
     let (interrupt_tx, interrupt_rx) = mpsc::channel();
-    let (cpu, ui_commands) = run(rom,
-                                 Some(KeyMessage::Key(KEY, false, false)),
-                                 interrupt_tx, interrupt_rx);
+    let (cpu, ui_commands) = run(
+        rom,
+        Some(KeyMessage::Key(KEY, false, false)),
+        interrupt_tx,
+        interrupt_rx,
+    );
     assert_eq!(ui_commands.len(), 1);
 
     // Assert that the key was correctly detected.
@@ -517,46 +530,71 @@ fn test_keyboard() {
 fn test_display() {
     let mut rom = [0; ROM_SIZE];
     // Set character 5,32 to '#'.
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x21;  // character '!'.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x21; // character '!'.
 
-    rom[3] = 0x08;  // Store into
+    rom[3] = 0x08; // Store into
     rom[4] = 0x00;
     rom[5] = 0x00;
     rom[6] = 0x03;
-    rom[7] = 0xF0;  // display cell (r5,c32)
-    rom[8] = 0x10;  // r0b.
+    rom[7] = 0xF0; // display cell (r5,c32)
+    rom[8] = 0x10; // r0b.
 
     // Set foreground colour 20, 50 to dark red.
-    rom[9] = 0x0A;  // Copy literal
+    rom[9] = 0x0A; // Copy literal
     rom[10] = 0x10; // into r0b
     rom[11] = 0x10; // RGB(85, 0, 0).
 
-    rom[12] = 0x08;  // Store into
+    rom[12] = 0x08; // Store into
     rom[13] = 0x00;
     rom[14] = 0x00;
     rom[15] = 0x10;
-    rom[16] = 0x82;  // foreground colour cell (r20,c50)
-    rom[17] = 0x10;  // r0b.
+    rom[16] = 0x82; // foreground colour cell (r20,c50)
+    rom[17] = 0x10; // r0b.
 
     // Set background colour 0, 0 to yellow.
     rom[18] = 0x0A; // Copy literal
     rom[19] = 0x10; // into r0b
     rom[20] = 0x3C; // RGB(255, 255, 0).
 
-    rom[21] = 0x08;  // Store into
+    rom[21] = 0x08; // Store into
     rom[22] = 0x00;
     rom[23] = 0x00;
     rom[24] = 0x11;
-    rom[25] = 0xE0;  // background colour cell (r0,c0)
-    rom[26] = 0x10;  // r0b.
+    rom[25] = 0xE0; // background colour cell (r0,c0)
+    rom[26] = 0x10; // r0b.
 
     let (_cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 4);
-    assert_eq!(ui_commands[0], UICommand::SetChar{row:5, col:32, character:'!'});
-    assert_eq!(ui_commands[1], UICommand::SetFg{row:20, col:50, r:85, g:0, b:0});
-    assert_eq!(ui_commands[2], UICommand::SetBg{row:0, col:0, r:255, g:255, b:0});
+    assert_eq!(
+        ui_commands[0],
+        UICommand::SetChar {
+            row: 5,
+            col: 32,
+            character: '!'
+        }
+    );
+    assert_eq!(
+        ui_commands[1],
+        UICommand::SetFg {
+            row: 20,
+            col: 50,
+            r: 85,
+            g: 0,
+            b: 0
+        }
+    );
+    assert_eq!(
+        ui_commands[2],
+        UICommand::SetBg {
+            row: 0,
+            col: 0,
+            r: 255,
+            g: 255,
+            b: 0
+        }
+    );
     assert_eq!(ui_commands[3], UICommand::CPUHalted);
 }
 
@@ -564,15 +602,15 @@ fn test_display() {
 #[timeout(100)]
 fn test_syscall() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x22;  // into kspr
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x22; // into kspr
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x50;
-    rom[5] = 0x00;  // address 0x00005000.
+    rom[5] = 0x00; // address 0x00005000.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x00;  // into r0
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x00; // into r0
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x00;
@@ -647,8 +685,8 @@ fn test_pfsr() {
     rom[5] = 0xC0; // ROM byte 0x80 (128).
 
     // Write the page table entry.
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x00;  // into r0
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x00; // into r0
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x50;
@@ -761,7 +799,10 @@ fn test_pfsr() {
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
     // Assert the user mode process stored in its stack correctly.
-    assert_eq!(internal!(cpu).r[5], internal!(cpu).mmu.page_fault_status_register());
+    assert_eq!(
+        internal!(cpu).r[5],
+        internal!(cpu).mmu.page_fault_status_register()
+    );
     assert_eq!(internal!(cpu).r[5], crate::mmu::PAGE_FAULT_ILLEGAL_ACCESS);
 }
 
@@ -769,15 +810,15 @@ fn test_pfsr() {
 #[timeout(200)]
 fn test_timer_literal_interval() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x22;  // into kspr
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x22; // into kspr
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x50;
-    rom[5] = 0x00;  // address 0x00005000.
+    rom[5] = 0x00; // address 0x00005000.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x00;  // into r0
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x00; // into r0
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x40;
@@ -814,15 +855,15 @@ fn test_timer_literal_interval() {
 #[timeout(200)]
 fn test_timer_reg_interval() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x22;  // into kspr
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x22; // into kspr
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x50;
-    rom[5] = 0x00;  // address 0x00005000.
+    rom[5] = 0x00; // address 0x00005000.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x00;  // into r0
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x00; // into r0
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x40;
@@ -863,15 +904,15 @@ fn test_timer_reg_interval() {
 #[timeout(100)]
 fn test_blockcopy() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x00;  // into r0
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x00; // into r0
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x40;
-    rom[5] = 0x00;  // address 0x00004000.
+    rom[5] = 0x00; // address 0x00004000.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x01;  // into r1
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x01; // into r1
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x00;
@@ -962,18 +1003,18 @@ fn test_blockcopy() {
 #[timeout(100)]
 fn test_blockset() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x00;  // into r0
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x00; // into r0
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x00;
-    rom[5] = 0x20;  // 32 bytes.
+    rom[5] = 0x20; // 32 bytes.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x11;  // into r1b
-    rom[8] = 0x42;  // some value.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x11; // into r1b
+    rom[8] = 0x42; // some value.
 
-    rom[9] = 0x1D;  // Blockset ref length, literal dest, ref value
+    rom[9] = 0x1D; // Blockset ref length, literal dest, ref value
     rom[10] = 0x00; // length in r0
     rom[11] = 0x00;
     rom[12] = 0x00;
@@ -1022,18 +1063,18 @@ fn test_blockset() {
 #[timeout(100)]
 fn test_negate() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x00;  // into r0
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x00; // into r0
     rom[2] = 0x12;
     rom[3] = 0x34;
     rom[4] = 0x56;
-    rom[5] = 0x78;  // random number.
+    rom[5] = 0x78; // random number.
 
-    rom[6] = 0x20;  // Negate
-    rom[7] = 0x00;  // r0.
+    rom[6] = 0x20; // Negate
+    rom[7] = 0x00; // r0.
 
-    rom[8] = 0x0A;  // Copy literal
-    rom[9] = 0x14;  // into r4b
+    rom[8] = 0x0A; // Copy literal
+    rom[9] = 0x14; // into r4b
     rom[10] = 0x10; // random number.
 
     rom[11] = 0x20; // Negate
@@ -1049,19 +1090,19 @@ fn test_negate() {
 #[timeout(100)]
 fn test_add() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x05;  // some number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x05; // some number.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x06;  // some number.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x06; // some number.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x12;  // into r2b
-    rom[8] = 0xFF;  // max number.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x12; // into r2b
+    rom[8] = 0xFF; // max number.
 
-    rom[9] = 0x22;  // Add register
+    rom[9] = 0x22; // Add register
     rom[10] = 0x10; // into r0b
     rom[11] = 0x11; // r1b.
 
@@ -1084,13 +1125,13 @@ fn test_add() {
 #[timeout(100)]
 fn test_flags() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // max number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xFF; // max number.
 
-    rom[3] = 0x21;  // Add literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x21; // Add literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x01; // 1.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -1098,13 +1139,13 @@ fn test_flags() {
     assert_eq!(internal!(cpu).flags, FLAG_ZERO | FLAG_CARRY);
 
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x7F;  // max signed number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x7F; // max signed number.
 
-    rom[3] = 0x21;  // Add literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x21; // Add literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x01; // 1.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -1112,13 +1153,13 @@ fn test_flags() {
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_OVERFLOW);
 
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // -1.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xFF; // -1.
 
-    rom[3] = 0x22;  // Add register
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x10;  // r0b.
+    rom[3] = 0x22; // Add register
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x10; // r0b.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -1126,13 +1167,13 @@ fn test_flags() {
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
 
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x01;  // 1.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x01; // 1.
 
-    rom[3] = 0x22;  // Add register
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x10;  // r0b.
+    rom[3] = 0x22; // Add register
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x10; // r0b.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -1144,19 +1185,19 @@ fn test_flags() {
 #[timeout(100)]
 fn test_float_add() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x42;  // some number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x42; // some number.
 
-    rom[3] = 0x6C;  // Convert register
-    rom[4] = 0x18;  // into f0
-    rom[5] = 0x00;  // from r0.
+    rom[3] = 0x6C; // Convert register
+    rom[4] = 0x18; // into f0
+    rom[5] = 0x00; // from r0.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x56;  // some number.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x56; // some number.
 
-    rom[9] = 0x6C;  // Convert register
+    rom[9] = 0x6C; // Convert register
     rom[10] = 0x19; // into f1
     rom[11] = 0x00; // from r0.
 
@@ -1179,18 +1220,18 @@ fn test_float_add() {
 #[timeout(100)]
 fn test_float_convert() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x00;  // into r0
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x00; // into r0
     rom[2] = 0xFF;
     rom[3] = 0xFF;
     rom[4] = 0xFF;
-    rom[5] = 0xFF;  // -1.
+    rom[5] = 0xFF; // -1.
 
-    rom[6] = 0x6C;  // Signed convert register
-    rom[7] = 0x18;  // into f0
-    rom[8] = 0x00;  // from r0.
+    rom[6] = 0x6C; // Signed convert register
+    rom[7] = 0x18; // into f0
+    rom[8] = 0x00; // from r0.
 
-    rom[9] = 0x6D;  // Unsigned convert register
+    rom[9] = 0x6D; // Unsigned convert register
     rom[10] = 0x19; // into f1
     rom[11] = 0x00; // from r0.
 
@@ -1214,17 +1255,17 @@ fn test_float_convert() {
 #[timeout(100)]
 fn test_addcarry() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // max number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xFF; // max number.
 
-    rom[3] = 0x21;  // Add literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x21; // Add literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x01; // 1.
 
-    rom[6] = 0x23;  // Add literal with carry
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x01;  // 1.
+    rom[6] = 0x23; // Add literal with carry
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x01; // 1.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -1235,19 +1276,19 @@ fn test_addcarry() {
 #[timeout(100)]
 fn test_sub() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x05;  // some number.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x05; // some number.
 
-    rom[3] = 0x6C;  // Convert
-    rom[4] = 0x18;  // into f0
-    rom[5] = 0x00;  // r0.
+    rom[3] = 0x6C; // Convert
+    rom[4] = 0x18; // into f0
+    rom[5] = 0x00; // r0.
 
-    rom[6] = 0x25;  // Sub literal
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x07;  // 7.
+    rom[6] = 0x25; // Sub literal
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x07; // 7.
 
-    rom[9] = 0x26;  // Sub register
+    rom[9] = 0x26; // Sub register
     rom[10] = 0x18; // into f0
     rom[11] = 0x18; // f0.
 
@@ -1261,17 +1302,17 @@ fn test_sub() {
 #[timeout(100)]
 fn test_subborrow() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x21;  // Add literal
-    rom[1] = 0x11;  // into r1b
-    rom[2] = 0x01;  // 1.
+    rom[0] = 0x21; // Add literal
+    rom[1] = 0x11; // into r1b
+    rom[2] = 0x01; // 1.
 
-    rom[3] = 0x25;  // Subtract literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x05;  // 5.
+    rom[3] = 0x25; // Subtract literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x05; // 5.
 
-    rom[6] = 0x28;  // Subtract register with borrow
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x11;  // r1b.
+    rom[6] = 0x28; // Subtract register with borrow
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x11; // r1b.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -1282,19 +1323,19 @@ fn test_subborrow() {
 #[timeout(100)]
 fn test_mult() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x03;  // 3.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x03; // 3.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x05;  // 5.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x05; // 5.
 
-    rom[6] = 0x2A;  // Multiply register
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x11;  // r1b.
+    rom[6] = 0x2A; // Multiply register
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x11; // r1b.
 
-    rom[9] = 0x29;  // Multiply literal
+    rom[9] = 0x29; // Multiply literal
     rom[10] = 0x09; // into r1h
     rom[11] = 0x04;
     rom[12] = 0x00; // 1024.
@@ -1318,19 +1359,19 @@ fn test_mult() {
 #[timeout(100)]
 fn test_sdiv() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x0F;  // 15.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x0F; // 15.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x08;  // 8.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x08; // 8.
 
-    rom[6] = 0x2C;  // Divide register
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x11;  // by r1b.
+    rom[6] = 0x2C; // Divide register
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x11; // by r1b.
 
-    rom[9] = 0x2B;  // Divide literal
+    rom[9] = 0x2B; // Divide literal
     rom[10] = 0x11; // into r1b
     rom[11] = 0x04; // 4.
 
@@ -1384,18 +1425,18 @@ fn test_sdiv() {
 #[timeout(100)]
 fn test_div_by_zero() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xC0;  // ROM address 128.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xC0; // ROM address 128.
 
-    rom[3] = 0x08;  // Store literal address
+    rom[3] = 0x08; // Store literal address
     rom[4] = 0x00;
     rom[5] = 0x00;
     rom[6] = 0x00;
-    rom[7] = 0x04;  // div by zero interrupt handler
-    rom[8] = 0x00;  // r0.
+    rom[7] = 0x04; // div by zero interrupt handler
+    rom[8] = 0x00; // r0.
 
-    rom[9] = 0x0A;  // Copy literal
+    rom[9] = 0x0A; // Copy literal
     rom[10] = 0x22; // into kspr
     rom[11] = 0x00;
     rom[12] = 0x00;
@@ -1414,11 +1455,11 @@ fn test_div_by_zero() {
     rom[22] = 0x01; // Pause (fail condition).
 
     // Interrupt handler.
-    rom[128] = 0x21;  // Add literal
-    rom[129] = 0x17;  // into r7b
-    rom[130] = 0x01;  // 1.
+    rom[128] = 0x21; // Add literal
+    rom[129] = 0x17; // into r7b
+    rom[130] = 0x01; // 1.
 
-    rom[131] = 0x00;  // HALT.
+    rom[131] = 0x00; // HALT.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -1431,19 +1472,19 @@ fn test_div_by_zero() {
 fn test_udiv() {
     let mut rom = [0; ROM_SIZE];
     // These use the same values as test_sdiv, but interpret them as unsigned instead.
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x0F;  // 15.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x0F; // 15.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x08;  // 8.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x08; // 8.
 
-    rom[6] = 0x2E;  // Divide register
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x11;  // r1b.
+    rom[6] = 0x2E; // Divide register
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x11; // r1b.
 
-    rom[9] = 0x2D;  // Divide literal
+    rom[9] = 0x2D; // Divide literal
     rom[10] = 0x11; // into r1b
     rom[11] = 0x04; // 4.
 
@@ -1475,19 +1516,19 @@ fn test_udiv() {
 #[timeout(100)]
 fn test_srem() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x0F;  // 15.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x0F; // 15.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x08;  // 8.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x08; // 8.
 
-    rom[6] = 0x30;  // Remainder register
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x11;  // by r1b.
+    rom[6] = 0x30; // Remainder register
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x11; // by r1b.
 
-    rom[9] = 0x2F;  // Remainder literal
+    rom[9] = 0x2F; // Remainder literal
     rom[10] = 0x11; // into r1b
     rom[11] = 0x04; // 4.
 
@@ -1542,19 +1583,19 @@ fn test_srem() {
 fn test_urem() {
     let mut rom = [0; ROM_SIZE];
     // These use the same values as test_srem, but interpret them as unsigned instead.
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x0F;  // 15.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x0F; // 15.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x08;  // 8.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x08; // 8.
 
-    rom[6] = 0x32;  // Remainder register
-    rom[7] = 0x10;  // into r0b
-    rom[8] = 0x11;  // r1b.
+    rom[6] = 0x32; // Remainder register
+    rom[7] = 0x10; // into r0b
+    rom[8] = 0x11; // r1b.
 
-    rom[9] = 0x31;  // Remainder literal
+    rom[9] = 0x31; // Remainder literal
     rom[10] = 0x11; // into r1b
     rom[11] = 0x04; // 4.
 
@@ -1586,19 +1627,19 @@ fn test_urem() {
 #[timeout(100)]
 fn test_not() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x03;  // 3.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x03; // 3.
 
-    rom[3] = 0x33;  // Logical NOT
-    rom[4] = 0x08;  // r0h.
+    rom[3] = 0x33; // Logical NOT
+    rom[4] = 0x08; // r0h.
 
-    rom[5] = 0x33;  // Logical NOT
-    rom[6] = 0x01;  // r1.
+    rom[5] = 0x33; // Logical NOT
+    rom[6] = 0x01; // r1.
 
-    rom[7] = 0x0B;  // Copy register
-    rom[8] = 0x02;  // into r2
-    rom[9] = 0x01;  // r1.
+    rom[7] = 0x0B; // Copy register
+    rom[8] = 0x02; // into r2
+    rom[9] = 0x01; // r1.
 
     rom[10] = 0x33; // Logical NOT
     rom[11] = 0x12; // r2b.
@@ -1625,19 +1666,19 @@ fn test_not() {
 #[timeout(100)]
 fn test_and() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x03;  // 3.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x03; // 3.
 
-    rom[3] = 0x34;  // Logical AND literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x02;  // 2.
+    rom[3] = 0x34; // Logical AND literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x02; // 2.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x11;  // into r1b
-    rom[8] = 0x0F;  // 15.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x11; // into r1b
+    rom[8] = 0x0F; // 15.
 
-    rom[9] = 0x34;  // Logical AND literal
+    rom[9] = 0x34; // Logical AND literal
     rom[10] = 0x11; // into r1b
     rom[11] = 0x10; // 16.
 
@@ -1665,19 +1706,19 @@ fn test_and() {
 #[timeout(100)]
 fn test_or() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x03;  // 3.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x03; // 3.
 
-    rom[3] = 0x36;  // Logical OR literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x02;  // 2.
+    rom[3] = 0x36; // Logical OR literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x02; // 2.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x11;  // into r1b
-    rom[8] = 0x0F;  // 15.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x11; // into r1b
+    rom[8] = 0x0F; // 15.
 
-    rom[9] = 0x36;  // Logical OR literal
+    rom[9] = 0x36; // Logical OR literal
     rom[10] = 0x11; // into r1b
     rom[11] = 0x10; // 16.
 
@@ -1705,19 +1746,19 @@ fn test_or() {
 #[timeout(100)]
 fn test_xor() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x03;  // 3.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x03; // 3.
 
-    rom[3] = 0x38;  // Logical XOR literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x02;  // 2.
+    rom[3] = 0x38; // Logical XOR literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x02; // 2.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x11;  // into r1b
-    rom[8] = 0x0F;  // 15.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x11; // into r1b
+    rom[8] = 0x0F; // 15.
 
-    rom[9] = 0x38;  // Logical XOR literal
+    rom[9] = 0x38; // Logical XOR literal
     rom[10] = 0x11; // into r1b
     rom[11] = 0x10; // 16.
 
@@ -1745,19 +1786,19 @@ fn test_xor() {
 #[timeout(100)]
 fn test_lshift() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x03;  // 3.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x03; // 3.
 
-    rom[3] = 0x3A;  // Left shift literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x02;  // 2.
+    rom[3] = 0x3A; // Left shift literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x02; // 2.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x11;  // into r1b
-    rom[8] = 0xC0;  // 192.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x11; // into r1b
+    rom[8] = 0xC0; // 192.
 
-    rom[9] = 0x0A;  // Copy literal
+    rom[9] = 0x0A; // Copy literal
     rom[10] = 0x12; // into r2b
     rom[11] = 0x01; // 1.
 
@@ -1776,19 +1817,19 @@ fn test_lshift() {
 #[timeout(100)]
 fn test_srshift() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x03;  // 3.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x03; // 3.
 
-    rom[3] = 0x3C;  // Signed right shift literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x3C; // Signed right shift literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x01; // 1.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x11;  // into r1b
-    rom[8] = 0xC4;  // -60.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x11; // into r1b
+    rom[8] = 0xC4; // -60.
 
-    rom[9] = 0x0A;  // Copy literal
+    rom[9] = 0x0A; // Copy literal
     rom[10] = 0x12; // into r2b
     rom[11] = 0x03; // 3.
 
@@ -1807,19 +1848,19 @@ fn test_srshift() {
 #[timeout(100)]
 fn test_urshift() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x03;  // 3.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x03; // 3.
 
-    rom[3] = 0x3E;  // Unsigned right shift literal
-    rom[4] = 0x10;  // into r0b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x3E; // Unsigned right shift literal
+    rom[4] = 0x10; // into r0b
+    rom[5] = 0x01; // 1.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x11;  // into r1b
-    rom[8] = 0xC4;  // 196.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x11; // into r1b
+    rom[8] = 0xC4; // 196.
 
-    rom[9] = 0x0A;  // Copy literal
+    rom[9] = 0x0A; // Copy literal
     rom[10] = 0x12; // into r2b
     rom[11] = 0x03; // 3.
 
@@ -1838,18 +1879,18 @@ fn test_urshift() {
 #[timeout(100)]
 fn test_big_shift() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x00;  // into r0
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x00; // into r0
     rom[2] = 0xFF;
     rom[3] = 0xFF;
     rom[4] = 0xFF;
-    rom[5] = 0xFF;  // max value.
+    rom[5] = 0xFF; // max value.
 
-    rom[6] = 0x0B;  // Copy register
-    rom[7] = 0x01;  // into r1
-    rom[8] = 0x00;  // r0.
+    rom[6] = 0x0B; // Copy register
+    rom[7] = 0x01; // into r1
+    rom[8] = 0x00; // r0.
 
-    rom[9] = 0x0B;  // Copy register
+    rom[9] = 0x0B; // Copy register
     rom[10] = 0x02; // into r2
     rom[11] = 0x00; // r0.
 
@@ -1877,19 +1918,19 @@ fn test_big_shift() {
 #[timeout(100)]
 fn test_lrot() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x80;  // 128.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x80; // 128.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x01; // 1.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x12;  // into r2b
-    rom[8] = 0xFF;  // 255.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x12; // into r2b
+    rom[8] = 0xFF; // 255.
 
-    rom[9] = 0x41;  // Left rotate register
+    rom[9] = 0x41; // Left rotate register
     rom[10] = 0x10; // into r0b
     rom[11] = 0x11; // by r1b.
 
@@ -1922,19 +1963,19 @@ fn test_lrot() {
 #[timeout(100)]
 fn test_rrot() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x80;  // 128.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x80; // 128.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x01; // 1.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x12;  // into r2b
-    rom[8] = 0xFF;  // 255.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x12; // into r2b
+    rom[8] = 0xFF; // 255.
 
-    rom[9] = 0x43;  // Right rotate register
+    rom[9] = 0x43; // Right rotate register
     rom[10] = 0x10; // into r0b
     rom[11] = 0x11; // by r1b.
 
@@ -1967,19 +2008,19 @@ fn test_rrot() {
 #[timeout(100)]
 fn test_rotcarry() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x80;  // 128.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x80; // 128.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x01; // 1.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x12;  // into r2b
-    rom[8] = 0xFF;  // 255.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x12; // into r2b
+    rom[8] = 0xFF; // 255.
 
-    rom[9] = 0x45;  // Left rotate carry register
+    rom[9] = 0x45; // Left rotate carry register
     rom[10] = 0x10; // into r0b
     rom[11] = 0x11; // by r1b.
 
@@ -2012,13 +2053,13 @@ fn test_rotcarry() {
 #[timeout(100)]
 fn test_jump() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x48;   // Jump to literal address
+    rom[0] = 0x48; // Jump to literal address
     rom[1] = 0x00;
     rom[2] = 0x00;
     rom[3] = 0x00;
-    rom[4] = 0xC0;   // 0x000000C0 (ROM byte 128).
+    rom[4] = 0xC0; // 0x000000C0 (ROM byte 128).
 
-    rom[5] = 0x01;   // Pause (fail condition).
+    rom[5] = 0x01; // Pause (fail condition).
 
     rom[128] = 0x0A; // Copy literal
     rom[129] = 0x00; // into r0
@@ -2054,95 +2095,90 @@ fn test_jump() {
 #[timeout(100)]
 fn test_compare() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x40;  // 64.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x40; // 64.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b with
-    rom[5] = 0x40;  // 64.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b with
+    rom[5] = 0x40; // 64.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, FLAG_ZERO);
 
-
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x40;  // 64.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x40; // 64.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b with
-    rom[5] = 0x41;  // 65.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b with
+    rom[5] = 0x41; // 65.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE | FLAG_CARRY);
 
-
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x40;  // 64.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x40; // 64.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b with
-    rom[5] = 0x3F;  // 63.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b with
+    rom[5] = 0x3F; // 63.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, 0);
 
-
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // 255 (-1).
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xFF; // 255 (-1).
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0xFA;  // 250 (-6).
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0xFA; // 250 (-6).
 
-    rom[6] = 0x4B;  // Compare registers
-    rom[7] = 0x10;  // r0b with
-    rom[8] = 0x11;  // r1b.
+    rom[6] = 0x4B; // Compare registers
+    rom[7] = 0x10; // r0b with
+    rom[8] = 0x11; // r1b.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, 0);
 
-
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x80;  // 128 (-128).
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x80; // 128 (-128).
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x01;  // 1.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x01; // 1.
 
-    rom[6] = 0x4B;  // Compare registers
-    rom[7] = 0x10;  // r0b with
-    rom[8] = 0x11;  // r1b.
+    rom[6] = 0x4B; // Compare registers
+    rom[7] = 0x10; // r0b with
+    rom[8] = 0x11; // r1b.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, FLAG_OVERFLOW);
 
-
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x00;  // 0.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x00; // 0.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0x81;  // 129 (-127).
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0x81; // 129 (-127).
 
-    rom[6] = 0x4B;  // Compare registers
-    rom[7] = 0x10;  // r0b with
-    rom[8] = 0x11;  // r1b.
+    rom[6] = 0x4B; // Compare registers
+    rom[7] = 0x10; // r0b with
+    rom[8] = 0x11; // r1b.
 
     let (cpu, ui_commands) = run_default(rom);
     assert_eq!(ui_commands.len(), 1);
@@ -2153,15 +2189,15 @@ fn test_compare() {
 #[timeout(100)]
 fn test_blockcmp() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x4C;  // Block compare literal literal literal
+    rom[0] = 0x4C; // Block compare literal literal literal
     rom[1] = 0x00;
     rom[2] = 0x00;
     rom[3] = 0x00;
-    rom[4] = 0x04;  // 4 bytes
+    rom[4] = 0x04; // 4 bytes
     rom[5] = 0x00;
     rom[6] = 0x00;
     rom[7] = 0x00;
-    rom[8] = 0xC0;  // ROM byte 128
+    rom[8] = 0xC0; // ROM byte 128
     rom[9] = 0x00;
     rom[10] = 0x00;
     rom[11] = 0x00;
@@ -2191,16 +2227,15 @@ fn test_blockcmp() {
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, 0);
 
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xC8; // ROM byte 136.
 
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xC8;  // ROM byte 136.
-
-    rom[3] = 0x4D;  // Block compare literal literal ref
+    rom[3] = 0x4D; // Block compare literal literal ref
     rom[4] = 0x00;
     rom[5] = 0x00;
     rom[6] = 0x00;
-    rom[7] = 0x04;  // 4 bytes
+    rom[7] = 0x04; // 4 bytes
     rom[8] = 0x00;
     rom[9] = 0x00;
     rom[10] = 0x00;
@@ -2211,17 +2246,16 @@ fn test_blockcmp() {
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE);
 
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xCC; // ROM byte 140.
 
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xCC;  // ROM byte 140.
-
-    rom[3] = 0x4E;  // Block compare literal ref literal
+    rom[3] = 0x4E; // Block compare literal ref literal
     rom[4] = 0x00;
     rom[5] = 0x00;
     rom[6] = 0x00;
-    rom[7] = 0x04;  // 4 bytes
-    rom[8] = 0x00;  // r0
+    rom[7] = 0x04; // 4 bytes
+    rom[8] = 0x00; // r0
     rom[9] = 0x00;
     rom[10] = 0x00;
     rom[11] = 0x00;
@@ -2231,17 +2265,16 @@ fn test_blockcmp() {
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, FLAG_ZERO);
 
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x04; // 4.
 
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x04;  // 4.
-
-    rom[3] = 0x50;  // Block compare ref literal literal
-    rom[4] = 0x00;  // length r0
+    rom[3] = 0x50; // Block compare ref literal literal
+    rom[4] = 0x00; // length r0
     rom[5] = 0x00;
     rom[6] = 0x00;
     rom[7] = 0x00;
-    rom[8] = 0xC8;  // ROM byte 136.
+    rom[8] = 0xC8; // ROM byte 136.
     rom[9] = 0x00;
     rom[10] = 0x00;
     rom[11] = 0x00;
@@ -2251,18 +2284,17 @@ fn test_blockcmp() {
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, 0);
 
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x04; // 4.
 
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x04;  // 4.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0xCC; // ROM byte 140.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0xCC;  // ROM byte 140.
-
-    rom[6] = 0x52;  // Block compare ref ref literal
-    rom[7] = 0x00;  // length r0
-    rom[8] = 0x01;  // r1
+    rom[6] = 0x52; // Block compare ref ref literal
+    rom[7] = 0x00; // length r0
+    rom[8] = 0x01; // r1
     rom[9] = 0x00;
     rom[10] = 0x00;
     rom[11] = 0x00;
@@ -2272,20 +2304,19 @@ fn test_blockcmp() {
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, 0);
 
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x04; // 4.
 
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x04;  // 4.
+    rom[3] = 0x0A; // Copy literal
+    rom[4] = 0x11; // into r1b
+    rom[5] = 0xCC; // ROM byte 140.
 
-    rom[3] = 0x0A;  // Copy literal
-    rom[4] = 0x11;  // into r1b
-    rom[5] = 0xCC;  // ROM byte 140.
+    rom[6] = 0x0A; // Copy literal
+    rom[7] = 0x12; // into r2b
+    rom[8] = 0xC8; // ROM byte 136.
 
-    rom[6] = 0x0A;  // Copy literal
-    rom[7] = 0x12;  // into r2b
-    rom[8] = 0xC8;  // ROM byte 136.
-
-    rom[9] = 0x53;  // Block compare ref ref ref
+    rom[9] = 0x53; // Block compare ref ref ref
     rom[10] = 0x00; // length r0
     rom[11] = 0x01; // r1
     rom[12] = 0x02; // with r2.
@@ -2294,16 +2325,15 @@ fn test_blockcmp() {
     assert_eq!(ui_commands.len(), 1);
     assert_eq!(internal!(cpu).flags, FLAG_NEGATIVE);
 
-
-    rom[0] = 0x4C;  // Block compare literal literal literal
+    rom[0] = 0x4C; // Block compare literal literal literal
     rom[1] = 0x00;
     rom[2] = 0x00;
     rom[3] = 0x02;
-    rom[4] = 0x00;  // 512 bytes
+    rom[4] = 0x00; // 512 bytes
     rom[5] = 0x00;
     rom[6] = 0x00;
     rom[7] = 0x00;
-    rom[8] = 0x40;  // start of ROM
+    rom[8] = 0x40; // start of ROM
     rom[9] = 0x00;
     rom[10] = 0x00;
     rom[11] = 0x00;
@@ -2318,18 +2348,18 @@ fn test_blockcmp() {
 #[timeout(100)]
 fn test_jequal() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x54;  // Jump if equal to literal address
+    rom[0] = 0x54; // Jump if equal to literal address
     rom[1] = 0x00;
     rom[2] = 0x00;
     rom[3] = 0x01;
-    rom[4] = 0x40;  // ROM byte 256.
+    rom[4] = 0x40; // ROM byte 256.
 
-    rom[5] = 0x0A;  // Copy literal
-    rom[6] = 0x10;  // into r0b
-    rom[7] = 0x80;  // ROM byte 64.
+    rom[5] = 0x0A; // Copy literal
+    rom[6] = 0x10; // into r0b
+    rom[7] = 0x80; // ROM byte 64.
 
-    rom[8] = 0x4A;  // Compare literal
-    rom[9] = 0x11;  // r1b
+    rom[8] = 0x4A; // Compare literal
+    rom[9] = 0x11; // r1b
     rom[10] = 0x00; // with 0.
 
     rom[11] = 0x55; // Jump if equal to register address
@@ -2354,15 +2384,15 @@ fn test_jequal() {
 #[timeout(100)]
 fn test_jnotequal() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x0A;  // 10.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x0A; // 10.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0x0A;  // with 10.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0x0A; // with 10.
 
-    rom[6] = 0x56;  // Jump if not equal to literal address
+    rom[6] = 0x56; // Jump if not equal to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x01;
@@ -2397,15 +2427,15 @@ fn test_jnotequal() {
 #[timeout(100)]
 fn test_sjgreater() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x0A;  // 10.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x0A; // 10.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0x0A;  // with 10.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0x0A; // with 10.
 
-    rom[6] = 0x58;  // Jump if greater to literal address
+    rom[6] = 0x58; // Jump if greater to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x01;
@@ -2440,15 +2470,15 @@ fn test_sjgreater() {
 #[timeout(100)]
 fn test_sjgreatereq() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // -1.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xFF; // -1.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0x0A;  // with 10.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0x0A; // with 10.
 
-    rom[6] = 0x5A;  // Jump if greater or equal to literal address
+    rom[6] = 0x5A; // Jump if greater or equal to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x01;
@@ -2483,15 +2513,15 @@ fn test_sjgreatereq() {
 #[timeout(100)]
 fn test_ujgreater() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // 255.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xFF; // 255.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0x0A;  // with 10.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0x0A; // with 10.
 
-    rom[6] = 0x5C;  // Jump if unsigned greater to literal address
+    rom[6] = 0x5C; // Jump if unsigned greater to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x00;
@@ -2516,15 +2546,15 @@ fn test_ujgreater() {
 #[timeout(100)]
 fn test_ujgreatereq() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // 255.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xFF; // 255.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0x81;  // with 129.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0x81; // with 129.
 
-    rom[6] = 0x5C;  // Jump if unsigned greater or equal to literal address
+    rom[6] = 0x5C; // Jump if unsigned greater or equal to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x00;
@@ -2549,15 +2579,15 @@ fn test_ujgreatereq() {
 #[timeout(100)]
 fn test_sjlesser() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0xFF;  // -1.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0xFF; // -1.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0xFE;  // with -2.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0xFE; // with -2.
 
-    rom[6] = 0x60;  // Jump if lesser to literal address
+    rom[6] = 0x60; // Jump if lesser to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x01;
@@ -2592,15 +2622,15 @@ fn test_sjlesser() {
 #[timeout(100)]
 fn test_sjlessereq() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x0A;  // 10.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x0A; // 10.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0x00;  // with 0.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0x00; // with 0.
 
-    rom[6] = 0x62;  // Jump if lesser or equal to literal address
+    rom[6] = 0x62; // Jump if lesser or equal to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x01;
@@ -2635,15 +2665,15 @@ fn test_sjlessereq() {
 #[timeout(100)]
 fn test_ujlesser() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x42;  // 66.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x42; // 66.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0x80;  // with 128.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0x80; // with 128.
 
-    rom[6] = 0x64;  // Jump if unsigned lesser to literal address
+    rom[6] = 0x64; // Jump if unsigned lesser to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x00;
@@ -2668,15 +2698,15 @@ fn test_ujlesser() {
 #[timeout(100)]
 fn test_ujlessereq() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x10;  // into r0b
-    rom[2] = 0x01;  // 1.
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x10; // into r0b
+    rom[2] = 0x01; // 1.
 
-    rom[3] = 0x4A;  // Compare literal
-    rom[4] = 0x10;  // r0b
-    rom[5] = 0x01;  // with 1.
+    rom[3] = 0x4A; // Compare literal
+    rom[4] = 0x10; // r0b
+    rom[5] = 0x01; // with 1.
 
-    rom[6] = 0x66;  // Jump if unsigned lesser or equal to literal address
+    rom[6] = 0x66; // Jump if unsigned lesser or equal to literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x00;
@@ -2701,18 +2731,18 @@ fn test_ujlessereq() {
 #[timeout(100)]
 fn test_call_return() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x22;  // into KSPR
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x22; // into KSPR
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x50;
-    rom[5] = 0x00;  // address 0x00005000.
+    rom[5] = 0x00; // address 0x00005000.
 
-    rom[6] = 0x4A;  // Compare literal
-    rom[7] = 0x10;  // r0b
-    rom[8] = 0x00;  // with 0.
+    rom[6] = 0x4A; // Compare literal
+    rom[7] = 0x10; // r0b
+    rom[8] = 0x00; // with 0.
 
-    rom[9] = 0x68;  // Call literal address
+    rom[9] = 0x68; // Call literal address
     rom[10] = 0x00;
     rom[11] = 0x00;
     rom[12] = 0x00;
@@ -2763,14 +2793,14 @@ fn test_call_return() {
 #[timeout(100)]
 fn test_call_modify_return() {
     let mut rom = [0; ROM_SIZE];
-    rom[0] = 0x0A;  // Copy literal
-    rom[1] = 0x22;  // into KSPR
+    rom[0] = 0x0A; // Copy literal
+    rom[1] = 0x22; // into KSPR
     rom[2] = 0x00;
     rom[3] = 0x00;
     rom[4] = 0x50;
-    rom[5] = 0x00;  // address 0x00005000.
+    rom[5] = 0x00; // address 0x00005000.
 
-    rom[6] = 0x68;  // Call literal address
+    rom[6] = 0x68; // Call literal address
     rom[7] = 0x00;
     rom[8] = 0x00;
     rom[9] = 0x00;

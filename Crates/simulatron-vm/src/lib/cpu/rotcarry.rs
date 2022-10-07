@@ -41,7 +41,7 @@ impl Rcr for u8 {
     type Output = u8;
     fn rcr(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self & 1) > 0;
-        let new_self = (self >> 1) | if carry {0x80} else {0};
+        let new_self = (self >> 1) | if carry { 0x80 } else { 0 };
         return (new_self, new_carry);
     }
 }
@@ -50,7 +50,7 @@ impl Rcr for u16 {
     type Output = u16;
     fn rcr(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self & 1) > 0;
-        let new_self = (self >> 1) | if carry {0x8000} else {0};
+        let new_self = (self >> 1) | if carry { 0x8000 } else { 0 };
         return (new_self, new_carry);
     }
 }
@@ -59,7 +59,7 @@ impl Rcr for u32 {
     type Output = u32;
     fn rcr(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self & 1) > 0;
-        let new_self = (self >> 1) | if carry {0x80000000} else {0};
+        let new_self = (self >> 1) | if carry { 0x80000000 } else { 0 };
         return (new_self, new_carry);
     }
 }

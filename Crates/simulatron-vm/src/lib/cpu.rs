@@ -1,12 +1,12 @@
 mod rotcarry;
 
 #[macro_use]
-mod macros;   // Macros moved to separate file due to length.
+mod macros; // Macros moved to separate file due to length.
 
-#[cfg(test)]  // Unit tests moved to separate file due to length.
+#[cfg(test)] // Unit tests moved to separate file due to length.
 mod tests;
 
-use log::{trace, debug, info};
+use log::{debug, info, trace};
 use std::convert::{TryFrom, TryInto};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Sub};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -27,7 +27,7 @@ pub const INTERRUPT_DISK_A: u32 = 4;
 pub const INTERRUPT_DISK_B: u32 = 5;
 pub const INTERRUPT_TIMER: u32 = 6;
 pub const INTERRUPT_SYSCALL: u32 = 7;
-const JOIN_THREAD: u32 = u32::MAX;  // Not a real interrupt, just a thread join command.
+const JOIN_THREAD: u32 = u32::MAX; // Not a real interrupt, just a thread join command.
 
 // Flag bits.
 const FLAG_ZERO: u16 = 0x01;
@@ -191,12 +191,12 @@ impl InterruptLatch {
                         debug!("Latching interrupt {}.", interrupt);
                         self.latched[interrupt as usize] = true;
                     }
-                },
+                }
                 Err(TryRecvError::Disconnected) => panic!(),
                 Err(TryRecvError::Empty) => {
                     trace!("No enabled interrupts available.");
-                    return None
-                },
+                    return None;
+                }
             }
         }
     }
@@ -264,8 +264,9 @@ impl Timer {
                     match cmd_rx.recv_timeout(Duration::from_millis(interval as u64)) {
                         Ok(TimerCommand::SetTimer(new_interval)) => interval = new_interval,
                         Ok(TimerCommand::JoinThread) => return interrupt_tx,
-                        Err(RecvTimeoutError::Timeout) =>
-                            interrupt_tx.send(INTERRUPT_TIMER).unwrap(),
+                        Err(RecvTimeoutError::Timeout) => {
+                            interrupt_tx.send(INTERRUPT_TIMER).unwrap()
+                        }
                         Err(RecvTimeoutError::Disconnected) => panic!(),
                     };
                 }
@@ -279,8 +280,12 @@ impl Timer {
     fn stop(&mut self) {
         let cmd_tx = self.command_tx.take().unwrap();
         cmd_tx.send(TimerCommand::JoinThread).unwrap();
-        let interrupt_tx = self.thread_handle.take().unwrap()
-            .join().expect("Timer thread terminated with error.");
+        let interrupt_tx = self
+            .thread_handle
+            .take()
+            .unwrap()
+            .join()
+            .expect("Timer thread terminated with error.");
         self.interrupt_tx = Some(interrupt_tx);
     }
 }
@@ -303,20 +308,20 @@ struct CPUInternal<D> {
     timer: Timer,
     mmu: MMU<D>,
     interrupts: InterruptLatch,
-    r: [u32; 8],  // r0-r7 registers
-    f: [f32; 8],  // f0-f7 registers
-    flags: u16,   // Flags register
-    uspr: u32,    // User Stack Pointer Register
-    kspr: u32,    // Kernel Stack Pointer Register
-    pdpr: u32,    // Page Directory Pointer Register
-    imr: u16,     // Interrupt Mask Register
+    r: [u32; 8], // r0-r7 registers
+    f: [f32; 8], // f0-f7 registers
+    flags: u16,  // Flags register
+    uspr: u32,   // User Stack Pointer Register
+    kspr: u32,   // Kernel Stack Pointer Register
+    pdpr: u32,   // Page Directory Pointer Register
+    imr: u16,    // Interrupt Mask Register
     program_counter: u32,
     kernel_mode: bool,
     ui_tx: Sender<UICommand>,
     interrupt_tx: Sender<u32>,
     // Per-cycle state.
-    rewind: u32,       // How much to rewind if the last cycle failed.
-    skip_pause: bool,  // Whether to skip PAUSE instructions this cycle.
+    rewind: u32,      // How much to rewind if the last cycle failed.
+    skip_pause: bool, // Whether to skip PAUSE instructions this cycle.
 }
 
 /// The public-facing CPU interface.
@@ -329,8 +334,12 @@ pub struct CPU<D> {
 impl<D: DiskController + 'static> CPU<D> {
     /// Create a new CPU with the given MMU, interrupt channel, and UI command
     /// channel.
-    pub fn new(ui_tx: Sender<UICommand>, mmu: MMU<D>,
-               interrupt_tx: Sender<u32>, interrupt_rx: Receiver<u32>) -> Self {
+    pub fn new(
+        ui_tx: Sender<UICommand>,
+        mmu: MMU<D>,
+        interrupt_tx: Sender<u32>,
+        interrupt_rx: Receiver<u32>,
+    ) -> Self {
         CPU {
             interrupt_tx: interrupt_tx.clone(),
             thread_handle: None,
@@ -345,7 +354,7 @@ impl<D: DiskController + 'static> CPU<D> {
                 kspr: 0,
                 pdpr: 0,
                 imr: 0,
-                program_counter: 64,  // Start of ROM.
+                program_counter: 64, // Start of ROM.
                 kernel_mode: true,
                 ui_tx,
                 interrupt_tx,
@@ -358,8 +367,7 @@ impl<D: DiskController + 'static> CPU<D> {
     /// Start the CPU on its own thread. Panics if already running.
     pub fn start(&mut self) {
         // Spawn the worker thread and move the CPUInternal into it.
-        let mut internal = self.internal.take()
-            .expect("CPU was already running.");
+        let mut internal = self.internal.take().expect("CPU was already running.");
         let thread_handle = thread::spawn(move || {
             // Setup.
             internal.mmu.start();
@@ -387,7 +395,8 @@ impl<D: DiskController + 'static> CPU<D> {
 
     /// Block until the CPU thread terminates. Panics if not running.
     fn wait_for_halt(&mut self) {
-        let thread_data = self.thread_handle
+        let thread_data = self
+            .thread_handle
             .take()
             .expect("CPU was already stopped.")
             .join()
@@ -406,33 +415,31 @@ impl<D: DiskController> CPUInternal<D> {
             match self.interrupt_fetch_decode_execute(pausing) {
                 Ok(PostCycleAction::Halt) => {
                     info!("CPU halting.");
-                    break
-                },
+                    break;
+                }
                 Ok(PostCycleAction::Pause) => {
                     info!("CPU pausing.");
                     pausing = true;
-                },
+                }
                 Ok(PostCycleAction::None) => {
                     pausing = false;
-                },
+                }
                 Err(CPUError::TryAgainError) => {
                     trace!("CPU cycle resulted in an error.");
-                    self.program_counter = self.program_counter
-                        .wrapping_sub(self.rewind);
+                    self.program_counter = self.program_counter.wrapping_sub(self.rewind);
                     pausing = false;
-                },
+                }
                 Err(CPUError::FatalError) => {
                     info!("Fatal CPU error, halting.");
                     break;
-                },
+                }
             }
         }
     }
 
     /// Perform a single cycle. If `pausing` is true, the CPU will pause before
     /// doing anything and wait for an interrupt.
-    fn interrupt_fetch_decode_execute(&mut self, pausing: bool)
-                                      -> CPUResult<PostCycleAction> {
+    fn interrupt_fetch_decode_execute(&mut self, pausing: bool) -> CPUResult<PostCycleAction> {
         /// Fetch the given statically-sized value and increment the program counter.
         macro_rules! fetch {
             ($type:ident) => {{
@@ -441,7 +448,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.program_counter = self.program_counter.wrapping_add(size);
                 self.rewind += size;
                 value.try_into().unwrap()
-            }}
+            }};
         }
 
         /// Fetch the given dynamically-sized value and increment the program counter.
@@ -452,7 +459,7 @@ impl<D: DiskController> CPUInternal<D> {
                 self.program_counter = self.program_counter.wrapping_add(size);
                 self.rewind += size;
                 value
-            }}
+            }};
         }
 
         /// Try and convert the TypedValue into the (inferred) raw value. If the
@@ -467,13 +474,15 @@ impl<D: DiskController> CPUInternal<D> {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                     return Err(CPUError::TryAgainError);
                 }
-            }}
+            }};
         }
 
         /// Like try_tv_into_v, but panics if the type is wrong.
         /// Use this when the ValueType is statically known to be correct.
         macro_rules! tv_into_v {
-            ($e:expr) => {$e.try_into().unwrap()}
+            ($e:expr) => {
+                $e.try_into().unwrap()
+            };
         }
 
         /// Ensure that two register references are of the same type, returning
@@ -484,7 +493,7 @@ impl<D: DiskController> CPUInternal<D> {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                     return Err(CPUError::TryAgainError);
                 }
-            }}
+            }};
         }
 
         /// Ensure the given value is not a float, returning with an illegal
@@ -495,12 +504,14 @@ impl<D: DiskController> CPUInternal<D> {
                     self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                     return Err(CPUError::TryAgainError);
                 }
-            }}
+            }};
         }
 
         /// Safely unwrap an operation for which an error is fatal.
         macro_rules! critical {
-            ($op:expr) => { $op.or(Err(CPUError::FatalError))? }
+            ($op:expr) => {
+                $op.or(Err(CPUError::FatalError))?
+            };
         }
 
         // Check for interrupts.
@@ -533,8 +544,8 @@ impl<D: DiskController> CPUInternal<D> {
             // Disable all interrupts.
             self.imr = 0;
             // Jump to the interrupt handler.
-            self.program_counter = tv_into_v!(critical!(
-                self.load(interrupt * 4, false, ValueType::Word)));
+            self.program_counter =
+                tv_into_v!(critical!(self.load(interrupt * 4, false, ValueType::Word)));
         }
 
         // Fetch next instruction.
@@ -542,36 +553,49 @@ impl<D: DiskController> CPUInternal<D> {
         // Decode and execute instruction.
         let mut skip_pause_next = false;
         match opcode {
-            0x00 => {  // HALT
+            0x00 => {
+                // HALT
                 trace!("HALT");
                 privileged!(self)?;
                 return Ok(PostCycleAction::Halt);
             }
-            0x01 => {  // PAUSE
+            0x01 => {
+                // PAUSE
                 trace!("PAUSE");
                 privileged!(self)?;
                 if !self.skip_pause {
                     return Ok(PostCycleAction::Pause);
                 }
             }
-            0x02 => {  // TIMER literal
+            0x02 => {
+                // TIMER literal
                 trace!("TIMER literal");
                 privileged!(self)?;
                 let milliseconds = fetch!(Word);
                 trace!("Timer milliseconds: {:#x}", milliseconds);
-                self.timer.command_tx.as_ref().unwrap()
-                    .send(TimerCommand::SetTimer(milliseconds)).unwrap();
+                self.timer
+                    .command_tx
+                    .as_ref()
+                    .unwrap()
+                    .send(TimerCommand::SetTimer(milliseconds))
+                    .unwrap();
             }
-            0x03 => {  // TIMER ref
+            0x03 => {
+                // TIMER ref
                 trace!("TIMER ref");
                 privileged!(self)?;
                 let reg_ref = fetch!(Byte);
                 let milliseconds = try_tv_into_v!(self.read_from_register(reg_ref)?);
                 trace!("Timer milliseconds: {:#x}", milliseconds);
-                self.timer.command_tx.as_ref().unwrap()
-                    .send(TimerCommand::SetTimer(milliseconds)).unwrap();
+                self.timer
+                    .command_tx
+                    .as_ref()
+                    .unwrap()
+                    .send(TimerCommand::SetTimer(milliseconds))
+                    .unwrap();
             }
-            0x04 => {  // USERMODE
+            0x04 => {
+                // USERMODE
                 trace!("USERMODE");
                 privileged!(self)?;
                 // Get the target address.
@@ -581,7 +605,8 @@ impl<D: DiskController> CPUInternal<D> {
                 // Enter user mode.
                 self.kernel_mode = false;
             }
-            0x05 => {  // IRETURN
+            0x05 => {
+                // IRETURN
                 trace!("IRETURN");
                 privileged!(self)?;
                 // Pop the IMR off the stack.
@@ -615,14 +640,16 @@ impl<D: DiskController> CPUInternal<D> {
                 // If the next instruction is PAUSE, skip it.
                 skip_pause_next = true;
             }
-            0x06 => {  // LOAD ref literal
+            0x06 => {
+                // LOAD ref literal
                 trace!("LOAD ref literal");
                 let reg_ref_dest = fetch!(Byte);
                 let literal_address = fetch!(Word);
                 trace!("Dest: {:#x} Address: {:#x}", reg_ref_dest, literal_address);
                 self.instruction_load(reg_ref_dest, literal_address)?;
             }
-            0x07 => {  // LOAD ref ref
+            0x07 => {
+                // LOAD ref ref
                 trace!("LOAD ref");
                 let reg_ref_dest = fetch!(Byte);
                 let reg_ref_address = fetch!(Byte);
@@ -630,14 +657,20 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Dest: {:#x} Address: {:#x}", reg_ref_dest, address);
                 self.instruction_load(reg_ref_dest, address)?;
             }
-            0x08 => {  // STORE literal ref
+            0x08 => {
+                // STORE literal ref
                 trace!("STORE literal ref");
                 let literal_address = fetch!(Word);
                 let reg_ref_source = fetch!(Byte);
-                trace!("Address: {:#x} Source: {:#x}", literal_address, reg_ref_source);
+                trace!(
+                    "Address: {:#x} Source: {:#x}",
+                    literal_address,
+                    reg_ref_source
+                );
                 self.instruction_store(literal_address, reg_ref_source)?;
             }
-            0x09 => {  // STORE ref ref
+            0x09 => {
+                // STORE ref ref
                 trace!("STORE ref ref");
                 let reg_ref_address = fetch!(Byte);
                 let reg_ref_source = fetch!(Byte);
@@ -645,7 +678,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Address: {:#x} Source: {:#x}", address, reg_ref_source);
                 self.instruction_store(address, reg_ref_source)?;
             }
-            0x0A => {  // COPY ref literal
+            0x0A => {
+                // COPY ref literal
                 trace!("COPY ref literal");
                 let reg_ref_dest = fetch!(Byte);
                 trace!("into {:#x}", reg_ref_dest);
@@ -653,7 +687,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{:?}", value);
                 self.write_to_register(reg_ref_dest, value)?;
             }
-            0x0B => {  // COPY ref ref
+            0x0B => {
+                // COPY ref ref
                 trace!("COPY ref ref");
                 let reg_ref_dest = fetch!(Byte);
                 let reg_ref_source = fetch!(Byte);
@@ -662,14 +697,16 @@ impl<D: DiskController> CPUInternal<D> {
                 let value = self.read_from_register(reg_ref_source)?;
                 self.write_to_register(reg_ref_dest, value)?;
             }
-            0x0C => {  // SWAP ref literal
+            0x0C => {
+                // SWAP ref literal
                 trace!("SWAP ref literal");
                 let reg_ref = fetch!(Byte);
                 let address = fetch!(Word);
                 trace!("register {:#x} with address {:#x}", reg_ref, address);
                 self.instruction_swap(reg_ref, address)?;
             }
-            0x0D => {  // SWAP ref ref
+            0x0D => {
+                // SWAP ref ref
                 trace!("SWAP ref ref");
                 let reg_ref = fetch!(Byte);
                 let address_ref = fetch!(Byte);
@@ -677,86 +714,131 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("register {:#x} with address {:#x}", reg_ref, address);
                 self.instruction_swap(reg_ref, address)?;
             }
-            0x0E => {  // PUSH
+            0x0E => {
+                // PUSH
                 trace!("PUSH");
                 let reg_ref = fetch!(Byte);
                 trace!("Register: {:#x}", reg_ref);
                 let value = self.read_from_register(reg_ref)?;
                 self.push(value)?;
             }
-            0x0F => {  // POP
+            0x0F => {
+                // POP
                 trace!("POP");
                 let reg_ref = fetch!(Byte);
                 trace!("Register: {:#x}", reg_ref);
                 let value = self.pop(self.reg_ref_type(reg_ref)?)?;
                 self.write_to_register(reg_ref, value)?;
             }
-            0x10 => {  // BLOCKCOPY literal literal literal
+            0x10 => {
+                // BLOCKCOPY literal literal literal
                 trace!("BLOCKCOPY literal literal literal");
                 let length = fetch!(Word);
                 let dest_address = fetch!(Word);
                 let source_address = fetch!(Word);
-                trace!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                trace!(
+                    "{} bytes from {:#x} to {:#x}",
+                    length,
+                    source_address,
+                    dest_address
+                );
                 self.instruction_blockcopy(length, dest_address, source_address)?;
             }
-            0x11 => {  // BLOCKCOPY literal literal ref
+            0x11 => {
+                // BLOCKCOPY literal literal ref
                 trace!("BLOCKCOPY literal literal ref");
                 let length = fetch!(Word);
                 let dest_address = fetch!(Word);
                 let source_address_ref = fetch!(Byte);
                 let source_address = try_tv_into_v!(self.read_from_register(source_address_ref)?);
-                trace!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                trace!(
+                    "{} bytes from {:#x} to {:#x}",
+                    length,
+                    source_address,
+                    dest_address
+                );
                 self.instruction_blockcopy(length, dest_address, source_address)?;
             }
-            0x12 => {  // BLOCKCOPY literal ref literal
+            0x12 => {
+                // BLOCKCOPY literal ref literal
                 trace!("BLOCKCOPY literal ref literal");
                 let length = fetch!(Word);
                 let dest_address_ref = fetch!(Byte);
                 let source_address = fetch!(Word);
                 let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
-                trace!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                trace!(
+                    "{} bytes from {:#x} to {:#x}",
+                    length,
+                    source_address,
+                    dest_address
+                );
                 self.instruction_blockcopy(length, dest_address, source_address)?;
             }
-            0x13 => {  // BLOCKCOPY literal ref ref
+            0x13 => {
+                // BLOCKCOPY literal ref ref
                 trace!("BLOCKCOPY literal ref ref");
                 let length = fetch!(Word);
                 let dest_address_ref = fetch!(Byte);
                 let source_address_ref = fetch!(Byte);
                 let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
                 let source_address = try_tv_into_v!(self.read_from_register(source_address_ref)?);
-                trace!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                trace!(
+                    "{} bytes from {:#x} to {:#x}",
+                    length,
+                    source_address,
+                    dest_address
+                );
                 self.instruction_blockcopy(length, dest_address, source_address)?;
             }
-            0x14 => {  // BLOCKCOPY ref literal literal
+            0x14 => {
+                // BLOCKCOPY ref literal literal
                 trace!("BLOCKCOPY ref literal literal");
                 let length_ref = fetch!(Byte);
                 let dest_address = fetch!(Word);
                 let source_address = fetch!(Word);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
-                trace!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                trace!(
+                    "{} bytes from {:#x} to {:#x}",
+                    length,
+                    source_address,
+                    dest_address
+                );
                 self.instruction_blockcopy(length, dest_address, source_address)?;
             }
-            0x15 => {  // BLOCKCOPY ref literal ref
+            0x15 => {
+                // BLOCKCOPY ref literal ref
                 trace!("BLOCKCOPY ref literal ref");
                 let length_ref = fetch!(Byte);
                 let dest_address = fetch!(Word);
                 let source_address_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let source_address = try_tv_into_v!(self.read_from_register(source_address_ref)?);
-                trace!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                trace!(
+                    "{} bytes from {:#x} to {:#x}",
+                    length,
+                    source_address,
+                    dest_address
+                );
                 self.instruction_blockcopy(length, dest_address, source_address)?;
             }
-            0x16 => {  // BLOCKCOPY ref ref literal
+            0x16 => {
+                // BLOCKCOPY ref ref literal
                 trace!("BLOCKCOPY ref ref literal");
                 let length_ref = fetch!(Byte);
                 let dest_address_ref = fetch!(Byte);
                 let source_address = fetch!(Word);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
-                trace!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                trace!(
+                    "{} bytes from {:#x} to {:#x}",
+                    length,
+                    source_address,
+                    dest_address
+                );
                 self.instruction_blockcopy(length, dest_address, source_address)?;
             }
-            0x17 => {  // BLOCKCOPY ref ref ref
+            0x17 => {
+                // BLOCKCOPY ref ref ref
                 trace!("BLOCKCOPY ref ref ref");
                 let length_ref = fetch!(Byte);
                 let dest_address_ref = fetch!(Byte);
@@ -764,10 +846,16 @@ impl<D: DiskController> CPUInternal<D> {
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let dest_address = try_tv_into_v!(self.read_from_register(dest_address_ref)?);
                 let source_address = try_tv_into_v!(self.read_from_register(source_address_ref)?);
-                trace!("{} bytes from {:#x} to {:#x}", length, source_address, dest_address);
+                trace!(
+                    "{} bytes from {:#x} to {:#x}",
+                    length,
+                    source_address,
+                    dest_address
+                );
                 self.instruction_blockcopy(length, dest_address, source_address)?;
             }
-            0x18 => {  // BLOCKSET literal literal literal
+            0x18 => {
+                // BLOCKSET literal literal literal
                 trace!("BLOCKSET literal literal literal");
                 let length = fetch!(Word);
                 let dest_address = fetch!(Word);
@@ -775,7 +863,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
             }
-            0x19 => {  // BLOCKSET literal literal ref
+            0x19 => {
+                // BLOCKSET literal literal ref
                 trace!("BLOCKSET literal literal ref");
                 let length = fetch!(Word);
                 let dest_address = fetch!(Word);
@@ -784,7 +873,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
             }
-            0x1A => {  // BLOCKSET literal ref literal
+            0x1A => {
+                // BLOCKSET literal ref literal
                 trace!("BLOCKSET literal ref literal");
                 let length = fetch!(Word);
                 let dest_address_ref = fetch!(Byte);
@@ -793,7 +883,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
             }
-            0x1B => {  // BLOCKSET literal ref ref
+            0x1B => {
+                // BLOCKSET literal ref ref
                 trace!("BLOCKSET literal ref ref");
                 let length = fetch!(Word);
                 let dest_address_ref = fetch!(Byte);
@@ -803,7 +894,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
             }
-            0x1C => {  // BLOCKSET ref literal literal
+            0x1C => {
+                // BLOCKSET ref literal literal
                 trace!("BLOCKSET ref literal literal");
                 let length_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
@@ -812,7 +904,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
             }
-            0x1D => {  // BLOCKSET ref literal ref
+            0x1D => {
+                // BLOCKSET ref literal ref
                 trace!("BLOCKSET ref literal ref");
                 let length_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
@@ -822,7 +915,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
             }
-            0x1E => {  // BLOCKSET ref ref literal
+            0x1E => {
+                // BLOCKSET ref ref literal
                 trace!("BLOCKSET ref ref literal");
                 let length_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
@@ -832,7 +926,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
             }
-            0x1F => {  // BLOCKSET ref ref ref
+            0x1F => {
+                // BLOCKSET ref ref ref
                 trace!("BLOCKSET ref ref ref");
                 let length_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
@@ -843,7 +938,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("{} bytes of {:#x} into {:#x}", length, value, dest_address);
                 self.instruction_blockset(length, dest_address, value)?;
             }
-            0x20 => {  // NEGATE
+            0x20 => {
+                // NEGATE
                 trace!("NEGATE");
                 let reg_ref = fetch!(Byte);
                 trace!("Negating register {:#x}", reg_ref);
@@ -856,14 +952,16 @@ impl<D: DiskController> CPUInternal<D> {
                 };
                 self.write_to_register(reg_ref, negated)?;
             }
-            0x21 => {  // ADD literal
+            0x21 => {
+                // ADD literal
                 trace!("ADD literal");
                 let reg_ref = fetch!(Byte);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
                 trace!("Adding {:?} to register {:#x}", value, reg_ref);
                 self.instruction_add(reg_ref, value)?;
             }
-            0x22 => {  // ADD ref
+            0x22 => {
+                // ADD ref
                 trace!("ADD ref");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -872,34 +970,46 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Adding {:?} to register {:#x}", value, dest);
                 self.instruction_add(dest, value)?;
             }
-            0x23 => {  // ADDCARRY literal
+            0x23 => {
+                // ADDCARRY literal
                 trace!("ADDCARRY literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
-                trace!("Adding {:?} to register {:#x} with carry={}", value, reg_ref,
-                    self.flags & FLAG_CARRY > 0);
+                trace!(
+                    "Adding {:?} to register {:#x} with carry={}",
+                    value,
+                    reg_ref,
+                    self.flags & FLAG_CARRY > 0
+                );
                 self.instruction_addcarry(reg_ref, value)?;
             }
-            0x24 => {  // ADDCARRY ref
+            0x24 => {
+                // ADDCARRY ref
                 trace!("ADDCARRY ref");
                 let dest = fetch!(Byte);
                 reject_float!(dest);
                 let src = fetch!(Byte);
                 check_same_type!(dest, src);
                 let value = self.read_from_register(src)?;
-                trace!("Adding {:?} to register {:#x} with carry={}", value, dest,
-                    self.flags & FLAG_CARRY > 0);
+                trace!(
+                    "Adding {:?} to register {:#x} with carry={}",
+                    value,
+                    dest,
+                    self.flags & FLAG_CARRY > 0
+                );
                 self.instruction_addcarry(dest, value)?;
             }
-            0x25 => {  // SUB literal
+            0x25 => {
+                // SUB literal
                 trace!("SUB literal");
                 let reg_ref = fetch!(Byte);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
                 trace!("Subtracting {:?} from register {:#x}", value, reg_ref);
                 self.instruction_sub(reg_ref, value)?;
             }
-            0x26 => {  // SUB ref
+            0x26 => {
+                // SUB ref
                 trace!("SUB ref");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -908,34 +1018,46 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Subtracting {:?} from register {:#x}", value, dest);
                 self.instruction_sub(dest, value)?;
             }
-            0x27 => {  // SUBBORROW literal
+            0x27 => {
+                // SUBBORROW literal
                 trace!("SUBBORROW literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
-                trace!("Subtracting {:?} from register {:#x} with carry={}", value, reg_ref,
-                    self.flags & FLAG_CARRY > 0);
+                trace!(
+                    "Subtracting {:?} from register {:#x} with carry={}",
+                    value,
+                    reg_ref,
+                    self.flags & FLAG_CARRY > 0
+                );
                 self.instruction_subborrow(reg_ref, value)?;
             }
-            0x28 => {  // SUBBORROW ref
+            0x28 => {
+                // SUBBORROW ref
                 trace!("SUBBORROW ref");
                 let dest = fetch!(Byte);
                 reject_float!(dest);
                 let src = fetch!(Byte);
                 check_same_type!(dest, src);
                 let value = self.read_from_register(src)?;
-                trace!("Subtracting {:?} from register {:#x} with carry={}", value, dest,
-                    self.flags & FLAG_CARRY > 0);
+                trace!(
+                    "Subtracting {:?} from register {:#x} with carry={}",
+                    value,
+                    dest,
+                    self.flags & FLAG_CARRY > 0
+                );
                 self.instruction_subborrow(dest, value)?;
             }
-            0x29 => {  // MULT literal
+            0x29 => {
+                // MULT literal
                 trace!("MULT literal");
                 let reg_ref = fetch!(Byte);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
                 trace!("Multiplying register {:#x} by {:?}", reg_ref, value);
                 self.instruction_mult(reg_ref, value)?;
             }
-            0x2A => {  // MULT ref
+            0x2A => {
+                // MULT ref
                 trace!("MULT ref");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -944,14 +1066,16 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Multiplying register {:#x} by {:?}", dest, value);
                 self.instruction_mult(dest, value)?;
             }
-            0x2B => {  // SDIV literal
+            0x2B => {
+                // SDIV literal
                 trace!("SDIV literal");
                 let reg_ref = fetch!(Byte);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
                 trace!("Signed dividing register {:#x} by {:?}", reg_ref, value);
                 self.instruction_sdiv(reg_ref, value)?;
             }
-            0x2C => {  // SDIV ref
+            0x2C => {
+                // SDIV ref
                 trace!("SDIV ref");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -960,7 +1084,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Signed dividing register {:#x} by {:?}", dest, value);
                 self.instruction_sdiv(dest, value)?;
             }
-            0x2D => {  // UDIV literal
+            0x2D => {
+                // UDIV literal
                 trace!("UDIV literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -968,7 +1093,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Unsigned dividing register {:#x} by {:?}", reg_ref, value);
                 self.instruction_udiv(reg_ref, value)?;
             }
-            0x2E => {  // UDIV ref
+            0x2E => {
+                // UDIV ref
                 trace!("UDIV ref");
                 let dest = fetch!(Byte);
                 reject_float!(dest);
@@ -978,14 +1104,16 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Unsigned dividing register {:#x} by {:?}", dest, value);
                 self.instruction_udiv(dest, value)?;
             }
-            0x2F => {  // SREM literal
+            0x2F => {
+                // SREM literal
                 trace!("SREM literal");
                 let reg_ref = fetch!(Byte);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
                 trace!("Signed remainder register {:#x} by {:?}", reg_ref, value);
                 self.instruction_srem(reg_ref, value)?;
             }
-            0x30 => {  // SREM ref
+            0x30 => {
+                // SREM ref
                 trace!("SREM ref");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -994,7 +1122,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Signed remainder register {:#x} by {:?}", dest, value);
                 self.instruction_srem(dest, value)?;
             }
-            0x31 => {  // UREM literal
+            0x31 => {
+                // UREM literal
                 trace!("UREM literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1002,7 +1131,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Unsigned remainder register {:#x} by {:?}", reg_ref, value);
                 self.instruction_urem(reg_ref, value)?;
             }
-            0x32 => {  // UREM ref
+            0x32 => {
+                // UREM ref
                 trace!("UREM ref");
                 let dest = fetch!(Byte);
                 reject_float!(dest);
@@ -1012,7 +1142,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Unsigned remainder register {:#x} by {:?}", dest, value);
                 self.instruction_urem(dest, value)?;
             }
-            0x33 => {  // NOT
+            0x33 => {
+                // NOT
                 trace!("NOT");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1024,23 +1155,24 @@ impl<D: DiskController> CPUInternal<D> {
                         let not_x = !x;
                         flags = make_flags_int!(not_x as i8, false, false);
                         TypedValue::Byte(not_x)
-                    },
+                    }
                     TypedValue::Half(x) => {
                         let not_x = !x;
                         flags = make_flags_int!(not_x as i16, false, false);
                         TypedValue::Half(!x)
-                    },
+                    }
                     TypedValue::Word(x) => {
                         let not_x = !x;
                         flags = make_flags_int!(not_x as i32, false, false);
                         TypedValue::Word(!x)
-                    },
+                    }
                     TypedValue::Float(_) => unreachable!(),
                 };
                 self.write_to_register(reg_ref, negated)?;
                 self.flags = flags;
             }
-            0x34 => {  // AND literal
+            0x34 => {
+                // AND literal
                 trace!("AND literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1048,7 +1180,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Bitwise AND register {:#x} by {:?}", reg_ref, value);
                 self.instruction_and(reg_ref, value)?;
             }
-            0x35 => {  // AND ref
+            0x35 => {
+                // AND ref
                 trace!("AND ref");
                 let dest = fetch!(Byte);
                 reject_float!(dest);
@@ -1058,7 +1191,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Bitwise AND register {:#x} by {:?}", dest, value);
                 self.instruction_and(dest, value)?;
             }
-            0x36 => {  // OR literal
+            0x36 => {
+                // OR literal
                 trace!("OR literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1066,7 +1200,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Bitwise OR register {:#x} by {:?}", reg_ref, value);
                 self.instruction_or(reg_ref, value)?;
             }
-            0x37 => {  // OR ref
+            0x37 => {
+                // OR ref
                 trace!("OR ref");
                 let dest = fetch!(Byte);
                 reject_float!(dest);
@@ -1076,7 +1211,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Bitwise OR register {:#x} by {:?}", dest, value);
                 self.instruction_or(dest, value)?;
             }
-            0x38 => {  // XOR literal
+            0x38 => {
+                // XOR literal
                 trace!("XOR literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1084,7 +1220,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Bitwise XOR register {:#x} by {:?}", reg_ref, value);
                 self.instruction_xor(reg_ref, value)?;
             }
-            0x39 => {  // XOR ref
+            0x39 => {
+                // XOR ref
                 trace!("XOR ref");
                 let dest = fetch!(Byte);
                 reject_float!(dest);
@@ -1094,7 +1231,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Bitwise XOR register {:#x} by {:?}", dest, value);
                 self.instruction_xor(dest, value)?;
             }
-            0x3A => {  // LSHIFT literal
+            0x3A => {
+                // LSHIFT literal
                 trace!("LSHIFT literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1102,7 +1240,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Left shift register {:#x} by {}", reg_ref, value);
                 self.instruction_lshift(reg_ref, value)?;
             }
-            0x3B => {  // LSHIFT ref
+            0x3B => {
+                // LSHIFT ref
                 trace!("LSHIFT ref");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1111,7 +1250,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Left shift register {:#x} by {}", reg_ref, value);
                 self.instruction_lshift(reg_ref, value)?;
             }
-            0x3C => {  // SRSHIFT literal
+            0x3C => {
+                // SRSHIFT literal
                 trace!("SRSHIFT literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1119,7 +1259,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Signed right shift register {:#x} by {}", reg_ref, value);
                 self.instruction_srshift(reg_ref, value)?;
             }
-            0x3D => {  // SRSHIFT ref
+            0x3D => {
+                // SRSHIFT ref
                 trace!("SRSHIFT ref");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1128,7 +1269,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Signed right shift register {:#x} by {}", reg_ref, value);
                 self.instruction_srshift(reg_ref, value)?;
             }
-            0x3E => {  // URSHIFT literal
+            0x3E => {
+                // URSHIFT literal
                 trace!("URSHIFT literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1136,7 +1278,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Unsigned right shift register {:#x} by {}", reg_ref, value);
                 self.instruction_urshift(reg_ref, value)?;
             }
-            0x3F => {  // URSHIFT ref
+            0x3F => {
+                // URSHIFT ref
                 trace!("URSHIFT ref");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1145,7 +1288,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Unsigned right shift register {:#x} by {}", reg_ref, value);
                 self.instruction_urshift(reg_ref, value)?;
             }
-            0x40 => {  // LROT literal
+            0x40 => {
+                // LROT literal
                 trace!("LROT literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1153,7 +1297,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Left rotate register {:#x} by {}", reg_ref, value);
                 self.instruction_lrot(reg_ref, value)?;
             }
-            0x41 => {  // LROT ref
+            0x41 => {
+                // LROT ref
                 trace!("LROT ref");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1162,7 +1307,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Left rotate register {:#x} by {}", reg_ref, value);
                 self.instruction_lrot(reg_ref, value)?;
             }
-            0x42 => {  // RROT literal
+            0x42 => {
+                // RROT literal
                 trace!("RROT literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1170,7 +1316,8 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Right rotate register {:#x} by {}", reg_ref, value);
                 self.instruction_rrot(reg_ref, value)?;
             }
-            0x43 => {  // RROT ref
+            0x43 => {
+                // RROT ref
                 trace!("RROT ref");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
@@ -1179,47 +1326,69 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Right rotate register {:#x} by {}", reg_ref, value);
                 self.instruction_rrot(reg_ref, value)?;
             }
-            0x44 => {  // LROTCARRY literal
+            0x44 => {
+                // LROTCARRY literal
                 trace!("LROTCARRY literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value = fetch!(Byte);
-                trace!("Left rotate register with carry {:#x} by {}", reg_ref, value);
+                trace!(
+                    "Left rotate register with carry {:#x} by {}",
+                    reg_ref,
+                    value
+                );
                 self.instruction_lrotcarry(reg_ref, value)?;
             }
-            0x45 => {  // LROTCARRY ref
+            0x45 => {
+                // LROTCARRY ref
                 trace!("LROTCARRY ref");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value_ref = fetch!(Byte);
                 let value = try_tv_into_v!(self.read_from_register(value_ref)?);
-                trace!("Left rotate register with carry {:#x} by {}", reg_ref, value);
+                trace!(
+                    "Left rotate register with carry {:#x} by {}",
+                    reg_ref,
+                    value
+                );
                 self.instruction_lrotcarry(reg_ref, value)?;
             }
-            0x46 => {  // RROTCARRY literal
+            0x46 => {
+                // RROTCARRY literal
                 trace!("RROTCARRY literal");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value = fetch!(Byte);
-                trace!("Right rotate register with carry {:#x} by {}", reg_ref, value);
+                trace!(
+                    "Right rotate register with carry {:#x} by {}",
+                    reg_ref,
+                    value
+                );
                 self.instruction_rrotcarry(reg_ref, value)?;
             }
-            0x47 => {  // RROTCARRY ref
+            0x47 => {
+                // RROTCARRY ref
                 trace!("RROTCARRY ref");
                 let reg_ref = fetch!(Byte);
                 reject_float!(reg_ref);
                 let value_ref = fetch!(Byte);
                 let value = try_tv_into_v!(self.read_from_register(value_ref)?);
-                trace!("Right rotate register with carry {:#x} by {}", reg_ref, value);
+                trace!(
+                    "Right rotate register with carry {:#x} by {}",
+                    reg_ref,
+                    value
+                );
                 self.instruction_rrotcarry(reg_ref, value)?;
             }
-            0x48 => {  // JUMP literal
+            0x48 => {
+                // JUMP literal
                 trace!("JUMP literal");
                 let address = fetch!(Word);
                 trace!("Jumping to {:#x}", address);
                 self.program_counter = address;
             }
-            0x49 => {  // JUMP ref
+            0x49 => {
+                // JUMP ref
                 trace!("JUMP ref");
                 let reg_ref = fetch!(Byte);
                 trace!("Jumping to address in {:#x}", reg_ref);
@@ -1227,14 +1396,16 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Jumping to {:#x}", address);
                 self.program_counter = address;
             }
-            0x4A => {  // COMPARE literal
+            0x4A => {
+                // COMPARE literal
                 trace!("COMPARE literal");
                 let reg_ref = fetch!(Byte);
                 let value = fetch_variable_size!(self.reg_ref_type(reg_ref)?);
                 trace!("Comparing register {:#x} with {:?}", reg_ref, value);
                 self.instruction_compare(reg_ref, value)?;
             }
-            0x4B => {  // COMPARE ref
+            0x4B => {
+                // COMPARE ref
                 trace!("COMPARE ref");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -1243,72 +1414,115 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Comparing register {:#x} with {:?}", dest, value);
                 self.instruction_compare(dest, value)?;
             }
-            0x4C => {  // BLOCKCMP literal literal literal
+            0x4C => {
+                // BLOCKCMP literal literal literal
                 trace!("BLOCKCMP literal literal literal");
                 let length = fetch!(Word);
                 let source1 = fetch!(Word);
                 let source2 = fetch!(Word);
-                trace!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                trace!(
+                    "Comparing {} bytes at {:#x} and {:#x}",
+                    length,
+                    source1,
+                    source2
+                );
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x4D => {  // BLOCKCMP literal literal ref
+            0x4D => {
+                // BLOCKCMP literal literal ref
                 trace!("BLOCKCMP literal literal ref");
                 let length = fetch!(Word);
                 let source1 = fetch!(Word);
                 let source2_ref = fetch!(Byte);
                 let source2 = try_tv_into_v!(self.read_from_register(source2_ref)?);
-                trace!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                trace!(
+                    "Comparing {} bytes at {:#x} and {:#x}",
+                    length,
+                    source1,
+                    source2
+                );
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x4E => {  // BLOCKCMP literal ref literal
+            0x4E => {
+                // BLOCKCMP literal ref literal
                 trace!("BLOCKCMP literal ref literal");
                 let length = fetch!(Word);
                 let source1_ref = fetch!(Byte);
                 let source2 = fetch!(Word);
                 let source1 = try_tv_into_v!(self.read_from_register(source1_ref)?);
-                trace!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                trace!(
+                    "Comparing {} bytes at {:#x} and {:#x}",
+                    length,
+                    source1,
+                    source2
+                );
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x4F => {  // BLOCKCMP literal ref ref
+            0x4F => {
+                // BLOCKCMP literal ref ref
                 trace!("BLOCKCMP literal ref ref");
                 let length = fetch!(Word);
                 let source1_ref = fetch!(Byte);
                 let source2_ref = fetch!(Byte);
                 let source1 = try_tv_into_v!(self.read_from_register(source1_ref)?);
                 let source2 = try_tv_into_v!(self.read_from_register(source2_ref)?);
-                trace!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                trace!(
+                    "Comparing {} bytes at {:#x} and {:#x}",
+                    length,
+                    source1,
+                    source2
+                );
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x50 => {  // BLOCKCMP ref literal literal
+            0x50 => {
+                // BLOCKCMP ref literal literal
                 trace!("BLOCKCMP ref literal literal");
                 let length_ref = fetch!(Byte);
                 let source1 = fetch!(Word);
                 let source2 = fetch!(Word);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
-                trace!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                trace!(
+                    "Comparing {} bytes at {:#x} and {:#x}",
+                    length,
+                    source1,
+                    source2
+                );
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x51 => {  // BLOCKCMP ref literal ref
+            0x51 => {
+                // BLOCKCMP ref literal ref
                 trace!("BLOCKCMP ref literal ref");
                 let length_ref = fetch!(Byte);
                 let source1 = fetch!(Word);
                 let source2_ref = fetch!(Byte);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let source2 = try_tv_into_v!(self.read_from_register(source2_ref)?);
-                trace!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                trace!(
+                    "Comparing {} bytes at {:#x} and {:#x}",
+                    length,
+                    source1,
+                    source2
+                );
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x52 => {  // BLOCKCMP ref ref literal
+            0x52 => {
+                // BLOCKCMP ref ref literal
                 trace!("BLOCKCMP ref ref literal");
                 let length_ref = fetch!(Byte);
                 let source1_ref = fetch!(Byte);
                 let source2 = fetch!(Word);
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let source1 = try_tv_into_v!(self.read_from_register(source1_ref)?);
-                trace!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                trace!(
+                    "Comparing {} bytes at {:#x} and {:#x}",
+                    length,
+                    source1,
+                    source2
+                );
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x53 => {  // BLOCKCMP ref ref ref
+            0x53 => {
+                // BLOCKCMP ref ref ref
                 trace!("BLOCKCMP ref ref ref");
                 let length_ref = fetch!(Byte);
                 let source1_ref = fetch!(Byte);
@@ -1316,76 +1530,103 @@ impl<D: DiskController> CPUInternal<D> {
                 let length = try_tv_into_v!(self.read_from_register(length_ref)?);
                 let source1 = try_tv_into_v!(self.read_from_register(source1_ref)?);
                 let source2 = try_tv_into_v!(self.read_from_register(source2_ref)?);
-                trace!("Comparing {} bytes at {:#x} and {:#x}", length, source1, source2);
+                trace!(
+                    "Comparing {} bytes at {:#x} and {:#x}",
+                    length,
+                    source1,
+                    source2
+                );
                 self.instruction_blockcmp(length, source1, source2)?;
             }
-            0x54 =>  {  // JEQUAL literal
+            0x54 => {
+                // JEQUAL literal
                 cond_jump_literal!(self, jequal!(self))
             }
-            0x55 => {  // JEQUAL ref
+            0x55 => {
+                // JEQUAL ref
                 cond_jump_reference!(self, jequal!(self))
             }
-            0x56 => {  // JNOTEQUAL literal
+            0x56 => {
+                // JNOTEQUAL literal
                 cond_jump_literal!(self, jnotequal!(self))
             }
-            0x57 => {  // JNOTEQUAL ref
+            0x57 => {
+                // JNOTEQUAL ref
                 cond_jump_reference!(self, jnotequal!(self))
             }
-            0x58 => {  // SJGREATER literal
+            0x58 => {
+                // SJGREATER literal
                 cond_jump_literal!(self, sjgreater!(self))
             }
-            0x59 => {  // SJGREATER ref
+            0x59 => {
+                // SJGREATER ref
                 cond_jump_reference!(self, sjgreater!(self))
             }
-            0x5A => {  // SJGREATEREQ literal
+            0x5A => {
+                // SJGREATEREQ literal
                 cond_jump_literal!(self, sjgreatereq!(self))
             }
-            0x5B => {  // SJGREATEREQ ref
+            0x5B => {
+                // SJGREATEREQ ref
                 cond_jump_reference!(self, sjgreatereq!(self))
             }
-            0x5C => {  // UJGREATER literal
+            0x5C => {
+                // UJGREATER literal
                 cond_jump_literal!(self, ujgreater!(self))
             }
-            0x5D => {  // UJGREATER ref
+            0x5D => {
+                // UJGREATER ref
                 cond_jump_reference!(self, ujgreater!(self))
             }
-            0x5E => {  // UJGREATEREQ literal
+            0x5E => {
+                // UJGREATEREQ literal
                 cond_jump_literal!(self, ujgreatereq!(self))
             }
-            0x5F => {  // UJGREATEREQ ref
+            0x5F => {
+                // UJGREATEREQ ref
                 cond_jump_reference!(self, ujgreatereq!(self))
             }
-            0x60 => {  // SJLESSER literal
+            0x60 => {
+                // SJLESSER literal
                 cond_jump_literal!(self, sjlesser!(self))
             }
-            0x61 => {  // SJLESSER ref
+            0x61 => {
+                // SJLESSER ref
                 cond_jump_reference!(self, sjlesser!(self))
             }
-            0x62 => {  // SJLESSEREQ literal
+            0x62 => {
+                // SJLESSEREQ literal
                 cond_jump_literal!(self, sjlessereq!(self))
             }
-            0x63 => {  // SJLESSEREQ ref
+            0x63 => {
+                // SJLESSEREQ ref
                 cond_jump_reference!(self, sjlessereq!(self))
             }
-            0x64 => {  // UJLESSER literal
+            0x64 => {
+                // UJLESSER literal
                 cond_jump_literal!(self, ujlesser!(self))
             }
-            0x65 => {  // UJLESSER ref
+            0x65 => {
+                // UJLESSER ref
                 cond_jump_reference!(self, ujlesser!(self))
             }
-            0x66 => {  // UJLESSEREQ literal
+            0x66 => {
+                // UJLESSEREQ literal
                 cond_jump_literal!(self, ujlessereq!(self))
             }
-            0x67 => {  // UJLESSEREQ ref
+            0x67 => {
+                // UJLESSEREQ ref
                 cond_jump_reference!(self, ujlessereq!(self))
             }
-            0x68 => {  // CALL literal
+            0x68 => {
+                // CALL literal
                 trace!("CALL literal");
                 let address = fetch!(Word);
                 trace!("Calling {:#x}", address);
                 self.instruction_call(address)?;
             }
-            0x69 => {  // CALL ref
+            0x69 => {
+                // CALL ref
                 trace!("CALL ref");
                 let reg_ref = fetch!(Byte);
                 trace!("Calling address in {:#x}", reg_ref);
@@ -1393,16 +1634,19 @@ impl<D: DiskController> CPUInternal<D> {
                 trace!("Calling {:#x}", address);
                 self.instruction_call(address)?;
             }
-            0x6A => {  // RETURN
+            0x6A => {
+                // RETURN
                 trace!("RETURN");
                 let address: u32 = tv_into_v!(self.pop(ValueType::Word)?);
                 self.program_counter = address;
             }
-            0x6B => {  // SYSCALL
+            0x6B => {
+                // SYSCALL
                 trace!("SYSCALL");
                 self.interrupt_tx.send(INTERRUPT_SYSCALL).unwrap();
             }
-            0x6C => {  // SCONVERT
+            0x6C => {
+                // SCONVERT
                 trace!("SCONVERT");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -1426,7 +1670,8 @@ impl<D: DiskController> CPUInternal<D> {
                     return Err(CPUError::TryAgainError);
                 }
             }
-            0x6D => {  // UCONVERT
+            0x6D => {
+                // UCONVERT
                 trace!("UCONVERT");
                 let dest = fetch!(Byte);
                 let src = fetch!(Byte);
@@ -1448,7 +1693,8 @@ impl<D: DiskController> CPUInternal<D> {
                     return Err(CPUError::TryAgainError);
                 }
             }
-            _ => {  // Unrecognised
+            _ => {
+                // Unrecognised
                 trace!("Unrecognised opcode: {:#x}", opcode);
                 self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
                 return Err(CPUError::TryAgainError);
@@ -1476,8 +1722,12 @@ impl<D: DiskController> CPUInternal<D> {
         self.store(address, reg_value)
     }
 
-    fn instruction_blockcopy(&mut self, length: u32, dest_address: u32,
-                             source_address: u32) -> CPUResult<()> {
+    fn instruction_blockcopy(
+        &mut self,
+        length: u32,
+        dest_address: u32,
+        source_address: u32,
+    ) -> CPUResult<()> {
         if self.kernel_mode {
             for i in 0..length {
                 let val = self.mmu.load_physical_8(source_address + i)?;
@@ -1485,22 +1735,24 @@ impl<D: DiskController> CPUInternal<D> {
             }
         } else {
             for i in 0..length {
-                let val = self.mmu.load_virtual_8(self.pdpr, source_address + i, false)?;
+                let val = self
+                    .mmu
+                    .load_virtual_8(self.pdpr, source_address + i, false)?;
                 self.mmu.store_virtual_8(self.pdpr, dest_address + i, val)?;
             }
         }
         Ok(())
     }
 
-    fn instruction_blockset(&mut self, length: u32, dest_address: u32,
-                            value: u8) -> CPUResult<()> {
+    fn instruction_blockset(&mut self, length: u32, dest_address: u32, value: u8) -> CPUResult<()> {
         if self.kernel_mode {
             for i in 0..length {
                 self.mmu.store_physical_8(dest_address + i, value)?;
             }
         } else {
             for i in 0..length {
-                self.mmu.store_virtual_8(self.pdpr, dest_address + i, value)?;
+                self.mmu
+                    .store_virtual_8(self.pdpr, dest_address + i, value)?;
             }
         }
         Ok(())
@@ -1516,7 +1768,7 @@ impl<D: DiskController> CPUInternal<D> {
         if self.flags & FLAG_CARRY != 0 {
             value.increment();
         }
-        bin_op_multisigned!(self, reg_ref, value, overflowing_add, add)  // The float op is unused in this case.
+        bin_op_multisigned!(self, reg_ref, value, overflowing_add, add) // The float op is unused in this case.
     }
 
     fn instruction_sub(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
@@ -1529,7 +1781,7 @@ impl<D: DiskController> CPUInternal<D> {
         if self.flags & FLAG_CARRY != 0 {
             value.increment();
         }
-        bin_op_multisigned!(self, reg_ref, value, overflowing_sub, sub)  // The float op is unused in this case.
+        bin_op_multisigned!(self, reg_ref, value, overflowing_sub, sub) // The float op is unused in this case.
     }
 
     fn instruction_mult(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
@@ -1601,7 +1853,7 @@ impl<D: DiskController> CPUInternal<D> {
                 };
                 self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
                 flags = make_flags_int!(ans as i8, carry, false);
-            },
+            }
             TypedValue::Half(x) => {
                 let (ans, carry) = if let Some(z) = x.checked_shl(value) {
                     let c = x.leading_zeros() < value;
@@ -1611,7 +1863,7 @@ impl<D: DiskController> CPUInternal<D> {
                 };
                 self.write_to_register(reg_ref, TypedValue::Half(ans))?;
                 flags = make_flags_int!(ans as i16, carry, false);
-            },
+            }
             TypedValue::Word(x) => {
                 let (ans, carry) = if let Some(z) = x.checked_shl(value) {
                     let c = x.leading_zeros() < value;
@@ -1621,10 +1873,10 @@ impl<D: DiskController> CPUInternal<D> {
                 };
                 self.write_to_register(reg_ref, TypedValue::Word(ans))?;
                 flags = make_flags_int!(ans as i32, carry, false);
-            },
+            }
             TypedValue::Float(_) => {
                 unreachable!()
-            },
+            }
         }
         self.flags = flags;
         Ok(())
@@ -1639,37 +1891,37 @@ impl<D: DiskController> CPUInternal<D> {
                     let c = x.trailing_zeros() < value;
                     (z as u8, c)
                 } else {
-                    let z = if (x as i8) < 0 {u8::MAX} else {0};
+                    let z = if (x as i8) < 0 { u8::MAX } else { 0 };
                     (z, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
                 flags = make_flags_int!(ans as i8, carry, false);
-            },
+            }
             TypedValue::Half(x) => {
                 let (ans, carry) = if let Some(z) = (x as i16).checked_shr(value) {
                     let c = x.trailing_zeros() < value;
                     (z as u16, c)
                 } else {
-                    let z = if (x as i16) < 0 {u16::MAX} else {0};
+                    let z = if (x as i16) < 0 { u16::MAX } else { 0 };
                     (z, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Half(ans))?;
                 flags = make_flags_int!(ans as i16, carry, false);
-            },
+            }
             TypedValue::Word(x) => {
                 let (ans, carry) = if let Some(z) = (x as i32).checked_shr(value) {
                     let c = x.trailing_zeros() < value;
                     (z as u32, c)
                 } else {
-                    let z = if (x as i32) < 0 {u32::MAX} else {0};
+                    let z = if (x as i32) < 0 { u32::MAX } else { 0 };
                     (z, true)
                 };
                 self.write_to_register(reg_ref, TypedValue::Word(ans))?;
                 flags = make_flags_int!(ans as i32, carry, false);
-            },
+            }
             TypedValue::Float(_) => {
                 unreachable!()
-            },
+            }
         }
         self.flags = flags;
         Ok(())
@@ -1688,7 +1940,7 @@ impl<D: DiskController> CPUInternal<D> {
                 };
                 self.write_to_register(reg_ref, TypedValue::Byte(ans))?;
                 flags = make_flags_int!(ans as i8, carry, false);
-            },
+            }
             TypedValue::Half(x) => {
                 let (ans, carry) = if let Some(z) = x.checked_shr(value) {
                     let c = x.trailing_zeros() < value;
@@ -1698,7 +1950,7 @@ impl<D: DiskController> CPUInternal<D> {
                 };
                 self.write_to_register(reg_ref, TypedValue::Half(ans))?;
                 flags = make_flags_int!(ans as i16, carry, false);
-            },
+            }
             TypedValue::Word(x) => {
                 let (ans, carry) = if let Some(z) = x.checked_shr(value) {
                     let c = x.trailing_zeros() < value;
@@ -1708,10 +1960,10 @@ impl<D: DiskController> CPUInternal<D> {
                 };
                 self.write_to_register(reg_ref, TypedValue::Word(ans))?;
                 flags = make_flags_int!(ans as i32, carry, false);
-            },
+            }
             TypedValue::Float(_) => {
                 unreachable!()
-            },
+            }
         }
         self.flags = flags;
         Ok(())
@@ -1744,26 +1996,26 @@ impl<D: DiskController> CPUInternal<D> {
                 let s_ans = (x as i8).overflowing_sub(y as i8);
                 debug_assert_eq!(u_ans.0, s_ans.0 as u8);
                 make_flags_int!(s_ans.0, u_ans.1, s_ans.1)
-            },
+            }
             TypedValue::Half(x) => {
                 let y = u16::try_from(value).unwrap();
                 let u_ans = x.overflowing_sub(y);
                 let s_ans = (x as i16).overflowing_sub(y as i16);
                 debug_assert_eq!(u_ans.0, s_ans.0 as u16);
                 make_flags_int!(s_ans.0, u_ans.1, s_ans.1)
-            },
+            }
             TypedValue::Word(x) => {
                 let y = u32::try_from(value).unwrap();
                 let u_ans = x.overflowing_sub(y);
                 let s_ans = (x as i32).overflowing_sub(y as i32);
                 debug_assert_eq!(u_ans.0, s_ans.0 as u32);
                 make_flags_int!(s_ans.0, u_ans.1, s_ans.1)
-            },
+            }
             TypedValue::Float(x) => {
                 let y = f32::try_from(value).unwrap();
                 let ans = x - y;
                 make_flags_float!(ans)
-            },
+            }
         };
         Ok(())
     }
@@ -1806,21 +2058,29 @@ impl<D: DiskController> CPUInternal<D> {
 
     /// Get the type of a register from its reference.
     fn reg_ref_type(&self, reg_ref: u8) -> CPUResult<ValueType> {
-        if reg_ref < 0x08 {          // r0-7
+        if reg_ref < 0x08 {
+            // r0-7
             Ok(ValueType::Word)
-        } else if reg_ref < 0x10 {   // r0h-r7h
+        } else if reg_ref < 0x10 {
+            // r0h-r7h
             Ok(ValueType::Half)
-        } else if reg_ref < 0x18 {   // r0b-r7b
+        } else if reg_ref < 0x18 {
+            // r0b-r7b
             Ok(ValueType::Byte)
-        } else if reg_ref < 0x20 {   // f0-f7
+        } else if reg_ref < 0x20 {
+            // f0-f7
             Ok(ValueType::Float)
-        } else if reg_ref == 0x20 {  // FLAGS
+        } else if reg_ref == 0x20 {
+            // FLAGS
             Ok(ValueType::Half)
-        } else if reg_ref < 0x24 {   // USPR, KSPR, PDPR
+        } else if reg_ref < 0x24 {
+            // USPR, KSPR, PDPR
             Ok(ValueType::Word)
-        } else if reg_ref == 0x24 {  // IMR
+        } else if reg_ref == 0x24 {
+            // IMR
             Ok(ValueType::Half)
-        } else if reg_ref == 0x25 {  // PFSR
+        } else if reg_ref == 0x25 {
+            // PFSR
             Ok(ValueType::Word)
         } else {
             trace!("Invalid register reference: {:#x}.", reg_ref);
@@ -1830,61 +2090,71 @@ impl<D: DiskController> CPUInternal<D> {
     }
 
     fn write_to_register(&mut self, reg_ref: u8, value: TypedValue) -> CPUResult<()> {
-        if reg_ref < 0x08 {  // r0-7
+        if reg_ref < 0x08 {
+            // r0-7
             if let TypedValue::Word(w) = value {
                 self.r[reg_ref as usize] = w;
                 return Ok(());
             }
-        } else if reg_ref < 0x10 {  // r0h-r7h
+        } else if reg_ref < 0x10 {
+            // r0h-r7h
             if let TypedValue::Half(h) = value {
                 let index = (reg_ref - 0x08) as usize;
                 let masked = self.r[index] & 0xFFFF0000;
                 self.r[index] = masked | (h as u32);
                 return Ok(());
             }
-        } else if reg_ref < 0x18 {  // r0b-r7b
+        } else if reg_ref < 0x18 {
+            // r0b-r7b
             if let TypedValue::Byte(b) = value {
                 let index = (reg_ref - 0x10) as usize;
                 let masked = self.r[index] & 0xFFFFFF00;
                 self.r[index] = masked | (b as u32);
                 return Ok(());
             }
-        } else if reg_ref < 0x20 {  // f0-f7
+        } else if reg_ref < 0x20 {
+            // f0-f7
             if let TypedValue::Float(f) = value {
                 let index = (reg_ref - 0x18) as usize;
                 self.f[index] = f;
                 return Ok(());
             }
-        } else if reg_ref == 0x20 {  // FLAGS
+        } else if reg_ref == 0x20 {
+            // FLAGS
             if let TypedValue::Half(h) = value {
-                let masked = h & 0b0111111111111111;  // Ignore bit 15.
+                let masked = h & 0b0111111111111111; // Ignore bit 15.
                 self.flags = masked;
                 return Ok(());
             }
-        } else if reg_ref == 0x21 {  // USPR
+        } else if reg_ref == 0x21 {
+            // USPR
             if let TypedValue::Word(w) = value {
                 self.uspr = w;
                 return Ok(());
             }
-        } else if reg_ref == 0x22 {  // KSPR
+        } else if reg_ref == 0x22 {
+            // KSPR
             if let TypedValue::Word(w) = value {
                 privileged!(self)?;
                 self.kspr = w;
                 return Ok(());
             }
-        } else if reg_ref == 0x23 {  // PDPR
+        } else if reg_ref == 0x23 {
+            // PDPR
             if let TypedValue::Word(w) = value {
                 privileged!(self)?;
                 self.pdpr = w;
                 return Ok(());
             }
-        } else if reg_ref == 0x24 {  // IMR
+        } else if reg_ref == 0x24 {
+            // IMR
             if let TypedValue::Half(h) = value {
                 privileged!(self)?;
                 self.imr = h;
                 return Ok(());
             }
-        } else if reg_ref == 0x25 {  // PFSR
+        } else if reg_ref == 0x25 {
+            // PFSR
             trace!("Illegal write to PFSR.");
             self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
             return Err(CPUError::TryAgainError);
@@ -1893,36 +2163,49 @@ impl<D: DiskController> CPUInternal<D> {
             self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
             return Err(CPUError::TryAgainError);
         };
-        trace!("Register size mismatch: register {:#x} with size {}",
-            reg_ref, value.size_in_bytes());
+        trace!(
+            "Register size mismatch: register {:#x} with size {}",
+            reg_ref,
+            value.size_in_bytes()
+        );
         self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
         return Err(CPUError::TryAgainError);
     }
 
     /// Read the value of the given register reference.
     fn read_from_register(&mut self, reg_ref: u8) -> CPUResult<TypedValue> {
-        if reg_ref < 0x08 {  // r0-r7
+        if reg_ref < 0x08 {
+            // r0-r7
             Ok(TypedValue::Word(self.r[reg_ref as usize]))
-        } else if reg_ref < 0x10 {  // r0h-r7h
+        } else if reg_ref < 0x10 {
+            // r0h-r7h
             Ok(TypedValue::Half(self.r[(reg_ref - 0x08) as usize] as u16))
-        } else if reg_ref < 0x18 {  // r0b-r7b
+        } else if reg_ref < 0x18 {
+            // r0b-r7b
             Ok(TypedValue::Byte(self.r[(reg_ref - 0x10) as usize] as u8))
-        } else if reg_ref < 0x20 {  // f0-f7
+        } else if reg_ref < 0x20 {
+            // f0-f7
             Ok(TypedValue::Float(self.f[(reg_ref - 0x18) as usize]))
-        } else if reg_ref == 0x20 {  // FLAGS
+        } else if reg_ref == 0x20 {
+            // FLAGS
             Ok(TypedValue::Half(self.flags))
-        } else if reg_ref == 0x21 {  // USPR
+        } else if reg_ref == 0x21 {
+            // USPR
             Ok(TypedValue::Word(self.uspr))
-        } else if reg_ref == 0x22 {  // KSPR
+        } else if reg_ref == 0x22 {
+            // KSPR
             privileged!(self)?;
             Ok(TypedValue::Word(self.kspr))
-        } else if reg_ref == 0x23 {  // PDPR
+        } else if reg_ref == 0x23 {
+            // PDPR
             privileged!(self)?;
             Ok(TypedValue::Word(self.pdpr))
-        } else if reg_ref == 0x24 {  // IMR
+        } else if reg_ref == 0x24 {
+            // IMR
             privileged!(self)?;
             Ok(TypedValue::Half(self.imr))
-        } else if reg_ref == 0x25 {  // PFSR
+        } else if reg_ref == 0x25 {
+            // PFSR
             privileged!(self)?;
             Ok(TypedValue::Word(self.mmu.page_fault_status_register()))
         } else {
@@ -1959,7 +2242,7 @@ impl<D: DiskController> CPUInternal<D> {
             TypedValue::Float(f) => {
                 // No conversion is performed; we just reinterpret the bits as an integer.
                 // This is exactly what we want to let us store float values in RAM.
-                let converted = unsafe {std::mem::transmute::<f32, u32>(f)};
+                let converted = unsafe { std::mem::transmute::<f32, u32>(f) };
                 if self.kernel_mode {
                     self.mmu.store_physical_32(address, converted)
                 } else {
@@ -1970,42 +2253,55 @@ impl<D: DiskController> CPUInternal<D> {
     }
 
     /// Load a value of the given size from the given memory address.
-    fn load(&mut self, address: u32, is_fetch: bool, value_type: ValueType) -> CPUResult<TypedValue> {
+    fn load(
+        &mut self,
+        address: u32,
+        is_fetch: bool,
+        value_type: ValueType,
+    ) -> CPUResult<TypedValue> {
         match value_type {
             ValueType::Byte => {
                 if self.kernel_mode {
-                    self.mmu.load_physical_8(address)
+                    self.mmu
+                        .load_physical_8(address)
                         .map(|b| TypedValue::Byte(b))
                 } else {
-                    self.mmu.load_virtual_8(self.pdpr, address, is_fetch)
+                    self.mmu
+                        .load_virtual_8(self.pdpr, address, is_fetch)
                         .map(|b| TypedValue::Byte(b))
                 }
             }
             ValueType::Half => {
                 if self.kernel_mode {
-                    self.mmu.load_physical_16(address)
+                    self.mmu
+                        .load_physical_16(address)
                         .map(|h| TypedValue::Half(h))
                 } else {
-                    self.mmu.load_virtual_16(self.pdpr, address, is_fetch)
+                    self.mmu
+                        .load_virtual_16(self.pdpr, address, is_fetch)
                         .map(|h| TypedValue::Half(h))
                 }
             }
             ValueType::Word => {
                 if self.kernel_mode {
-                    self.mmu.load_physical_32(address)
+                    self.mmu
+                        .load_physical_32(address)
                         .map(|w| TypedValue::Word(w))
                 } else {
-                    self.mmu.load_virtual_32(self.pdpr, address, is_fetch)
+                    self.mmu
+                        .load_virtual_32(self.pdpr, address, is_fetch)
                         .map(|w| TypedValue::Word(w))
                 }
             }
             ValueType::Float => {
                 if self.kernel_mode {
-                    self.mmu.load_physical_32(address)
-                        .map(|f| TypedValue::Float(unsafe {std::mem::transmute::<u32, f32>(f)}))
+                    self.mmu
+                        .load_physical_32(address)
+                        .map(|f| TypedValue::Float(unsafe { std::mem::transmute::<u32, f32>(f) }))
                 } else {
-                    self.mmu.load_virtual_32(self.pdpr, address, is_fetch)
-                        .map(|f| TypedValue::Float(unsafe {std::mem::transmute::<u32, f32>(f)}))
+                    self.mmu
+                        .load_virtual_32(self.pdpr, address, is_fetch)
+                        .map(|f| TypedValue::Float(unsafe { std::mem::transmute::<u32, f32>(f) }))
                 }
             }
         }

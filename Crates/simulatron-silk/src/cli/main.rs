@@ -1,7 +1,7 @@
 mod error;
 
-use clap::{Arg, ArgAction, ArgMatches, Command, value_parser, ValueEnum};
-use log::{info, error, LevelFilter};
+use clap::{value_parser, Arg, ArgAction, ArgMatches, Command, ValueEnum};
+use log::{error, info, LevelFilter};
 use simulatron_utils::file::{Output, TransientFile};
 use std::fs::File;
 use std::io::{self, BufReader, Write};
@@ -25,36 +25,53 @@ fn cli() -> Command {
     include_str!("../../Cargo.toml");
 
     clap::command!()
-        .arg(Arg::new(LINK_TARGET)
-            .help("The type of result that should be produced.")
-            .short('t')
-            .long("target")
-            .action(ArgAction::Set)
-            .required(true)
-            .value_parser(value_parser!(LinkTarget))
-            .ignore_case(true))
-        .arg(Arg::new(OUTPUT_PATH)
-            .help("Where to place the output. \
-                   If omitted, the result will be sent to stdout.")
-            .short('o')
-            .long("output")
-            .action(ArgAction::Set))
-        .arg(Arg::new(OBJECT_FILES)
-            .help("One or more object files to link.")
-            .action(ArgAction::Append)
-            .required(true))
-        .arg(Arg::new(VERBOSITY)
-            .help("Specify up to three times to increase the verbosity of output.")
-            .short('v')
-            .long("verbose")
-            .action(ArgAction::Count)
-            .value_parser(value_parser!(u8).range(..=3)))
+        .arg(
+            Arg::new(LINK_TARGET)
+                .help("The type of result that should be produced.")
+                .short('t')
+                .long("target")
+                .action(ArgAction::Set)
+                .required(true)
+                .value_parser(value_parser!(LinkTarget))
+                .ignore_case(true),
+        )
+        .arg(
+            Arg::new(OUTPUT_PATH)
+                .help(
+                    "Where to place the output. \
+                     If omitted, the result will be sent to stdout.",
+                )
+                .short('o')
+                .long("output")
+                .action(ArgAction::Set),
+        )
+        .arg(
+            Arg::new(OBJECT_FILES)
+                .help("One or more object files to link.")
+                .action(ArgAction::Append)
+                .required(true),
+        )
+        .arg(
+            Arg::new(VERBOSITY)
+                .help("Specify up to three times to increase the verbosity of output.")
+                .short('v')
+                .long("verbose")
+                .action(ArgAction::Count)
+                .value_parser(value_parser!(u8).range(..=3)),
+        )
 }
 
-fn logging_format(formatter: &mut env_logger::fmt::Formatter,
-                  record: &log::Record) -> io::Result<()> {
+fn logging_format(
+    formatter: &mut env_logger::fmt::Formatter,
+    record: &log::Record,
+) -> io::Result<()> {
     let style = formatter.default_level_style(record.level());
-    writeln!(formatter, "{:>7}  {}", style.value(record.level()), record.args())
+    writeln!(
+        formatter,
+        "{:>7}  {}",
+        style.value(record.level()),
+        record.args()
+    )
 }
 
 /// Logging setup for normal build (not testing).
@@ -103,26 +120,25 @@ fn run(args: ArgMatches) -> u8 {
             None => {
                 info!("Silk will write the linked result to stdout.");
                 Output::Stdout(io::stdout())
-            },
+            }
             Some(path) => {
                 info!("Silk will write the linked result to '{}'.", path);
-                let f = TransientFile::create(path)
-                    .map_err(|e| {
-                        LinkError(format!(
-                            "Failed to create output file '{}': {}", path, e))
-                    })?;
+                let f = TransientFile::create(path).map_err(|e| {
+                    LinkError(format!("Failed to create output file '{}': {}", path, e))
+                })?;
                 Output::File(f)
             }
         };
 
         // Open input files.
-        let inputs = args.get_many::<String>(OBJECT_FILES).unwrap()
-            .map(|path| File::open(path)
-                .map(BufReader::new)
-                .map_err(|e| {
-                    LinkError(format!(
-                        "Couldn't open input file '{}': {}", path, e))
-                }))
+        let inputs = args
+            .get_many::<String>(OBJECT_FILES)
+            .unwrap()
+            .map(|path| {
+                File::open(path)
+                    .map(BufReader::new)
+                    .map_err(|e| LinkError(format!("Couldn't open input file '{}': {}", path, e)))
+            })
             .collect::<Result<Vec<_>, _>>()?;
         info!("Opened all input files successfully.");
 
@@ -137,10 +153,9 @@ fn run(args: ArgMatches) -> u8 {
         info!("Linking complete.");
 
         // Write the result.
-        output.write_all(&result)
-            .map_err(|e| {
-                LinkError(format!("Failed to write output: {}", e))
-            })?;
+        output
+            .write_all(&result)
+            .map_err(|e| LinkError(format!("Failed to write output: {}", e)))?;
         if let Output::File(f) = &mut output {
             f.set_persist(true);
         }
@@ -176,8 +191,13 @@ mod tests {
     fn test_success_output_persist() {
         let tempdir = tempfile::tempdir().unwrap();
         let out = tempdir.path().join("out");
-        let ret = invoke!("-t", "ROM", "-o", out.to_str().unwrap(),
-            "examples/single-symbol.simobj");
+        let ret = invoke!(
+            "-t",
+            "ROM",
+            "-o",
+            out.to_str().unwrap(),
+            "examples/single-symbol.simobj"
+        );
         assert_eq!(ret, 0);
         assert!(fs::metadata(out).is_ok());
     }
@@ -187,8 +207,13 @@ mod tests {
     fn test_fail_output_delete() {
         let tempdir = tempfile::tempdir().unwrap();
         let out = tempdir.path().join("out");
-        let ret = invoke!("-t", "ROM", "-o", out.to_str().unwrap(),
-            "examples/bad-reference.simobj");
+        let ret = invoke!(
+            "-t",
+            "ROM",
+            "-o",
+            out.to_str().unwrap(),
+            "examples/bad-reference.simobj"
+        );
         assert_eq!(ret, 1);
         assert!(fs::metadata(out).is_err());
     }
@@ -200,8 +225,7 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap();
         let out = tempdir.path().join("out");
         let ret = std::panic::catch_unwind(|| {
-            invoke!("-o", out.to_str().unwrap(),
-                "examples/bad-reference.simobj")
+            invoke!("-o", out.to_str().unwrap(), "examples/bad-reference.simobj")
         });
         assert!(ret.is_err());
         assert!(fs::metadata(out).is_err())

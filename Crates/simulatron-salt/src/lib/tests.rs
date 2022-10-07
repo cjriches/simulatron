@@ -1,4 +1,4 @@
-use insta::{assert_snapshot, assert_debug_snapshot};
+use insta::{assert_debug_snapshot, assert_snapshot};
 use simulatron_utils::hexprint::pretty_print_hex_block_zero;
 
 use crate::{
@@ -20,7 +20,7 @@ macro_rules! test_success {
         let success = codegen.run($entrypoint).unwrap();
         assert_eq!(success.warnings.len(), 0);
         assert_snapshot!(pretty_print_hex_block_zero(&success.simobj));
-    }}
+    }};
 }
 
 macro_rules! test_success_with_warnings {
@@ -35,7 +35,7 @@ macro_rules! test_success_with_warnings {
         assert!(success.warnings.len() > 0);
         assert_snapshot!(pretty_print_hex_block_zero(&success.simobj));
         assert_debug_snapshot!(success.warnings);
-    }}
+    }};
 }
 
 macro_rules! test_failure {
@@ -45,11 +45,11 @@ macro_rules! test_failure {
         let parser = Parser::new(Lexer::new(&input));
         let cst = parser.run().unwrap();
         let ast = Program::cast(cst).unwrap();
-        let failure = CodeGenerator::new(ast, &Vec::new()).and_then(|cg| {
-            cg.run(true)
-        }).unwrap_err();
+        let failure = CodeGenerator::new(ast, &Vec::new())
+            .and_then(|cg| cg.run(true))
+            .unwrap_err();
         assert_debug_snapshot!(failure);
-    }}
+    }};
 }
 
 #[test]
@@ -93,7 +93,6 @@ fn test_branching() {
     test_success_with_warnings!("examples/branching.simasm", true);
     test_failure!("examples/branching-bad.simasm");
     test_failure!("examples/branching-bad-2.simasm");
-
 }
 
 #[test]

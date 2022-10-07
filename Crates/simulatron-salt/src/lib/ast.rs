@@ -8,7 +8,9 @@ use crate::language::{SyntaxElement, SyntaxKind, SyntaxNode};
 
 /// A thin strongly-typed layer over the weakly-typed SyntaxNode.
 pub trait AstNode {
-    fn cast(syntax: SyntaxNode) -> Option<Self> where Self: Sized;
+    fn cast(syntax: SyntaxNode) -> Option<Self>
+    where
+        Self: Sized;
     fn syntax(&self) -> &SyntaxNode;
 }
 
@@ -63,36 +65,45 @@ pub enum OperandValue {
 /// The value of a literal.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum LiteralValue {
-    Lit {value: u32, min_reg_type: RegisterType},
-    Sizeof {ident: String},
+    Lit {
+        value: u32,
+        min_reg_type: RegisterType,
+    },
+    Sizeof {
+        ident: String,
+    },
 }
 
 /// Programs contain Const Declarations, Data Declarations, Labels,
 /// and Instructions.
 impl Program {
     pub fn const_decls(&self) -> Vec<ConstDecl> {
-        self.syntax.children()
+        self.syntax
+            .children()
             .filter_map(Line::cast)
             .filter_map(|line| line.as_const())
             .collect()
     }
 
     pub fn data_decls(&self) -> Vec<DataDecl> {
-        self.syntax.children()
+        self.syntax
+            .children()
             .filter_map(Line::cast)
             .filter_map(|line| line.as_data())
             .collect()
     }
 
     pub fn labels(&self) -> Vec<Label> {
-        self.syntax.children()
+        self.syntax
+            .children()
             .filter_map(Line::cast)
             .filter_map(|line| line.as_label())
             .collect()
     }
 
     pub fn instructions(&self) -> Vec<Instruction> {
-        self.syntax.children()
+        self.syntax
+            .children()
             .filter_map(Line::cast)
             .filter_map(|line| line.as_instruction())
             .collect()
@@ -121,11 +132,19 @@ impl Line {
 /// ConstDecls have a name, publicity, and value.
 impl ConstDecl {
     pub fn name(&self) -> String {
-        self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
+        self.syntax
+            .children_with_tokens()
+            .find_map(identifier_cast)
+            .unwrap()
+            .0
     }
 
     pub fn name_span(&self) -> Range<usize> {
-        self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().1
+        self.syntax
+            .children_with_tokens()
+            .find_map(identifier_cast)
+            .unwrap()
+            .1
     }
 
     pub fn public(&self) -> bool {
@@ -133,23 +152,40 @@ impl ConstDecl {
     }
 
     pub fn value(&self) -> SaltResult<LiteralValue> {
-        self.syntax.children().find_map(Literal::cast).unwrap().value()
+        self.syntax
+            .children()
+            .find_map(Literal::cast)
+            .unwrap()
+            .value()
     }
 }
 
 /// DataDecls have a name, publicity, mutability, type, and initialiser.
 impl DataDecl {
     pub fn name(&self) -> String {
-        self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
+        self.syntax
+            .children_with_tokens()
+            .find_map(identifier_cast)
+            .unwrap()
+            .0
     }
 
     pub fn name_span(&self) -> Range<usize> {
-        self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().1
+        self.syntax
+            .children_with_tokens()
+            .find_map(identifier_cast)
+            .unwrap()
+            .1
     }
 
     pub fn init_span(&self) -> Range<usize> {
-        self.syntax.children().find_map(ArrayLiteral::cast).unwrap()
-            .syntax().text_range().into()
+        self.syntax
+            .children()
+            .find_map(ArrayLiteral::cast)
+            .unwrap()
+            .syntax()
+            .text_range()
+            .into()
     }
 
     pub fn public(&self) -> bool {
@@ -161,13 +197,12 @@ impl DataDecl {
     }
 
     pub fn type_(&self) -> DataType {
-        self.syntax.children()
-            .find_map(DataType::cast)
-            .unwrap()
+        self.syntax.children().find_map(DataType::cast).unwrap()
     }
 
     pub fn initialiser(&self) -> SaltResult<(Vec<LiteralValue>, Vec<usize>)> {
-        self.syntax.children()
+        self.syntax
+            .children()
             .find_map(ArrayLiteral::cast)
             .unwrap()
             .values()
@@ -183,7 +218,9 @@ impl DataType {
             2
         } else if node_contains_kind(&self.syntax, SyntaxKind::KwWord) {
             4
-        } else { unreachable!() }
+        } else {
+            unreachable!()
+        }
     }
 
     pub fn dimensions(&self) -> SaltResult<Vec<ArrayLength>> {
@@ -196,9 +233,7 @@ impl DataType {
                 let value = int_literal_value(&text, span.clone())?;
                 // Ensure positive.
                 if value >= 0 {
-                    lengths.push(ArrayLength::Literal(
-                        value.try_into().unwrap()
-                    ));
+                    lengths.push(ArrayLength::Literal(value.try_into().unwrap()));
                 } else {
                     return Err(SaltError {
                         span,
@@ -222,7 +257,11 @@ impl DataType {
 /// Labels have a name, publicity, and a following instruction.
 impl Label {
     pub fn name(&self) -> String {
-        self.syntax.children_with_tokens().find_map(identifier_cast).unwrap().0
+        self.syntax
+            .children_with_tokens()
+            .find_map(identifier_cast)
+            .unwrap()
+            .0
     }
 
     pub fn public(&self) -> bool {
@@ -232,7 +271,8 @@ impl Label {
     pub fn instruction(&self) -> SaltResult<Instruction> {
         // A label sits inside a line, so we need to look at the parent's
         // following siblings.
-        self.syntax.parent()
+        self.syntax
+            .parent()
             .unwrap()
             .siblings(rowan::Direction::Next)
             .filter_map(Line::cast)
@@ -247,7 +287,9 @@ impl Label {
 /// Instructions have an opcode and a list of operands.
 impl Instruction {
     pub fn opcode(&self) -> (String, Range<usize>) {
-        let mut opcode = self.syntax.children_with_tokens()
+        let mut opcode = self
+            .syntax
+            .children_with_tokens()
             .find_map(identifier_cast)
             .unwrap();
         opcode.0.make_ascii_lowercase();
@@ -265,7 +307,9 @@ impl Operand {
         match self.syntax.children_with_tokens().find_map(identifier_cast) {
             Some(ident) => Ok(OperandValue::Ident(ident.0)),
             None => {
-                let val = self.syntax.children()
+                let val = self
+                    .syntax
+                    .children()
                     .find_map(Literal::cast)
                     .unwrap()
                     .value()?;
@@ -281,8 +325,11 @@ impl ArrayLiteral {
         // Just a single literal.
         if let Some(lit) = self.syntax.children().find_map(Literal::cast) {
             Ok((vec![lit.value()?], vec![1]))
-        } else if let Some((text, _)) = self.syntax.children_with_tokens()
-                .find_map(string_literal_cast) {
+        } else if let Some((text, _)) = self
+            .syntax
+            .children_with_tokens()
+            .find_map(string_literal_cast)
+        {
             // A string literal. Convert character by character.
             let mut values = Vec::with_capacity(text.len() - 2);
             // Split into slices that look like character literals, so we
@@ -292,9 +339,12 @@ impl ArrayLiteral {
                 // Include the character before to take the place of the opening
                 // single quote, and include the character after in case this
                 // is an escape sequence.
-                let char_slice = &text[(i-1)..=(i+1)];
+                let char_slice = &text[(i - 1)..=(i + 1)];
                 let (value, escape) = char_literal_value(char_slice);
-                values.push(LiteralValue::Lit {value, min_reg_type: RegisterType::Byte});
+                values.push(LiteralValue::Lit {
+                    value,
+                    min_reg_type: RegisterType::Byte,
+                });
                 if escape {
                     i += 2;
                 } else {
@@ -303,29 +353,32 @@ impl ArrayLiteral {
             }
             let len = values.len();
             Ok((values, vec![len, 1]))
-        } else if let Some(_) = self.syntax().children_with_tokens()
-                .find(|child| child.kind() == SyntaxKind::OpenSquare) {
+        } else if let Some(_) = self
+            .syntax()
+            .children_with_tokens()
+            .find(|child| child.kind() == SyntaxKind::OpenSquare)
+        {
             // A full array literal.
-            let (child_values, child_dims): (Vec<_>, Vec<_>) = self.syntax.children()
-                .filter_map(ArrayLiteral::cast)   // Select the ArrayLiterals.
-                .map(|arr_lit| arr_lit.values())  // Extract the values.
-                .collect::<Result<Vec<_>, _>>()?  // Merge the Results.
+            let (child_values, child_dims): (Vec<_>, Vec<_>) = self
+                .syntax
+                .children()
+                .filter_map(ArrayLiteral::cast) // Select the ArrayLiterals.
+                .map(|arr_lit| arr_lit.values()) // Extract the values.
+                .collect::<Result<Vec<_>, _>>()? // Merge the Results.
                 .into_iter()
-                .unzip();                         // Separate the components.
+                .unzip(); // Separate the components.
 
             // Concatenate the child literals.
             let values = child_values.into_iter().flatten().collect();
 
             // Take the maximum of each child dimension.
-            let num_dims = child_dims.iter()
-                .map(|c| c.len())
-                .max().unwrap_or(1) + 1;
+            let num_dims = child_dims.iter().map(|c| c.len()).max().unwrap_or(1) + 1;
             let mut dims = Vec::with_capacity(num_dims);
             dims.push(child_dims.len());
             dims.resize(num_dims, 1);
             for child_dim in child_dims.iter() {
                 for i in 1..num_dims {
-                    let dim = *child_dim.get(i-1).unwrap_or(&1);
+                    let dim = *child_dim.get(i - 1).unwrap_or(&1);
                     if dim > dims[i] {
                         dims[i] = dim;
                     }
@@ -342,31 +395,49 @@ impl ArrayLiteral {
 /// Literals have a value.
 impl Literal {
     pub fn value(&self) -> SaltResult<LiteralValue> {
-        if let Some((text, span)) = self.syntax.children_with_tokens()
-                .find_map(int_literal_cast) {
+        if let Some((text, span)) = self
+            .syntax
+            .children_with_tokens()
+            .find_map(int_literal_cast)
+        {
             // Integer literal: parse and determine minimum size.
             let value = int_literal_value(&text, span)?;
             let min_reg_type = minimum_reg_type(value);
             // We know value is in the range of i32+u32, so just keep its
             // u32 bit-representation.
             let value = value as u32;
-            Ok(LiteralValue::Lit {value, min_reg_type})
-        } else if let Some((text, _)) = self.syntax.children_with_tokens()
-                .find_map(float_literal_cast) {
+            Ok(LiteralValue::Lit {
+                value,
+                min_reg_type,
+            })
+        } else if let Some((text, _)) = self
+            .syntax
+            .children_with_tokens()
+            .find_map(float_literal_cast)
+        {
             // Float literal: parse, transmute bit representation to u32, and
             // size is always Word.
             let value = f32::from_str(&text).unwrap();
             let value = unsafe { std::mem::transmute::<f32, u32>(value) };
-            Ok(LiteralValue::Lit {value, min_reg_type: RegisterType::Float})
-        } else if let Some((text, _)) = self.syntax.children_with_tokens()
-                .find_map(char_literal_cast) {
+            Ok(LiteralValue::Lit {
+                value,
+                min_reg_type: RegisterType::Float,
+            })
+        } else if let Some((text, _)) = self
+            .syntax
+            .children_with_tokens()
+            .find_map(char_literal_cast)
+        {
             // Character literal: parse, and size is always Byte.
             let (value, _) = char_literal_value(&text);
-            Ok(LiteralValue::Lit {value, min_reg_type: RegisterType::Byte})
-        } else if let Some((text, _)) = self.syntax.children_with_tokens()
-                .find_map(identifier_cast) {
+            Ok(LiteralValue::Lit {
+                value,
+                min_reg_type: RegisterType::Byte,
+            })
+        } else if let Some((text, _)) = self.syntax.children_with_tokens().find_map(identifier_cast)
+        {
             // Sizeof literal: return the identifier.
-            Ok(LiteralValue::Sizeof {ident: text})
+            Ok(LiteralValue::Sizeof { ident: text })
         } else {
             unreachable!()
         }
@@ -390,11 +461,15 @@ fn int_literal_value(text: &str, span: Range<usize>) -> SaltResult<i64> {
                 span,
                 message: "Integer literal out of range.".into(),
             });
-        }}
+        }};
     }
 
     // Find where the number (with possible base prefix) begins.
-    let number_start = if text.chars().nth(0).unwrap() == '-' {1} else {0};
+    let number_start = if text.chars().nth(0).unwrap() == '-' {
+        1
+    } else {
+        0
+    };
 
     // Find the base and the start index of the actual digits.
     let (base, digits_start) = if text.chars().nth(number_start).unwrap() == '0' {
@@ -410,20 +485,20 @@ fn int_literal_value(text: &str, span: Range<usize>) -> SaltResult<i64> {
     // Check for a possible exponent suffix.
     let exponent_start = if base == 10 {
         text.chars().position(|c| c == 'e')
-    } else { None };
+    } else {
+        None
+    };
     let digits_end = exponent_start.unwrap_or(text.len());
 
     // Parse the digits.
-    let mut value = match i64::from_str_radix(
-            &text[digits_start..digits_end], base) {
+    let mut value = match i64::from_str_radix(&text[digits_start..digits_end], base) {
         Ok(val) => val,
         Err(_) => out_of_range!(),
     };
 
     // Apply a possible exponent.
     if let Some(exponent_start) = exponent_start {
-        let exponent = match i32::from_str_radix(
-                &text[(exponent_start+1)..text.len()], 10) {
+        let exponent = match i32::from_str_radix(&text[(exponent_start + 1)..text.len()], 10) {
             Ok(val) => {
                 if val >= 0 {
                     val as u32
@@ -433,11 +508,13 @@ fn int_literal_value(text: &str, span: Range<usize>) -> SaltResult<i64> {
                         message: "Integer exponents cannot be negative.".into(),
                     });
                 }
-            },
+            }
             Err(_) => out_of_range!(),
         };
-        value = match 10_i64.checked_pow(exponent)
-                .and_then(|mul| value.checked_mul(mul)) {
+        value = match 10_i64
+            .checked_pow(exponent)
+            .and_then(|mul| value.checked_mul(mul))
+        {
             Some(val) => val,
             None => out_of_range!(),
         };
@@ -476,7 +553,7 @@ fn char_literal_value(text: &str) -> (u32, bool) {
                 _ => unreachable!(),
             };
             (value, true)
-        },
+        }
         // Special cases where Simulatron instruction set diverges from ASCII.
         '£' => (31, false),
         '¬' => (127, false),
@@ -540,22 +617,74 @@ mod tests {
         let ast = setup("examples/consts-only.simasm");
         let consts = ast.const_decls();
         assert_eq!(consts.len(), 9);
-        let values: Vec<LiteralValue> = consts.iter()
+        let values: Vec<LiteralValue> = consts
+            .iter()
             .map(ConstDecl::value)
             .map(Result::unwrap)
             .collect();
-        assert_eq!(values[0], LiteralValue::Lit {value: 0b01001, min_reg_type: RegisterType::Byte});
-        assert_eq!(values[1], LiteralValue::Lit {value: 42, min_reg_type: RegisterType::Byte});
-        assert_eq!(values[2], LiteralValue::Lit {value: 42_000_000, min_reg_type: RegisterType::Word});
-        assert_eq!(values[3], LiteralValue::Lit {value: 0xDEADB00F, min_reg_type: RegisterType::Word});
-        assert_eq!(values[4], LiteralValue::Lit {
-            value: unsafe {std::mem::transmute::<f32,u32>(1.0)}, min_reg_type: RegisterType::Float});
-        assert_eq!(values[5], LiteralValue::Lit {
-            value: unsafe {std::mem::transmute::<f32,u32>(42e-12)}, min_reg_type: RegisterType::Float});
-        assert_eq!(values[6], LiteralValue::Lit {value: (-5_i32) as u32, min_reg_type: RegisterType::Byte});
-        assert_eq!(values[7], LiteralValue::Lit {
-            value: unsafe {std::mem::transmute::<f32,u32>(-9.9432)}, min_reg_type: RegisterType::Float});
-        assert_eq!(values[8], LiteralValue::Lit {value: 1000, min_reg_type: RegisterType::Half});
+        assert_eq!(
+            values[0],
+            LiteralValue::Lit {
+                value: 0b01001,
+                min_reg_type: RegisterType::Byte
+            }
+        );
+        assert_eq!(
+            values[1],
+            LiteralValue::Lit {
+                value: 42,
+                min_reg_type: RegisterType::Byte
+            }
+        );
+        assert_eq!(
+            values[2],
+            LiteralValue::Lit {
+                value: 42_000_000,
+                min_reg_type: RegisterType::Word
+            }
+        );
+        assert_eq!(
+            values[3],
+            LiteralValue::Lit {
+                value: 0xDEADB00F,
+                min_reg_type: RegisterType::Word
+            }
+        );
+        assert_eq!(
+            values[4],
+            LiteralValue::Lit {
+                value: unsafe { std::mem::transmute::<f32, u32>(1.0) },
+                min_reg_type: RegisterType::Float
+            }
+        );
+        assert_eq!(
+            values[5],
+            LiteralValue::Lit {
+                value: unsafe { std::mem::transmute::<f32, u32>(42e-12) },
+                min_reg_type: RegisterType::Float
+            }
+        );
+        assert_eq!(
+            values[6],
+            LiteralValue::Lit {
+                value: (-5_i32) as u32,
+                min_reg_type: RegisterType::Byte
+            }
+        );
+        assert_eq!(
+            values[7],
+            LiteralValue::Lit {
+                value: unsafe { std::mem::transmute::<f32, u32>(-9.9432) },
+                min_reg_type: RegisterType::Float
+            }
+        );
+        assert_eq!(
+            values[8],
+            LiteralValue::Lit {
+                value: 1000,
+                min_reg_type: RegisterType::Half
+            }
+        );
     }
 
     #[test]
@@ -570,7 +699,7 @@ mod tests {
                 assert_eq!($decl.mutable(), $mutable);
                 assert_debug_snapshot!($decl.type_().dimensions());
                 assert_debug_snapshot!($decl.initialiser());
-            }}
+            }};
         }
 
         test!(&data[0], "arr", false);
@@ -602,12 +731,13 @@ mod tests {
         macro_rules! test {
             ($instruction: expr, $opcode: expr) => {{
                 assert_eq!(&$instruction.opcode().0, $opcode);
-                assert_debug_snapshot!($instruction.operands()
+                assert_debug_snapshot!($instruction
+                    .operands()
                     .iter()
                     .map(Operand::value)
                     .map(Result::unwrap)
                     .collect::<Vec<_>>());
-            }}
+            }};
         }
 
         test!(&instructions[0], "copy");

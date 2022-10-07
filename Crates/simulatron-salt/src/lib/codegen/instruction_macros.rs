@@ -9,11 +9,10 @@ macro_rules! num_operands {
         if $ops.len() != $num {
             return Err(SaltError {
                 span: $span,
-                message: format!("Expected {} operands, but found {}.",
-                                    $num, $ops.len()).into(),
+                message: format!("Expected {} operands, but found {}.", $num, $ops.len()).into(),
             });
         }
-    }}
+    }};
 }
 
 /// Shortcut for disallowing SymbolReference resolutions.
@@ -23,7 +22,7 @@ macro_rules! no_literals {
             span: $span,
             message: "Cannot use a literal here.".into(),
         });
-    }}
+    }};
 }
 
 /// Shortcut for disallowing SymbolReference resolutions.
@@ -32,9 +31,10 @@ macro_rules! no_symbols {
         return Err(SaltError {
             span: $span,
             message: "Symbol references resolve to addresses, which can't be \
-                      used here.".into(),
+                      used here."
+                .into(),
         });
-    }}
+    }};
 }
 
 /// Shortcut for an operand that must be any register reference.
@@ -45,10 +45,10 @@ macro_rules! reg_ref_any {
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 $self.code.push(reg_ref);
                 reg_type
-            },
+            }
             ResolvedOperand::SymbolReference => no_symbols!($resolved.1),
         }
-    }}
+    }};
 }
 
 /// Shortcut for an operand that must be an address.
@@ -60,23 +60,24 @@ macro_rules! address {
                 $self.code[$opcode_pos] = $opcodes.0;
                 let mut value = $self.value_as_word(&literal, $resolved.1).unwrap();
                 $self.code.append(&mut value);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
                         span: $resolved.1,
                         message: "Expected an address (word) \
-                                  register reference.".into(),
+                                  register reference."
+                            .into(),
                     });
                 }
                 $self.code[$opcode_pos] = $opcodes.1;
                 $self.code.push(reg_ref);
-            },
+            }
             ResolvedOperand::SymbolReference => {
                 $self.code[$opcode_pos] = $opcodes.0;
             }
         }
-    }}
+    }};
 }
 
 /// An instruction with no operands.
@@ -85,7 +86,7 @@ macro_rules! i_none {
         num_operands!(0, $operands, $span);
         $self.code.push($opcode);
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with a single ..w. operand.
@@ -99,7 +100,7 @@ macro_rules! i_w {
                 $self.code.push($opcodes.0);
                 let mut value = $self.value_as_word(&literal, op_span).unwrap();
                 $self.code.append(&mut value);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
@@ -116,7 +117,7 @@ macro_rules! i_w {
         }
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with operands BHWF ..a.
@@ -137,7 +138,7 @@ macro_rules! i_BHWF_a {
         address!($self, resolved, $opcodes, opcode_pos);
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with operands ..a. BHWF
@@ -158,7 +159,7 @@ macro_rules! i_a_BHWF {
         reg_ref_any!($self, resolved);
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with operands BHWF bhwf
@@ -180,18 +181,19 @@ macro_rules! i_BHWF_bhwf {
             ResolvedOperand::Literal(literal) => {
                 $self.code[opcode_pos] = $opcodes.0;
                 $self.push_value_as_reg_type(&literal, reg_type, op_span)?;
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type_2) => {
                 if reg_type != reg_type_2 {
                     return Err(SaltError {
                         span: op_span,
                         message: "Cannot operate between differently-sized \
-                                  registers.".into(),
+                                  registers."
+                            .into(),
                     });
                 }
                 $self.code[opcode_pos] = $opcodes.1;
                 $self.code.push(reg_ref);
-            },
+            }
             ResolvedOperand::SymbolReference => {
                 if reg_type == RegisterType::Word {
                     $self.code[opcode_pos] = $opcodes.0;
@@ -199,20 +201,22 @@ macro_rules! i_BHWF_bhwf {
                     return Err(SaltError {
                         span: op_span,
                         message: "Symbol references resolve to addresses, \
-                                  which make no sense in a float register.".into(),
+                                  which make no sense in a float register."
+                            .into(),
                     });
                 } else {
                     return Err(SaltError {
                         span: op_span,
                         message: "Symbols resolve to addresses, which are too \
-                                  large to use here.".into(),
+                                  large to use here."
+                            .into(),
                     });
                 }
-            },
+            }
         }
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction a single BHWF operand.
@@ -223,7 +227,7 @@ macro_rules! i_BHWF {
         let resolved = $self.resolve_operand(&$operands[0])?;
         reg_ref_any!($self, resolved);
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with operands ..w. ..a. ..a.
@@ -242,7 +246,7 @@ macro_rules! i_w_a_a {
             ResolvedOperand::Literal(literal) => {
                 let mut value = $self.value_as_word(&literal, op_span).unwrap();
                 $self.code.append(&mut value);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
@@ -253,7 +257,7 @@ macro_rules! i_w_a_a {
                 opcode_choice += 4;
                 $self.code.push(reg_ref);
             }
-            ResolvedOperand::SymbolReference => {},
+            ResolvedOperand::SymbolReference => {}
         }
 
         // Second operand: address.
@@ -262,19 +266,20 @@ macro_rules! i_w_a_a {
             ResolvedOperand::Literal(literal) => {
                 let mut value = $self.value_as_word(&literal, op_span).unwrap();
                 $self.code.append(&mut value);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected an address (word) \
-                                  register reference.".into(),
+                                  register reference."
+                            .into(),
                     });
                 }
                 opcode_choice += 2;
                 $self.code.push(reg_ref);
-            },
-            ResolvedOperand::SymbolReference => {},
+            }
+            ResolvedOperand::SymbolReference => {}
         }
 
         // Third operand: address.
@@ -283,19 +288,20 @@ macro_rules! i_w_a_a {
             ResolvedOperand::Literal(literal) => {
                 let mut value = $self.value_as_word(&literal, op_span).unwrap();
                 $self.code.append(&mut value);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected an address (word) \
-                                  register reference.".into(),
+                                  register reference."
+                            .into(),
                     });
                 }
                 opcode_choice += 1;
                 $self.code.push(reg_ref);
-            },
-            ResolvedOperand::SymbolReference => {},
+            }
+            ResolvedOperand::SymbolReference => {}
         }
 
         let opcode = match opcode_choice {
@@ -312,7 +318,7 @@ macro_rules! i_w_a_a {
         $self.code[opcode_pos] = opcode;
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with operands ..w. ..a. ..b.
@@ -331,7 +337,7 @@ macro_rules! i_w_a_b {
             ResolvedOperand::Literal(literal) => {
                 let mut value = $self.value_as_word(&literal, op_span).unwrap();
                 $self.code.append(&mut value);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
@@ -342,7 +348,7 @@ macro_rules! i_w_a_b {
                 opcode_choice += 4;
                 $self.code.push(reg_ref);
             }
-            ResolvedOperand::SymbolReference => {},
+            ResolvedOperand::SymbolReference => {}
         }
 
         // Second operand: address.
@@ -351,32 +357,34 @@ macro_rules! i_w_a_b {
             ResolvedOperand::Literal(literal) => {
                 let mut value = $self.value_as_word(&literal, op_span).unwrap();
                 $self.code.append(&mut value);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefWord) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected an address (word) \
-                                  register reference.".into(),
+                                  register reference."
+                            .into(),
                     });
                 }
                 opcode_choice += 2;
                 $self.code.push(reg_ref);
-            },
-            ResolvedOperand::SymbolReference => {},
+            }
+            ResolvedOperand::SymbolReference => {}
         }
 
         // Third operand: byte value.
         let (resolved, op_span) = $self.resolve_operand(&$operands[2])?;
         match resolved {
             ResolvedOperand::Literal(literal) => {
-                let mut val = $self.value_as_byte(&literal, op_span.clone())
+                let mut val = $self
+                    .value_as_byte(&literal, op_span.clone())
                     .ok_or_else(|| SaltError {
                         span: op_span,
                         message: "Literal too large: expected single byte.".into(),
-                })?;
+                    })?;
                 $self.code.append(&mut val);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefByte) {
                     return Err(SaltError {
@@ -404,7 +412,7 @@ macro_rules! i_w_a_b {
         $self.code[opcode_pos] = opcode;
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with operands ..WF ..WF
@@ -466,7 +474,7 @@ macro_rules! i_WF_WF {
         }
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with operands BHW. bhw.
@@ -492,7 +500,7 @@ macro_rules! i_BHW_bhw {
                     $self.code.push(reg_ref);
                     reg_type
                 }
-            },
+            }
             ResolvedOperand::SymbolReference => no_symbols!(op_span),
         };
 
@@ -502,18 +510,19 @@ macro_rules! i_BHW_bhw {
             ResolvedOperand::Literal(literal) => {
                 $self.code[opcode_pos] = $opcodes.0;
                 $self.push_value_as_reg_type(&literal, reg_type, op_span)?;
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type_2) => {
                 if reg_type != reg_type_2 {
                     return Err(SaltError {
                         span: op_span,
                         message: "Cannot operate between differently-sized \
-                                  registers.".into(),
+                                  registers."
+                            .into(),
                     });
                 }
                 $self.code[opcode_pos] = $opcodes.1;
                 $self.code.push(reg_ref);
-            },
+            }
             ResolvedOperand::SymbolReference => {
                 if reg_type == RegisterType::Word {
                     $self.code[opcode_pos] = $opcodes.0;
@@ -521,14 +530,15 @@ macro_rules! i_BHW_bhw {
                     return Err(SaltError {
                         span: op_span,
                         message: "Symbol references resolve to addresses, \
-                                  which are too large to use here.".into(),
+                                  which are too large to use here."
+                            .into(),
                     });
                 }
-            },
+            }
         }
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction a single BHW. operand.
@@ -548,11 +558,11 @@ macro_rules! i_BHW {
                 } else {
                     $self.code.push(reg_ref);
                 }
-            },
+            }
             ResolvedOperand::SymbolReference => no_symbols!(op_span),
         }
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with operands BHW. b...
@@ -578,7 +588,7 @@ macro_rules! i_BHW_b {
                     $self.code.push(reg_ref);
                     reg_type
                 }
-            },
+            }
             ResolvedOperand::SymbolReference => no_symbols!(op_span),
         };
 
@@ -587,13 +597,14 @@ macro_rules! i_BHW_b {
         match resolved {
             ResolvedOperand::Literal(literal) => {
                 $self.code[opcode_pos] = $opcodes.0;
-                let mut val = $self.value_as_byte(&literal, op_span.clone())
+                let mut val = $self
+                    .value_as_byte(&literal, op_span.clone())
                     .ok_or_else(|| SaltError {
-                            span: op_span,
-                            message: "Literal too large: expected single byte.".into(),
-                })?;
+                        span: op_span,
+                        message: "Literal too large: expected single byte.".into(),
+                    })?;
                 $self.code.append(&mut val);
-            },
+            }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if !register_type_matches(reg_type, RegRefType::RegRefByte) {
                     return Err(SaltError {
@@ -608,7 +619,7 @@ macro_rules! i_BHW_b {
         }
 
         Ok(())
-    }}
+    }};
 }
 
 /// An instruction with a single ..a. operand.
@@ -624,5 +635,5 @@ macro_rules! i_a {
         address!($self, resolved, $opcodes, opcode_pos);
 
         Ok(())
-    }}
+    }};
 }

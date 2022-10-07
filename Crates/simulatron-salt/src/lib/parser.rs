@@ -1,6 +1,6 @@
 mod node_builder;
 
-use log::{trace, debug, info, error};
+use log::{debug, error, info, trace};
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::ops::Range;
@@ -45,7 +45,7 @@ impl<'a, 'b> Iterator for TokenTypeIter<'a, 'b> {
 
     fn next(&mut self) -> Option<Self::Item> {
         // Ensure the buffer is full enough.
-        for _ in self.parser.buffer.len()..(self.pos+1) {
+        for _ in self.parser.buffer.len()..(self.pos + 1) {
             let token = self.parser.tokens.next()?;
             self.parser.buffer.push_back(token);
         }
@@ -147,14 +147,14 @@ impl<'a> Parser<'a> {
                         return Ok(());
                     }
                 }
-            },
+            }
             Err(Failure::EOF) => {
                 // Eat any trailing whitespace.
                 for _ in 0..self.buffer.len() {
                     eat(self);
                 }
                 return Err(Failure::EOF);
-            },
+            }
             Err(Failure::WrongToken) => unreachable!(),
         }
     }
@@ -174,7 +174,8 @@ impl<'a> Parser<'a> {
     /// Try and consume the specified token. If the token is wrong, the given
     /// error will be generated and the token consumed.
     fn consume_exact<M>(&mut self, target: TokenType, msg: M) -> ParseResult<()>
-        where M: Into<Cow<'static, str>>
+    where
+        M: Into<Cow<'static, str>>,
     {
         trace!("Needing to consume {:?}.", target);
         if self.peek()? == target {
@@ -202,12 +203,16 @@ impl<'a> Parser<'a> {
     /// generating the given error for the token. If no token can be found due
     /// to EOF, `self.last_span` will be used for the error.
     fn error_consume<M>(&mut self, message: M)
-        where M: Into<Cow<'static, str>>
+    where
+        M: Into<Cow<'static, str>>,
     {
         let message = message.into();
         error!("Generating error: {}", message);
-        let _ = self.consume();  // We don't care about EOF.
-        self.errors.push(SaltError {span: self.last_span.clone(), message});
+        let _ = self.consume(); // We don't care about EOF.
+        self.errors.push(SaltError {
+            span: self.last_span.clone(),
+            message,
+        });
     }
 
     /// Program non-terminal.
@@ -218,19 +223,22 @@ impl<'a> Parser<'a> {
         // Parse the next line until EOF.
         loop {
             match self.parse_line() {
-                Ok(SequenceResult::GoAgain) => {},
+                Ok(SequenceResult::GoAgain) => {}
                 Ok(SequenceResult::GracefulEnd) => break,
                 Err(Failure::EOF) => {
                     info!("Unexpected EOF.");
                     self.error_consume("Unexpected EOF");
                     break;
-                },
+                }
                 Err(_) => panic!("Invalid return from parse_line()"),
             }
         }
 
         // We must be at the end of the file now.
-        assert!(self.tokens.next().is_none(), "Reached end of PROGRAM before EOF.");
+        assert!(
+            self.tokens.next().is_none(),
+            "Reached end of PROGRAM before EOF."
+        );
 
         debug!("...Finished Program.");
     }
@@ -256,21 +264,23 @@ impl<'a> Parser<'a> {
                     TokenType::Static => self.parse_data_decl(),
                     TokenType::Identifier => self.parse_label(),
                     _ => {
-                        self.error_consume("The 'pub' qualifier can only be \
-                                           applied to const declarations, data \
-                                           declarations, and labels.");
+                        self.error_consume(
+                            "The 'pub' qualifier can only be \
+                             applied to const declarations, data \
+                             declarations, and labels.",
+                        );
                         Err(Failure::WrongToken)
                     }
                 }
-            },
+            }
             TokenType::Const => {
                 // Constant declaration.
                 self.parse_const_decl()
-            },
+            }
             TokenType::Static => {
                 // Data declaration.
                 self.parse_data_decl()
-            },
+            }
             TokenType::Identifier => {
                 // Label or instruction: we need a second lookahead.
                 // We don't want to accidentally EOF here, as if it is an
@@ -280,32 +290,32 @@ impl<'a> Parser<'a> {
                 } else {
                     self.parse_instruction()
                 }
-            },
-            TokenType::Comment => {
-                self.consume()
-            },
+            }
+            TokenType::Comment => self.consume(),
             TokenType::Newline => {
                 // Empty line.
                 Ok(())
-            },
+            }
             _ => {
                 // Invalid token.
-                self.error_consume("Unexpected token at start of line: expected \
-                                   const declaration, data declaration, label, \
-                                   instruction, or comment.");
+                self.error_consume(
+                    "Unexpected token at start of line: expected \
+                     const declaration, data declaration, label, \
+                     instruction, or comment.",
+                );
                 Err(Failure::WrongToken)
             }
         };
 
         // Handle possible failures.
         match line_result {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(Failure::WrongToken) => {
                 // Eat the rest of the line and carry on parsing.
                 self.consume_till_nl()?;
                 debug!("...Finished Line with error.");
                 return Ok(SequenceResult::GoAgain);
-            },
+            }
             Err(Failure::EOF) => return Err(Failure::EOF),
         }
 
@@ -320,8 +330,7 @@ impl<'a> Parser<'a> {
             TokenType::Comment => {
                 // Consume the comment and the following newline.
                 self.consume()?;
-                if let Err(Failure::WrongToken) =
-                        self.try_consume_exact(TokenType::Newline) {
+                if let Err(Failure::WrongToken) = self.try_consume_exact(TokenType::Newline) {
                     panic!("Comment didn't end with a newline!");
                 }
                 // If the newline fails due to EOF, this will fall through and
@@ -332,8 +341,10 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 // Report the error and eat the rest of the line.
-                self.error_consume("Unexpected token after end \
-                                   of line; expected newline.");
+                self.error_consume(
+                    "Unexpected token after end \
+                                   of line; expected newline.",
+                );
                 self.consume_till_nl()?;
                 debug!("...Finished Line with error.");
                 return Ok(SequenceResult::GoAgain);
@@ -405,11 +416,9 @@ impl<'a> Parser<'a> {
 
         // Byte, Half, or Word.
         match self.peek()? {
-            TokenType::Byte
-            | TokenType::Half
-            | TokenType::Word => {
+            TokenType::Byte | TokenType::Half | TokenType::Word => {
                 self.consume()?;
-            },
+            }
             _ => {
                 self.error_consume("Expected data type.");
                 debug!("...Finished DataType with error.");
@@ -422,8 +431,7 @@ impl<'a> Parser<'a> {
             self.consume()?;
             // Integer literal or ".." inferred length.
             match self.peek()? {
-                TokenType::IntLiteral
-                | TokenType::DoubleDot => self.consume()?,
+                TokenType::IntLiteral | TokenType::DoubleDot => self.consume()?,
                 _ => {
                     self.error_consume("Expected array length.");
                     return Err(Failure::WrongToken);
@@ -495,7 +503,7 @@ impl<'a> Parser<'a> {
                 }
                 debug!("...Finished Operand.");
                 Ok(SequenceResult::GoAgain)
-            },
+            }
             _ => {
                 // No more operands.
                 debug!("...Finished last Operand.");
@@ -517,11 +525,11 @@ impl<'a> Parser<'a> {
             | TokenType::Sizeof => {
                 // Scalar literal.
                 self.parse_literal()?;
-            },
+            }
             TokenType::StringLiteral => {
                 // String literal.
                 self.consume()?;
-            },
+            }
             TokenType::OpenSquare => {
                 // Full array literal.
                 self.consume()?;
@@ -535,10 +543,10 @@ impl<'a> Parser<'a> {
                         match self.peek()? {
                             TokenType::Comma => {
                                 self.consume()?;
-                            },
+                            }
                             TokenType::CloseSquare => {
                                 break;
-                            },
+                            }
                             _ => {
                                 self.error_consume("Expected ',' or ']'");
                                 debug!("...Finishing ArrayLiteral with error.");
@@ -547,7 +555,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                 }
-                self.consume()?;  // Eat the close bracket.
+                self.consume()?; // Eat the close bracket.
             }
             _ => {
                 self.error_consume("Expected literal.");
@@ -566,9 +574,7 @@ impl<'a> Parser<'a> {
         debug!("Parsing Literal...");
 
         match self.peek()? {
-            TokenType::IntLiteral
-            | TokenType::FloatLiteral
-            | TokenType::CharLiteral => {
+            TokenType::IntLiteral | TokenType::FloatLiteral | TokenType::CharLiteral => {
                 self.consume()?;
             }
             TokenType::Sizeof => {
@@ -607,7 +613,7 @@ mod tests {
             assert_eq!(input, reconstructed.as_str());
             // Ensure it is correct.
             assert_debug_snapshot!(output);
-        }}
+        }};
     }
 
     macro_rules! assert_error_snapshot {
@@ -626,7 +632,7 @@ mod tests {
             // Ensure the tree and errors are correct.
             assert_debug_snapshot!(tree);
             assert_debug_snapshot!(errors);
-        }}
+        }};
     }
 
     #[test]

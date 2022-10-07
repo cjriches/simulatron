@@ -1,6 +1,6 @@
 use super::*;
 
-use insta::{assert_snapshot, assert_display_snapshot};
+use insta::{assert_display_snapshot, assert_snapshot};
 use log::info;
 use simulatron_utils::hexprint::pretty_print_hex_block;
 use std::convert::TryInto;
@@ -14,11 +14,8 @@ pub fn init() {
 
     // The logger can only be initialised once, but we don't know the order of
     // tests. Therefore we use `try_init` and ignore the result.
-    let _ = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("debug"))
-        .format(|out, record| {
-            writeln!(out, "{:>7} {}", record.level(), record.args())
-        })
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
+        .format(|out, record| writeln!(out, "{:>7} {}", record.level(), record.args()))
         .is_test(true)
         .try_init();
 }
@@ -53,13 +50,15 @@ macro_rules! parse_files {
 }
 
 macro_rules! assert_rom_snapshot {
-    ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img,
-                        ROM_BASE.try_into().unwrap())) }
+    ($img:expr) => {
+        assert_snapshot!(pretty_print_hex_block($img, ROM_BASE.try_into().unwrap()))
+    };
 }
 
 macro_rules! assert_disk_snapshot {
-    ($img:expr) => { assert_snapshot!(pretty_print_hex_block($img,
-                        DISK_BASE.try_into().unwrap())) }
+    ($img:expr) => {
+        assert_snapshot!(pretty_print_hex_block($img, DISK_BASE.try_into().unwrap()))
+    };
 }
 
 /// The simplest possible file: no symbols, one entrypoint section
@@ -140,9 +139,10 @@ fn test_multi_symbol_link() {
 fn test_combine_internal() {
     init();
     let parsed = parse_files!(
-            "examples/single-symbol.simobj",
-            "examples/multi-section.simobj"
-        ).unwrap();
+        "examples/single-symbol.simobj",
+        "examples/multi-section.simobj"
+    )
+    .unwrap();
     assert_display_snapshot!(parsed);
 }
 
@@ -150,12 +150,15 @@ fn test_combine_internal() {
 fn test_multiple_entrypoints() {
     init();
     let parsed = parse_files!(
-            "examples/single-symbol.simobj",
-            "examples/multi-section.simobj"
-        ).unwrap();
+        "examples/single-symbol.simobj",
+        "examples/multi-section.simobj"
+    )
+    .unwrap();
     let error = parsed.link_as_rom().unwrap_err();
-    assert_eq!(error.message(),
-               "Multiple entrypoint sections were defined.");
+    assert_eq!(
+        error.message(),
+        "Multiple entrypoint sections were defined."
+    );
 }
 
 /// Combine the multi-symbol file with one that has an external reference
@@ -164,9 +167,10 @@ fn test_multiple_entrypoints() {
 fn test_combine_external() {
     init();
     let parsed = parse_files!(
-            "examples/multi-symbol.simobj",
-            "examples/external-symbol.simobj"
-        ).unwrap();
+        "examples/multi-symbol.simobj",
+        "examples/external-symbol.simobj"
+    )
+    .unwrap();
     assert_display_snapshot!(parsed);
 }
 
@@ -175,9 +179,10 @@ fn test_combine_external() {
 fn test_combine_external_reversed() {
     init();
     let parsed = parse_files!(
-            "examples/external-symbol.simobj",
-            "examples/multi-symbol.simobj"
-        ).unwrap();
+        "examples/external-symbol.simobj",
+        "examples/multi-symbol.simobj"
+    )
+    .unwrap();
     assert_display_snapshot!(parsed);
 }
 
@@ -186,9 +191,10 @@ fn test_combine_external_reversed() {
 fn test_combine_public() {
     init();
     let error = parse_files!(
-            "examples/multi-symbol.simobj",
-            "examples/multi-symbol.simobj"
-        ).unwrap_err();
+        "examples/multi-symbol.simobj",
+        "examples/multi-symbol.simobj"
+    )
+    .unwrap_err();
     assert_eq!(error.message(), "Multiple definitions for symbol foobaz.");
 }
 
@@ -197,9 +203,10 @@ fn test_combine_public() {
 fn test_combine_public_internal() {
     init();
     let parsed = parse_files!(
-            "examples/multi-symbol.simobj",
-            "examples/internal-foobaz.simobj"
-        ).unwrap();
+        "examples/multi-symbol.simobj",
+        "examples/internal-foobaz.simobj"
+    )
+    .unwrap();
     assert_display_snapshot!(parsed);
 }
 
@@ -208,9 +215,10 @@ fn test_combine_public_internal() {
 fn test_combine_external_internal() {
     init();
     let parsed = parse_files!(
-            "examples/internal-foobaz.simobj",
-            "examples/external-symbol.simobj"
-        ).unwrap();
+        "examples/internal-foobaz.simobj",
+        "examples/external-symbol.simobj"
+    )
+    .unwrap();
     assert_display_snapshot!(parsed);
 }
 
@@ -220,8 +228,10 @@ fn test_writable() {
     init();
     let parsed = parse_files!("examples/writable-section.simobj").unwrap();
     let error = parsed.link_as_rom().unwrap_err();
-    assert_eq!(error.message(),
-               "Cannot have a writable section in a read-only image.");
+    assert_eq!(
+        error.message(),
+        "Cannot have a writable section in a read-only image."
+    );
 
     let parsed = parse_files!("examples/writable-section.simobj").unwrap();
     let disk = parsed.link_as_disk().unwrap();
@@ -261,7 +271,10 @@ fn test_non_exec_entrypoint() {
     init();
     let parsed = parse_files!("examples/non-exec-entrypoint.simobj").unwrap();
     let error = parsed.link_as_rom().unwrap_err();
-    assert_eq!(error.message(), "Section had entrypoint but not execute set.");
+    assert_eq!(
+        error.message(),
+        "Section had entrypoint but not execute set."
+    );
 }
 
 /// Ensure things too big for ROM are rejected.
@@ -270,8 +283,13 @@ fn test_too_big_for_rom() {
     init();
     let parsed = parse_files!("examples/big.simobj").unwrap();
     let error = parsed.link_as_rom().unwrap_err();
-    assert_eq!(error.message(),
-               format!("Binary (5000 bytes) exceeds rom capacity ({} bytes).", ROM_SIZE));
+    assert_eq!(
+        error.message(),
+        format!(
+            "Binary (5000 bytes) exceeds rom capacity ({} bytes).",
+            ROM_SIZE
+        )
+    );
 }
 
 /// Ensure that disk images get padded appropriately.

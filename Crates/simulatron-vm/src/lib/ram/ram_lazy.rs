@@ -6,8 +6,7 @@ use crate::mmu::RAM_SIZE;
 const PAGE_SHIFT: usize = 12;
 const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 const PAGE_MASK: usize = PAGE_SIZE - 1;
-const NUM_PAGES: usize = (RAM_SIZE >> PAGE_SHIFT)
-    + if RAM_SIZE % PAGE_SIZE > 0 {1} else {0};
+const NUM_PAGES: usize = (RAM_SIZE >> PAGE_SHIFT) + if RAM_SIZE % PAGE_SIZE > 0 { 1 } else { 0 };
 
 /// Lazy RAM implementation: hashmap from page number to page.
 pub struct RAM {
@@ -34,7 +33,9 @@ impl RAM {
     //noinspection RsSelfConvention
     /// Return a mutable reference to the given RAM index.
     fn get_mut(&mut self, index: usize) -> &mut u8 {
-        let page = self.data.entry(index >> PAGE_SHIFT)
+        let page = self
+            .data
+            .entry(index >> PAGE_SHIFT)
             .or_insert_with(|| vec![0; PAGE_SIZE]);
         &mut page[index & PAGE_MASK]
     }

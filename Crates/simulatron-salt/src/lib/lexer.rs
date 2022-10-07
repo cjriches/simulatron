@@ -119,7 +119,7 @@ mod tests {
                 }
             }
             assert_snapshot!(output);
-        }}
+        }};
     }
 
     /// Test the simplest possible input: a single instruction.

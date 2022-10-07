@@ -1,6 +1,6 @@
 mod cpu;
-mod display;
 mod disk;
+mod display;
 mod keyboard;
 mod mmu;
 mod ram;
@@ -26,21 +26,12 @@ pub fn run(rom: [u8; ROM_SIZE], disk_a_path: &str, disk_b_path: &str) {
     let keyboard_tx_ui = keyboard_tx.clone();
 
     // Create components.
-    let disk_a = RealDiskController::new(
-        disk_a_path,
-        interrupt_tx_disk_a,
-        cpu::INTERRUPT_DISK_A);
-    let disk_b = RealDiskController::new(
-        disk_b_path,
-        interrupt_tx_disk_b,
-        cpu::INTERRUPT_DISK_B);
+    let disk_a = RealDiskController::new(disk_a_path, interrupt_tx_disk_a, cpu::INTERRUPT_DISK_A);
+    let disk_b = RealDiskController::new(disk_b_path, interrupt_tx_disk_b, cpu::INTERRUPT_DISK_B);
     let display = display::DisplayController::new(ui_tx_display);
-    let keyboard = keyboard::KeyboardController::new(
-        keyboard_tx,
-        keyboard_rx,
-        interrupt_tx_keyboard);
-    let mmu = mmu::MMU::new(interrupt_tx_mmu, disk_a, disk_b,
-                            display, keyboard, rom);
+    let keyboard =
+        keyboard::KeyboardController::new(keyboard_tx, keyboard_rx, interrupt_tx_keyboard);
+    let mmu = mmu::MMU::new(interrupt_tx_mmu, disk_a, disk_b, display, keyboard, rom);
     let mut cpu = cpu::CPU::new(ui_tx_cpu, mmu, interrupt_tx, interrupt_rx);
     let mut ui = ui::UI::new(ui_tx, ui_rx, keyboard_tx_ui);
 

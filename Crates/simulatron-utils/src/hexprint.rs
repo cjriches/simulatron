@@ -11,7 +11,7 @@ pub fn pretty_print_hex_block(buf: &Vec<u8>, start: usize) -> String {
     // - 1 newline
     // - 2 vertical bars
     // Therefore, each 16 bytes of input produces 85 bytes of output.
-    let mut str = String::with_capacity((buf.len()/16 + 1) * 85);
+    let mut str = String::with_capacity((buf.len() / 16 + 1) * 85);
     for (i, byte) in buf.iter().enumerate() {
         match i % 16 {
             0 => {
@@ -21,7 +21,7 @@ pub fn pretty_print_hex_block(buf: &Vec<u8>, start: usize) -> String {
             4 | 8 | 12 => {
                 // After each 4 bytes, print a double space.
                 str.push_str("  ");
-            },
+            }
             _ => {
                 // Single-space between bytes.
                 str.push(' ');
@@ -32,7 +32,7 @@ pub fn pretty_print_hex_block(buf: &Vec<u8>, start: usize) -> String {
         // If this is the last byte of a line, add the ASCII representation.
         if i % 16 == 15 {
             str.push_str("  |");
-            for j in (i-15)..=i {
+            for j in (i - 15)..=i {
                 str.push(printable(buf[j]));
             }
             str.push('|');
@@ -47,11 +47,10 @@ pub fn pretty_print_hex_block(buf: &Vec<u8>, start: usize) -> String {
     let remainder = buf.len() % 16;
     if remainder != 0 {
         // Pad the missing bytes.
-        let spaces =
-            (16 - remainder) * 2        // Two spaces per missing byte,
+        let spaces = (16 - remainder) * 2        // Two spaces per missing byte,
                 + 18                    // Plus 18 spaces normally,
                 - (remainder - 1)       // Reduce by existing between-byte spaces,
-                - (remainder - 1) / 4;  // Account for double spaces.
+                - (remainder - 1) / 4; // Account for double spaces.
         for _ in 0..spaces {
             str.push(' ');
         }

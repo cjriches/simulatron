@@ -1,11 +1,6 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    Ident,
-    parse::Parser,
-    punctuated::Punctuated,
-    token::Comma,
-};
+use syn::{parse::Parser, punctuated::Punctuated, token::Comma, Ident};
 
 /// Automatically generate the boilerplate for a list of AstNodes.
 /// We assume the definition of `SyntaxNode` and `SyntaxKind` in the

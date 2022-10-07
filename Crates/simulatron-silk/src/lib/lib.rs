@@ -17,8 +17,9 @@ pub use parser::Parser;
 
 /// Parse a whole list of inputs and combine them into a single linker.
 pub fn parse_and_combine<I, S>(inputs: I) -> OFResult<Linker>
-    where I: IntoIterator<Item=S>,
-          S: ReadBE
+where
+    I: IntoIterator<Item = S>,
+    S: ReadBE,
 {
     let mut linker = Linker::new();
 

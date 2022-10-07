@@ -1,10 +1,11 @@
-use log::{trace, debug, info};
+use log::{debug, info, trace};
 use simulatron_utils::{hexprint::pretty_print_hex_block, read_be::ReadBE};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 
-use crate::data::{ObjectFile, Section, SymbolTable, SymbolTableEntry,
-                  SYMBOL_TYPE_EXTERNAL, symbol_type_name};
+use crate::data::{
+    symbol_type_name, ObjectFile, Section, SymbolTable, SymbolTableEntry, SYMBOL_TYPE_EXTERNAL,
+};
 use crate::error::{OFError, OFResult};
 
 // File header constants.
@@ -77,10 +78,7 @@ impl<S: ReadBE> Parser<S> {
         info!("Symbols relocated and verified successfully.");
 
         // Return the result.
-        Ok(ObjectFile {
-            symbols,
-            sections,
-        })
+        Ok(ObjectFile { symbols, sections })
     }
 
     /// Parse the symbol table.
@@ -99,15 +97,16 @@ impl<S: ReadBE> Parser<S> {
             // Read the name.
             let name_len = self.read_u8()?.into();
             debug!("Symbol name length: {}", name_len);
-            assert_or_error!(name_len > 0,
-                "Symbol name cannot be the empty string.");
+            assert_or_error!(name_len > 0, "Symbol name cannot be the empty string.");
             let mut name_buf = vec![0; name_len];
             self.read_buffer(&mut name_buf)?;
             let name = validate_symbol_name(name_buf)?;
             debug!("Symbol name: {}", name);
             // Check the name is unique.
-            assert_or_error!(!table.contains_key(&name),
-                format!("Multiple definitions for symbol {}.", name));
+            assert_or_error!(
+                !table.contains_key(&name),
+                format!("Multiple definitions for symbol {}.", name)
+            );
             // Read the number of references.
             let num_refs = self.read_u32()?.try_into().unwrap();
             debug!("Symbol has {} references.", num_refs);
@@ -115,7 +114,7 @@ impl<S: ReadBE> Parser<S> {
             let references = self.parse_references(num_refs)?;
             debug!("All references parsed successfully.");
             // Add the entry to the map.
-            let value= if symbol_type == SYMBOL_TYPE_EXTERNAL {
+            let value = if symbol_type == SYMBOL_TYPE_EXTERNAL {
                 None
             } else {
                 Some(value)
@@ -126,7 +125,7 @@ impl<S: ReadBE> Parser<S> {
                 references,
             };
             let was_present = table.insert(name, entry);
-            assert!(was_present.is_none());  // Sanity check.
+            assert!(was_present.is_none()); // Sanity check.
             info!("Parsed symbol {} successfully.", i);
         }
 
@@ -157,18 +156,18 @@ impl<S: ReadBE> Parser<S> {
             let length = self.read_u32()?;
             debug!("Section is {} bytes long.", length);
             // Add the section header to the vector.
-            headers.push(SectionHeader {
-                flags,
-                length,
-            });
+            headers.push(SectionHeader { flags, length });
             info!("Parsed section header {} successfully.", i);
         }
         Ok(headers)
     }
 
     /// Parse the sections themselves.
-    fn parse_sections(&mut self, headers: &Vec<SectionHeader>,
-                      sections_start: u32) -> OFResult<Vec<Section>> {
+    fn parse_sections(
+        &mut self,
+        headers: &Vec<SectionHeader>,
+        sections_start: u32,
+    ) -> OFResult<Vec<Section>> {
         let mut sections = Vec::with_capacity(headers.len());
         for (i, header) in headers.iter().enumerate() {
             debug!("About to parse section {}.", i);
@@ -176,8 +175,10 @@ impl<S: ReadBE> Parser<S> {
             let section_start = self.bytes_read;
             let mut data = vec![0; header.length.try_into().unwrap()];
             self.read_buffer(&mut data)?;
-            trace!("Section data:\n{}", pretty_print_hex_block(&data,
-                section_start.try_into().unwrap()));
+            trace!(
+                "Section data:\n{}",
+                pretty_print_hex_block(&data, section_start.try_into().unwrap())
+            );
             // Add the section to the vector.
             sections.push(Section {
                 flags: header.flags,
@@ -191,31 +192,43 @@ impl<S: ReadBE> Parser<S> {
     }
 
     fn read_u8(&mut self) -> OFResult<u8> {
-        self.source.read_u8().and_then(|val| {
-            self.bytes_read += 1;
-            Ok(val)
-        }).map_err(Into::into)
+        self.source
+            .read_u8()
+            .and_then(|val| {
+                self.bytes_read += 1;
+                Ok(val)
+            })
+            .map_err(Into::into)
     }
 
     fn read_u16(&mut self) -> OFResult<u16> {
-        self.source.read_be_u16().and_then(|val| {
-            self.bytes_read += 2;
-            Ok(val)
-        }).map_err(Into::into)
+        self.source
+            .read_be_u16()
+            .and_then(|val| {
+                self.bytes_read += 2;
+                Ok(val)
+            })
+            .map_err(Into::into)
     }
 
     fn read_u32(&mut self) -> OFResult<u32> {
-        self.source.read_be_u32().and_then(|val| {
-            self.bytes_read += 4;
-            Ok(val)
-        }).map_err(Into::into)
+        self.source
+            .read_be_u32()
+            .and_then(|val| {
+                self.bytes_read += 4;
+                Ok(val)
+            })
+            .map_err(Into::into)
     }
 
     fn read_buffer(&mut self, buf: &mut [u8]) -> OFResult<()> {
-        self.source.read_exact(buf).and_then(|val| {
-            self.bytes_read += u32::try_from(buf.len()).unwrap();
-            Ok(val)
-        }).map_err(Into::into)
+        self.source
+            .read_exact(buf)
+            .and_then(|val| {
+                self.bytes_read += u32::try_from(buf.len()).unwrap();
+                Ok(val)
+            })
+            .map_err(Into::into)
     }
 }
 
@@ -229,17 +242,13 @@ fn validate_symbol_name(name: Vec<u8>) -> OFResult<String> {
     // Valid bytes are in the inclusive ranges 48-57, 65-90, 95, or 97-122.
     for byte in name.iter() {
         match byte {
-            48..=57 | 65..=90 | 95 | 97..=122 => {},
+            48..=57 | 65..=90 | 95 | 97..=122 => {}
             _ => {
                 return match String::from_utf8(name) {
-                    Ok(s) => {
-                        Err(OFError::new(format!("Invalid symbol name: {}", s)))
-                    },
-                    Err(_) => {
-                        Err(OFError::new("Invalid symbol name (unprintable)."))
-                    },
+                    Ok(s) => Err(OFError::new(format!("Invalid symbol name: {}", s))),
+                    Err(_) => Err(OFError::new("Invalid symbol name (unprintable).")),
                 }
-            },
+            }
         }
     }
 
@@ -251,9 +260,11 @@ fn validate_symbol_name(name: Vec<u8>) -> OFResult<String> {
 /// `section_start`, verify that the value and all references point within
 /// a section, and additionally verify that references point to a
 /// zero-filled location.
-fn relocate_and_verify_symbol(symbol: (&String, &mut SymbolTableEntry),
-                              sections_start: u32,
-                              sections: &Vec<Section>) -> OFResult<()> {
+fn relocate_and_verify_symbol(
+    symbol: (&String, &mut SymbolTableEntry),
+    sections_start: u32,
+    sections: &Vec<Section>,
+) -> OFResult<()> {
     debug!("About to relocate and verify symbol {}", symbol.0);
     // Relocate and verify the value.
     symbol.1.value = match symbol.1.value {
@@ -264,10 +275,12 @@ fn relocate_and_verify_symbol(symbol: (&String, &mut SymbolTableEntry),
                 None => 0,
                 Some(last_section) => last_section.start + last_section.length,
             };
-            assert_or_error!(relocated < file_length,
-                format!("Address too large: {:#010X}", val));
+            assert_or_error!(
+                relocated < file_length,
+                format!("Address too large: {:#010X}", val)
+            );
             Some(relocated)
-        },
+        }
     };
     debug!("Relocated and verified value.");
 
@@ -277,13 +290,16 @@ fn relocate_and_verify_symbol(symbol: (&String, &mut SymbolTableEntry),
         // Relocate the reference.
         *reference = try_sub(*reference, sections_start)?;
         // Verify it points to zero.
-        let section = Section::find(sections, *reference)
-            .ok_or(OFError::new(
-                format!("Address too large: {:#010X}", *reference + sections_start)))?;
+        let section = Section::find(sections, *reference).ok_or(OFError::new(format!(
+            "Address too large: {:#010X}",
+            *reference + sections_start
+        )))?;
         let section_offset = *reference - section.start;
         for i in 0..4 {
-            assert_or_error!(section.data[usize::try_from(section_offset).unwrap() + i] == 0,
-                "Symbol reference target was non-zero.");
+            assert_or_error!(
+                section.data[usize::try_from(section_offset).unwrap() + i] == 0,
+                "Symbol reference target was non-zero."
+            );
         }
     }
     info!("Relocated and verified symbol {}", symbol.0);
@@ -293,7 +309,6 @@ fn relocate_and_verify_symbol(symbol: (&String, &mut SymbolTableEntry),
 
 /// Try and relocate x by y, failing gracefully if the result is negative.
 fn try_sub(x: u32, y: u32) -> OFResult<u32> {
-    x.checked_sub(y).ok_or(OFError::new(
-        format!("Address too small: {:#010X}", x)
-    ))
+    x.checked_sub(y)
+        .ok_or(OFError::new(format!("Address too small: {:#010X}", x)))
 }

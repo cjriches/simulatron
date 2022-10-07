@@ -1,7 +1,7 @@
 use std::io::{self, Read};
 
 /// Read big-endian integers directly from a stream.
-pub trait ReadBE : Read {
+pub trait ReadBE: Read {
     fn read_u8(&mut self) -> Result<u8, io::Error>;
     fn read_be_u16(&mut self) -> Result<u16, io::Error>;
     fn read_be_u32(&mut self) -> Result<u32, io::Error>;

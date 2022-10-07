@@ -15,7 +15,7 @@ pub struct SafeNodeBuilder {
 /// when dropped.
 #[must_use = "if unused the node will immediately be finished."]
 pub struct NodeGuard {
-    builder: Rc<RefCell<GreenNodeBuilder<'static>>>
+    builder: Rc<RefCell<GreenNodeBuilder<'static>>>,
 }
 
 impl Drop for NodeGuard {
@@ -33,16 +33,19 @@ impl SafeNodeBuilder {
 
     /// Start a new node, returning a guard that finishes the node when dropped.
     pub fn start_node(&mut self, kind: SyntaxKind) -> NodeGuard {
-        self.inner.borrow_mut().start_node(
-            SimAsmLanguage::kind_to_raw(kind)
-        );
-        NodeGuard { builder: self.inner.clone() }
+        self.inner
+            .borrow_mut()
+            .start_node(SimAsmLanguage::kind_to_raw(kind));
+        NodeGuard {
+            builder: self.inner.clone(),
+        }
     }
 
     /// Add the given token at the current node.
     pub fn add_token(&mut self, t: Token) {
-        self.inner.borrow_mut().token(
-            SimAsmLanguage::kind_to_raw(t.tt.into()), t.slice)
+        self.inner
+            .borrow_mut()
+            .token(SimAsmLanguage::kind_to_raw(t.tt.into()), t.slice)
     }
 
     /// Finish building. If there are no outstanding NodeGuards, this is

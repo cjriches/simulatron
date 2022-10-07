@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 /// Write big-endian integers directly to a stream.
-pub trait WriteBE : Write {
+pub trait WriteBE: Write {
     fn write_u8(&mut self, val: u8) -> io::Result<()>;
     fn write_be_u16(&mut self, val: u16) -> io::Result<()>;
     fn write_be_u32(&mut self, val: u32) -> io::Result<()>;

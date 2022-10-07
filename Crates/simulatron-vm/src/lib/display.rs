@@ -10,37 +10,42 @@ pub struct DisplayController {
 impl DisplayController {
     /// Create a new display controller with the given UI command channel.
     pub fn new(ui_channel: Sender<UICommand>) -> Self {
-        DisplayController {
-            ui_channel,
-        }
+        DisplayController { ui_channel }
     }
 
     /// Handle a memory-mapped command signal by sending a command to the UI.
     pub fn store(&self, address: u32, value: u8) {
-        if address < 2000 {  // Character value.
+        if address < 2000 {
+            // Character value.
             let row = (address / 80) as u16;
             let col = (address % 80) as u16;
             if let Some(character) = u8_to_printable_char(value) {
-                self.ui_channel.send(UICommand::SetChar {
-                    row, col, character,
-                }).unwrap();
+                self.ui_channel
+                    .send(UICommand::SetChar {
+                        row,
+                        col,
+                        character,
+                    })
+                    .unwrap();
             }
-        } else if address < 4000 {  // Foreground color.
+        } else if address < 4000 {
+            // Foreground color.
             let cell_num = address - 2000;
             let row = (cell_num / 80) as u16;
             let col = (cell_num % 80) as u16;
             let (r, g, b) = rgb(value);
-            self.ui_channel.send(UICommand::SetFg {
-                row, col, r, g, b,
-            }).unwrap();
-        } else if address < 6000 {  // Background color.
+            self.ui_channel
+                .send(UICommand::SetFg { row, col, r, g, b })
+                .unwrap();
+        } else if address < 6000 {
+            // Background color.
             let cell_num = address - 4000;
             let row = (cell_num / 80) as u16;
             let col = (cell_num % 80) as u16;
             let (r, g, b) = rgb(value);
-            self.ui_channel.send(UICommand::SetBg {
-                row, col, r, g, b,
-            }).unwrap();
+            self.ui_channel
+                .send(UICommand::SetBg { row, col, r, g, b })
+                .unwrap();
         } else {
             unreachable!()
         }
@@ -54,7 +59,7 @@ fn u8_to_printable_char(byte: u8) -> Option<char> {
         31 => Some('£'),
         32..=126 => Some(char::from(byte)),
         127 => Some('¬'),
-        _  => None,
+        _ => None,
     }
 }
 
@@ -70,7 +75,7 @@ fn rgb(raw_byte: u8) -> (u8, u8, u8) {
             0b01 => 85,
             0b10 => 170,
             0b11 => 255,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 

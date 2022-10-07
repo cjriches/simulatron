@@ -1,13 +1,13 @@
-use log::{trace, debug, info};
+use log::{debug, info, trace};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::{Display, Formatter};
 
-use crate::data::{DISK_ALIGN, DISK_BASE, FLAG_ENTRYPOINT,
-                  FLAG_EXECUTE, FLAG_WRITE, INVALID_FLAGS,
-                  ObjectFile, ROM_BASE, ROM_SIZE, Section,
-                  SYMBOL_TYPE_EXTERNAL,
-                  SYMBOL_TYPE_INTERNAL, SYMBOL_TYPE_PUBLIC};
+use crate::data::{
+    ObjectFile, Section, DISK_ALIGN, DISK_BASE, FLAG_ENTRYPOINT, FLAG_EXECUTE, FLAG_WRITE,
+    INVALID_FLAGS, ROM_BASE, ROM_SIZE, SYMBOL_TYPE_EXTERNAL, SYMBOL_TYPE_INTERNAL,
+    SYMBOL_TYPE_PUBLIC,
+};
 use crate::error::{OFError, OFResult};
 
 // Is an image read-only or not?
@@ -41,9 +41,7 @@ impl Linker {
     /// Construct a new linker starting with the given object file.
     pub fn from(of: ObjectFile) -> Self {
         // Start with a completely empty object file.
-        Self {
-            data: of,
-        }
+        Self { data: of }
     }
 
     /// Add the symbols and sections of an object file.
@@ -84,7 +82,7 @@ impl Linker {
                 None => {
                     debug!("Adding new symbol {}", name);
                     data.symbols.insert(name, new_entry);
-                },
+                }
                 Some(existing_entry) => {
                     trace!("New symbol conflicts.");
                     // Case a) rename an internal symbol.
@@ -97,20 +95,27 @@ impl Linker {
                     } else if existing_entry.symbol_type == SYMBOL_TYPE_INTERNAL {
                         // Rename the existing entry then insert.
                         let new_name = gen_non_conflicting_name(&data.symbols, &name)?;
-                        debug!("Renaming existing symbol {} to {} and \
-                                adding a new one with the old name.", name, new_name);
+                        debug!(
+                            "Renaming existing symbol {} to {} and \
+                             adding a new one with the old name.",
+                            name, new_name
+                        );
                         let old = data.symbols.remove(&name).unwrap();
-                        let was_present = data.symbols.insert(new_name, old)
+                        let was_present = data
+                            .symbols
+                            .insert(new_name, old)
                             .or(data.symbols.insert(name, new_entry));
                         assert!(was_present.is_none());
                         // Case b) resolve external and public.
                     } else if new_entry.symbol_type == SYMBOL_TYPE_EXTERNAL
-                        && existing_entry.symbol_type == SYMBOL_TYPE_PUBLIC {
+                        && existing_entry.symbol_type == SYMBOL_TYPE_PUBLIC
+                    {
                         // Eat the new entry's references.
                         debug!("Adding external reference to {}.", name);
                         existing_entry.references.append(&mut new_entry.references);
                     } else if new_entry.symbol_type == SYMBOL_TYPE_PUBLIC
-                        && existing_entry.symbol_type == SYMBOL_TYPE_EXTERNAL {
+                        && existing_entry.symbol_type == SYMBOL_TYPE_EXTERNAL
+                    {
                         // Eat the new entry's references, take its value, and
                         // change type to public.
                         debug!("Resolving external reference {}.", name);
@@ -121,9 +126,12 @@ impl Linker {
                         existing_entry.symbol_type = SYMBOL_TYPE_PUBLIC;
                         // Case c) reject two public symbols.
                     } else if new_entry.symbol_type == SYMBOL_TYPE_PUBLIC
-                        && existing_entry.symbol_type == SYMBOL_TYPE_PUBLIC {
-                        return Err(OFError::new(
-                            format!("Multiple definitions for symbol {}.", name)));
+                        && existing_entry.symbol_type == SYMBOL_TYPE_PUBLIC
+                    {
+                        return Err(OFError::new(format!(
+                            "Multiple definitions for symbol {}.",
+                            name
+                        )));
                     } else {
                         // Sanity check.
                         unreachable!();
@@ -142,9 +150,14 @@ impl Linker {
         info!("Image generated.");
         debug!("Raw size: {} bytes.", image.len());
         // Ensure it is the correct size.
-        assert_or_error!(image.len() <= ROM_SIZE,
-            format!("Binary ({} bytes) exceeds rom capacity ({} bytes).",
-            image.len(), ROM_SIZE));
+        assert_or_error!(
+            image.len() <= ROM_SIZE,
+            format!(
+                "Binary ({} bytes) exceeds rom capacity ({} bytes).",
+                image.len(),
+                ROM_SIZE
+            )
+        );
         image.resize(ROM_SIZE, 0);
 
         Ok(image)
@@ -169,8 +182,7 @@ impl Linker {
     }
 
     /// Process into a generic, unpadded image.
-    fn link_as_image(mut self, read_only: ImageAccess,
-                     base_address: u32) -> OFResult<Vec<u8>> {
+    fn link_as_image(mut self, read_only: ImageAccess, base_address: u32) -> OFResult<Vec<u8>> {
         let data = &mut self.data;
 
         // Find the entrypoint section.
@@ -178,21 +190,28 @@ impl Linker {
         let mut entrypoint_index = None;
         for (i, section) in data.sections.iter().enumerate() {
             debug!("Checking section {}.", i);
-            assert_or_error!(section.flags & INVALID_FLAGS == 0,
-                "Invalid section flags.");
-            assert_or_error!(!(read_only && (section.flags & FLAG_WRITE != 0)),
-                "Cannot have a writable section in a read-only image.");
+            assert_or_error!(section.flags & INVALID_FLAGS == 0, "Invalid section flags.");
+            assert_or_error!(
+                !(read_only && (section.flags & FLAG_WRITE != 0)),
+                "Cannot have a writable section in a read-only image."
+            );
             if section.flags & FLAG_ENTRYPOINT != 0 {
-                assert_or_error!(section.flags & FLAG_EXECUTE != 0,
-                    "Section had entrypoint but not execute set.");
-                assert_or_error!(entrypoint_index.is_none(),
-                    "Multiple entrypoint sections were defined.");
+                assert_or_error!(
+                    section.flags & FLAG_EXECUTE != 0,
+                    "Section had entrypoint but not execute set."
+                );
+                assert_or_error!(
+                    entrypoint_index.is_none(),
+                    "Multiple entrypoint sections were defined."
+                );
                 debug!("Section {} is entrypoint.", i);
                 entrypoint_index = Some(i);
             }
         }
-        assert_or_error!(entrypoint_index.is_some(),
-            "No entrypoint section was defined.");
+        assert_or_error!(
+            entrypoint_index.is_some(),
+            "No entrypoint section was defined."
+        );
         let entrypoint_index = entrypoint_index.unwrap();
 
         // Relocate the entrypoint section to the start.
@@ -224,8 +243,10 @@ impl Linker {
         // Resolve all symbol references.
         for (name, symbol) in data.symbols.iter() {
             debug!("Linking symbol {}", name);
-            assert_or_error!(symbol.value.is_some(),
-                format!("Unresolved symbol: {}", name));
+            assert_or_error!(
+                symbol.value.is_some(),
+                format!("Unresolved symbol: {}", name)
+            );
             // Relocate the value.
             let value = {
                 let value = symbol.value.unwrap();
@@ -236,8 +257,11 @@ impl Linker {
             for reference in symbol.references.iter() {
                 // Relocate the reference.
                 let relocated = relocate(*reference);
-                trace!("Relocating reference from {:#010X} to {:#010X}",
-                    reference, relocated);
+                trace!(
+                    "Relocating reference from {:#010X} to {:#010X}",
+                    reference,
+                    relocated
+                );
                 // Resolve reference.
                 let section = Section::find_mut(&mut data.sections, relocated)
                     .expect("BUG: an invalid reference escaped the parsing stage.");
@@ -273,16 +297,17 @@ impl Linker {
 /// Generate a variation on the given name that is not already used as a key
 /// in the given hashmap. Achieved by repeatedly incrementing an appended
 /// number until an unused key is found.
-fn gen_non_conflicting_name<V>(map: &HashMap<String, V>,
-                               base: &String) -> OFResult<String> {
+fn gen_non_conflicting_name<V>(map: &HashMap<String, V>, base: &String) -> OFResult<String> {
     for suffix in 0..=u32::MAX {
         let candidate = format!("{}{}", base, suffix);
         if !map.contains_key(&candidate) {
             return Ok(candidate);
         }
     }
-    Err(OFError::new(
-        format!("Failed to rename symbol {} to a unique value.", base)))
+    Err(OFError::new(format!(
+        "Failed to rename symbol {} to a unique value.",
+        base
+    )))
 }
 
 /// Efficiently move the given index to the start of the vector, displacing
@@ -290,8 +315,12 @@ fn gen_non_conflicting_name<V>(map: &HashMap<String, V>,
 /// Doing a `.remove()` followed by a `.insert()` requires two
 /// linear time operations, whereas this only requires one.
 fn move_to_start<T>(v: &mut Vec<T>, index: usize) {
-    assert!(index < v.len(),
-            "Index {} out of bounds for vector with length {}.", index, v.len());
+    assert!(
+        index < v.len(),
+        "Index {} out of bounds for vector with length {}.",
+        index,
+        v.len()
+    );
     let ptr = v.as_mut_ptr();
     unsafe {
         // Remember the item to move.

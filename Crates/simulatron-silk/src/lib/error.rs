@@ -9,11 +9,10 @@ pub struct OFError {
 impl OFError {
     /// Create an error with the given message, only allowed within the crate.
     pub(crate) fn new<S>(desc: S) -> Self
-        where S: Into<String>
+    where
+        S: Into<String>,
     {
-        OFError {
-            desc: desc.into(),
-        }
+        OFError { desc: desc.into() }
     }
 
     /// Extract the message.
@@ -35,7 +34,7 @@ impl From<io::Error> for OFError {
             _ => "Unexpected IO error",
         };
         OFError {
-            desc: format!("IO error: {}.", msg)
+            desc: format!("IO error: {}.", msg),
         }
     }
 }
@@ -46,5 +45,5 @@ macro_rules! assert_or_error {
         if !$condition {
             return Err(OFError::new($message));
         }
-    }}
+    }};
 }
