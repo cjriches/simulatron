@@ -13,7 +13,7 @@ use node_builder::{NodeGuard, SafeNodeBuilder};
 /// A failure due to token mismatch or EOF.
 enum Failure {
     WrongToken,
-    EOF,
+    Eof,
 }
 type ParseResult<'a, T> = Result<T, Failure>;
 
@@ -107,7 +107,7 @@ impl<'a> Parser<'a> {
                 return Ok(tt);
             }
         }
-        Err(Failure::EOF)
+        Err(Failure::Eof)
     }
 
     /// Double lookahead, skipping whitespace.
@@ -121,7 +121,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        Err(Failure::EOF)
+        Err(Failure::Eof)
     }
 
     /// Consume the next non-whitespace token and all whitespace before it,
@@ -148,12 +148,12 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            Err(Failure::EOF) => {
+            Err(Failure::Eof) => {
                 // Eat any trailing whitespace.
                 for _ in 0..self.buffer.len() {
                     eat(self);
                 }
-                return Err(Failure::EOF);
+                Err(Failure::Eof)
             }
             Err(Failure::WrongToken) => unreachable!(),
         }
@@ -194,7 +194,7 @@ impl<'a> Parser<'a> {
             match self.try_consume_exact(TokenType::Newline) {
                 Ok(()) => return Ok(()),
                 Err(Failure::WrongToken) => self.consume()?,
-                Err(Failure::EOF) => return Err(Failure::EOF),
+                Err(Failure::Eof) => return Err(Failure::Eof),
             }
         }
     }
@@ -225,7 +225,7 @@ impl<'a> Parser<'a> {
             match self.parse_line() {
                 Ok(SequenceResult::GoAgain) => {}
                 Ok(SequenceResult::GracefulEnd) => break,
-                Err(Failure::EOF) => {
+                Err(Failure::Eof) => {
                     info!("Unexpected EOF.");
                     self.error_consume("Unexpected EOF");
                     break;
@@ -248,7 +248,7 @@ impl<'a> Parser<'a> {
         debug!("Parsing Line...");
 
         // We might have gracefully reached the end of the file.
-        if let Err(Failure::EOF) = self.peek() {
+        if let Err(Failure::Eof) = self.peek() {
             debug!("...Finished line with EOF.");
             return Ok(SequenceResult::GracefulEnd);
         }
@@ -316,11 +316,11 @@ impl<'a> Parser<'a> {
                 debug!("...Finished Line with error.");
                 return Ok(SequenceResult::GoAgain);
             }
-            Err(Failure::EOF) => return Err(Failure::EOF),
+            Err(Failure::Eof) => return Err(Failure::Eof),
         }
 
         // We may have reached the end of the file.
-        if let Err(Failure::EOF) = self.peek() {
+        if let Err(Failure::Eof) = self.peek() {
             debug!("...Finished line with EOF.");
             return Ok(SequenceResult::GracefulEnd);
         }

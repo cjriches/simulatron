@@ -1,3 +1,5 @@
+#![allow(clippy::len_zero)]
+
 #[macro_use]
 mod instruction_macros;
 
@@ -192,24 +194,22 @@ struct External {
 
 /// Possible types of a register reference.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum RegRefType {
-    RegRefAny,
-    RegRefInt,
-    RegRefByte,
-    RegRefHalf,
-    RegRefWord,
-    RegRefFloat,
+enum RegRef {
+    Any,
+    Int,
+    Byte,
+    Half,
+    Word,
+    Float,
 }
 
 /// Does the given register type match the given reference type?
-fn register_type_matches(reg: RegisterType, ref_: RegRefType) -> bool {
-    use RegRefType::*;
-
+fn register_type_matches(reg: RegisterType, ref_: RegRef) -> bool {
     match reg {
-        RegisterType::Byte => ref_ == RegRefAny || ref_ == RegRefInt || ref_ == RegRefByte,
-        RegisterType::Half => ref_ == RegRefAny || ref_ == RegRefInt || ref_ == RegRefHalf,
-        RegisterType::Word => ref_ == RegRefAny || ref_ == RegRefInt || ref_ == RegRefWord,
-        RegisterType::Float => ref_ == RegRefAny || ref_ == RegRefFloat,
+        RegisterType::Byte => ref_ == RegRef::Any || ref_ == RegRef::Int || ref_ == RegRef::Byte,
+        RegisterType::Half => ref_ == RegRef::Any || ref_ == RegRef::Int || ref_ == RegRef::Half,
+        RegisterType::Word => ref_ == RegRef::Any || ref_ == RegRef::Int || ref_ == RegRef::Word,
+        RegisterType::Float => ref_ == RegRef::Any || ref_ == RegRef::Float,
     }
 }
 
@@ -630,7 +630,7 @@ impl CodeGenerator {
         simobj
     }
 
-    fn add_constants(&mut self, consts: &Vec<ast::ConstDecl>) {
+    fn add_constants(&mut self, consts: &[ast::ConstDecl]) {
         for const_ in consts.iter() {
             let name = const_.name();
             let public = const_.public();
@@ -654,7 +654,7 @@ impl CodeGenerator {
                     used: false,
                 }),
             );
-            if let Some(_) = existing {
+            if existing.is_some() {
                 self.error(SaltError {
                     span: const_.name_span(),
                     message: "Name already in use.".into(),
@@ -663,7 +663,7 @@ impl CodeGenerator {
         }
     }
 
-    fn add_data(&mut self, data_decls: &Vec<ast::DataDecl>) {
+    fn add_data(&mut self, data_decls: &[ast::DataDecl]) {
         for data in data_decls.iter() {
             let name = data.name();
             let public = data.public();
@@ -782,7 +782,7 @@ impl CodeGenerator {
                     references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
                 }),
             );
-            if let Some(_) = existing {
+            if existing.is_some() {
                 self.error(SaltError {
                     span: data.name_span(),
                     message: "Name already in use.".into(),
@@ -791,7 +791,7 @@ impl CodeGenerator {
         }
     }
 
-    fn add_labels(&mut self, labels: &Vec<ast::Label>) {
+    fn add_labels(&mut self, labels: &[ast::Label]) {
         for label in labels.iter() {
             let name = label.name();
             let public = label.public();
@@ -807,7 +807,7 @@ impl CodeGenerator {
                     references: Vec::with_capacity(AVG_SYMBOL_REFERENCES),
                 }),
             );
-            if let Some(_) = existing {
+            if existing.is_some() {
                 self.error(SaltError {
                     span,
                     message: "Name already in use.".into(),
@@ -1157,7 +1157,7 @@ fn is_uppercase(string: &str) -> bool {
             return false;
         }
     }
-    return true;
+    true
 }
 
 /// Check if a string is in lowercase.
@@ -1167,5 +1167,5 @@ fn is_lowercase(string: &str) -> bool {
             return false;
         }
     }
-    return true;
+    true
 }

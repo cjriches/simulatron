@@ -25,7 +25,7 @@ where
 
     for input in inputs.into_iter() {
         let parsed = Parser::parse(input)?;
-        linker = linker.add(parsed)?;
+        linker = linker.add_objects(parsed)?;
     }
 
     Ok(linker)

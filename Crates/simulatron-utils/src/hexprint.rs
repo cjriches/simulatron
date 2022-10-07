@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 use std::fmt::Write;
 
 /// Nicely format the given `Vec<u8>` as a hex block. The listed addresses will
@@ -62,7 +64,7 @@ pub fn pretty_print_hex_block(buf: &Vec<u8>, start: usize) -> String {
         str.push('|');
     }
 
-    return str;
+    str
 }
 
 /// Shortcut for starting the addresses at zero.

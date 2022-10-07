@@ -85,9 +85,13 @@ impl<'a> Lexer<'a> {
             inner: TokenType::lexer(source),
         }
     }
+}
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token<'a>;
 
     /// Consume the next token from the stream.
-    pub fn next(&mut self) -> Option<Token<'a>> {
+    fn next(&mut self) -> Option<Self::Item> {
         let tt = self.inner.next()?;
         let span = self.inner.span();
         let slice = self.inner.slice();

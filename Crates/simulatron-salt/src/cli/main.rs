@@ -107,13 +107,13 @@ fn init_logging(level: LevelFilter) {
 
 /// Report compiler errors to the user.
 #[inline]
-fn report_errors(errors: &Vec<SaltError>, reference: &str, reference_path: &str) {
+fn report_errors(errors: &[SaltError], reference: &str, reference_path: &str) {
     report(errors, reference, reference_path, "error", ERROR_COLOR)
 }
 
 /// Report compiler warnings to the user.
 #[inline]
-fn report_warnings(warnings: &Vec<SaltError>, reference: &str, reference_path: &str) {
+fn report_warnings(warnings: &[SaltError], reference: &str, reference_path: &str) {
     report(
         warnings,
         reference,
@@ -124,13 +124,7 @@ fn report_warnings(warnings: &Vec<SaltError>, reference: &str, reference_path: &
 }
 
 /// Compilation error/warning/etc. reporting function.
-fn report(
-    items: &Vec<SaltError>,
-    reference: &str,
-    reference_path: &str,
-    prefix: &str,
-    color: Color,
-) {
+fn report(items: &[SaltError], reference: &str, reference_path: &str, prefix: &str, color: Color) {
     for item in items.iter() {
         let (line, highlight) = find_context(reference, &item.span);
         let message = format!("{}: {}: {}", reference_path, prefix, item.message.as_ref());
@@ -189,10 +183,10 @@ fn find_context(reference: &str, range: &Range<usize>) -> (String, String) {
     // the token.
     let mut highlight_start = range.start;
     let mut highlight_end = range.end;
-    while reference.bytes().nth(highlight_start).unwrap() == b' ' {
+    while reference.as_bytes().get(highlight_start).unwrap() == &b' ' {
         highlight_start += 1;
     }
-    while reference.bytes().nth(highlight_end - 1).unwrap() == b' ' {
+    while reference.as_bytes().get(highlight_end - 1).unwrap() == &b' ' {
         highlight_end -= 1;
     }
     // Explicitly specify order of operations to avoid wraparound.

@@ -194,9 +194,9 @@ impl<S: ReadBE> Parser<S> {
     fn read_u8(&mut self) -> OFResult<u8> {
         self.source
             .read_u8()
-            .and_then(|val| {
+            .map(|val| {
                 self.bytes_read += 1;
-                Ok(val)
+                val
             })
             .map_err(Into::into)
     }
@@ -204,9 +204,9 @@ impl<S: ReadBE> Parser<S> {
     fn read_u16(&mut self) -> OFResult<u16> {
         self.source
             .read_be_u16()
-            .and_then(|val| {
+            .map(|val| {
                 self.bytes_read += 2;
-                Ok(val)
+                val
             })
             .map_err(Into::into)
     }
@@ -214,9 +214,9 @@ impl<S: ReadBE> Parser<S> {
     fn read_u32(&mut self) -> OFResult<u32> {
         self.source
             .read_be_u32()
-            .and_then(|val| {
+            .map(|val| {
                 self.bytes_read += 4;
-                Ok(val)
+                val
             })
             .map_err(Into::into)
     }
@@ -224,9 +224,9 @@ impl<S: ReadBE> Parser<S> {
     fn read_buffer(&mut self, buf: &mut [u8]) -> OFResult<()> {
         self.source
             .read_exact(buf)
-            .and_then(|val| {
+            .map(|val| {
                 self.bytes_read += u32::try_from(buf.len()).unwrap();
-                Ok(val)
+                val
             })
             .map_err(Into::into)
     }
@@ -263,7 +263,7 @@ fn validate_symbol_name(name: Vec<u8>) -> OFResult<String> {
 fn relocate_and_verify_symbol(
     symbol: (&String, &mut SymbolTableEntry),
     sections_start: u32,
-    sections: &Vec<Section>,
+    sections: &[Section],
 ) -> OFResult<()> {
     debug!("About to relocate and verify symbol {}", symbol.0);
     // Relocate and verify the value.
@@ -290,10 +290,12 @@ fn relocate_and_verify_symbol(
         // Relocate the reference.
         *reference = try_sub(*reference, sections_start)?;
         // Verify it points to zero.
-        let section = Section::find(sections, *reference).ok_or(OFError::new(format!(
-            "Address too large: {:#010X}",
-            *reference + sections_start
-        )))?;
+        let section = Section::find(sections, *reference).ok_or_else(|| {
+            OFError::new(format!(
+                "Address too large: {:#010X}",
+                *reference + sections_start
+            ))
+        })?;
         let section_offset = *reference - section.start;
         for i in 0..4 {
             assert_or_error!(
@@ -310,5 +312,5 @@ fn relocate_and_verify_symbol(
 /// Try and relocate x by y, failing gracefully if the result is negative.
 fn try_sub(x: u32, y: u32) -> OFResult<u32> {
     x.checked_sub(y)
-        .ok_or(OFError::new(format!("Address too small: {:#010X}", x)))
+        .ok_or_else(|| OFError::new(format!("Address too small: {:#010X}", x)))
 }

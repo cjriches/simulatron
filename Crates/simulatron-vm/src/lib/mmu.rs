@@ -37,6 +37,7 @@ type InterruptVector = [u8; INTERRUPT_VECTOR_SIZE];
 pub const RAM_SIZE: usize = (u32::MAX - BEGIN_RAM + 1) as usize;
 
 pub const ROM_SIZE: usize = (BEGIN_DISPLAY - BEGIN_ROM) as usize;
+#[allow(clippy::upper_case_acronyms)]
 pub type ROM = [u8; ROM_SIZE];
 
 /// The intent behind a memory access: important for checking virtual
@@ -48,6 +49,7 @@ enum Intent {
 }
 
 /// A memory management unit.
+#[allow(clippy::upper_case_acronyms)]
 pub struct MMU<D> {
     interrupt_tx: Sender<u32>,
     interrupt_vector: InterruptVector,

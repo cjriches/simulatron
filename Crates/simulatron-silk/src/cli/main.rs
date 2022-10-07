@@ -16,8 +16,8 @@ const VERBOSITY: &str = "verbosity";
 /// All supported link targets.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
 enum LinkTarget {
-    ROM,
-    DISK,
+    Rom,
+    Disk,
 }
 
 fn cli() -> Command {
@@ -147,8 +147,8 @@ fn run(args: ArgMatches) -> u8 {
         info!("Parsed all inputs.");
         let link_target = args.get_one(LINK_TARGET).unwrap();
         let result = match link_target {
-            LinkTarget::ROM => linker.link_as_rom(),
-            LinkTarget::DISK => linker.link_as_disk(),
+            LinkTarget::Rom => linker.link_as_rom(),
+            LinkTarget::Disk => linker.link_as_disk(),
         }?;
         info!("Linking complete.");
 
@@ -175,7 +175,6 @@ mod tests {
     use super::*;
 
     use std::fs;
-    use tempfile;
 
     macro_rules! invoke {
         ($($args:expr),+) => {{

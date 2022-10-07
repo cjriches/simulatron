@@ -1,3 +1,5 @@
+#![allow(clippy::comparison_chain)]
+
 mod rotcarry;
 
 #[macro_use]
@@ -304,6 +306,7 @@ enum PostCycleAction {
 }
 
 /// The internals of a CPU, which get moved to a separate thread while running.
+#[allow(clippy::upper_case_acronyms)]
 struct CPUInternal<D> {
     timer: Timer,
     mmu: MMU<D>,
@@ -325,6 +328,7 @@ struct CPUInternal<D> {
 }
 
 /// The public-facing CPU interface.
+#[allow(clippy::upper_case_acronyms)]
 pub struct CPU<D> {
     interrupt_tx: Sender<u32>,
     thread_handle: Option<thread::JoinHandle<CPUInternal<D>>>,
@@ -2169,7 +2173,7 @@ impl<D: DiskController> CPUInternal<D> {
             value.size_in_bytes()
         );
         self.interrupt_tx.send(INTERRUPT_ILLEGAL_OPERATION).unwrap();
-        return Err(CPUError::TryAgainError);
+        Err(CPUError::TryAgainError)
     }
 
     /// Read the value of the given register reference.
@@ -2242,7 +2246,7 @@ impl<D: DiskController> CPUInternal<D> {
             TypedValue::Float(f) => {
                 // No conversion is performed; we just reinterpret the bits as an integer.
                 // This is exactly what we want to let us store float values in RAM.
-                let converted = unsafe { std::mem::transmute::<f32, u32>(f) };
+                let converted = f.to_bits();
                 if self.kernel_mode {
                     self.mmu.store_physical_32(address, converted)
                 } else {
@@ -2262,46 +2266,40 @@ impl<D: DiskController> CPUInternal<D> {
         match value_type {
             ValueType::Byte => {
                 if self.kernel_mode {
-                    self.mmu
-                        .load_physical_8(address)
-                        .map(|b| TypedValue::Byte(b))
+                    self.mmu.load_physical_8(address).map(TypedValue::Byte)
                 } else {
                     self.mmu
                         .load_virtual_8(self.pdpr, address, is_fetch)
-                        .map(|b| TypedValue::Byte(b))
+                        .map(TypedValue::Byte)
                 }
             }
             ValueType::Half => {
                 if self.kernel_mode {
-                    self.mmu
-                        .load_physical_16(address)
-                        .map(|h| TypedValue::Half(h))
+                    self.mmu.load_physical_16(address).map(TypedValue::Half)
                 } else {
                     self.mmu
                         .load_virtual_16(self.pdpr, address, is_fetch)
-                        .map(|h| TypedValue::Half(h))
+                        .map(TypedValue::Half)
                 }
             }
             ValueType::Word => {
                 if self.kernel_mode {
-                    self.mmu
-                        .load_physical_32(address)
-                        .map(|w| TypedValue::Word(w))
+                    self.mmu.load_physical_32(address).map(TypedValue::Word)
                 } else {
                     self.mmu
                         .load_virtual_32(self.pdpr, address, is_fetch)
-                        .map(|w| TypedValue::Word(w))
+                        .map(TypedValue::Word)
                 }
             }
             ValueType::Float => {
                 if self.kernel_mode {
                     self.mmu
                         .load_physical_32(address)
-                        .map(|f| TypedValue::Float(unsafe { std::mem::transmute::<u32, f32>(f) }))
+                        .map(|f| TypedValue::Float(f32::from_bits(f)))
                 } else {
                     self.mmu
                         .load_virtual_32(self.pdpr, address, is_fetch)
-                        .map(|f| TypedValue::Float(unsafe { std::mem::transmute::<u32, f32>(f) }))
+                        .map(|f| TypedValue::Float(f32::from_bits(f)))
                 }
             }
         }

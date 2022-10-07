@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 use log::{debug, info, trace};
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -45,7 +47,7 @@ impl Linker {
     }
 
     /// Add the symbols and sections of an object file.
-    pub fn add(mut self, mut of: ObjectFile) -> OFResult<Self> {
+    pub fn add_objects(mut self, mut of: ObjectFile) -> OFResult<Self> {
         let data = &mut self.data;
 
         // We will need to offset all the sections, symbol values, and
@@ -101,6 +103,7 @@ impl Linker {
                             name, new_name
                         );
                         let old = data.symbols.remove(&name).unwrap();
+                        #[allow(clippy::or_fun_call)] // We really do want the side-effect.
                         let was_present = data
                             .symbols
                             .insert(new_name, old)
@@ -288,9 +291,15 @@ impl Linker {
         }
 
         // Ensure the image is not empty.
-        assert_or_error!(image.len() > 0, "Cannot produce an empty image.");
+        assert_or_error!(!image.is_empty(), "Cannot produce an empty image.");
 
         Ok(image)
+    }
+}
+
+impl Default for Linker {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

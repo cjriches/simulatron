@@ -124,26 +124,23 @@ impl UI {
         let keyboard_tx = self.keyboard_tx.take().unwrap();
 
         let join_handle = thread::spawn(move || loop {
-            match event::read().unwrap() {
-                Event::Key(key) => {
-                    // Quit on Alt+Shift+Q.
-                    if key.code == KeyCode::Char('Q')
-                        && key
-                            .modifiers
-                            .contains(KeyModifiers::union(KeyModifiers::ALT, KeyModifiers::SHIFT))
-                    {
-                        ui_tx.send(UICommand::CPUHalted).unwrap();
-                    } else {
-                        // Send the key to the keyboard controller.
-                        if let Some(k) = key_to_u8(key.code) {
-                            let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-                            let alt = key.modifiers.contains(KeyModifiers::ALT);
-                            let msg = KeyMessage::Key(k, ctrl, alt);
-                            keyboard_tx.send(msg).unwrap();
-                        }
+            if let Event::Key(key) = event::read().unwrap() {
+                // Quit on Alt+Shift+Q.
+                if key.code == KeyCode::Char('Q')
+                    && key
+                        .modifiers
+                        .contains(KeyModifiers::union(KeyModifiers::ALT, KeyModifiers::SHIFT))
+                {
+                    ui_tx.send(UICommand::CPUHalted).unwrap();
+                } else {
+                    // Send the key to the keyboard controller.
+                    if let Some(k) = key_to_u8(key.code) {
+                        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                        let alt = key.modifiers.contains(KeyModifiers::ALT);
+                        let msg = KeyMessage::Key(k, ctrl, alt);
+                        keyboard_tx.send(msg).unwrap();
                     }
                 }
-                _ => {} // Ignore non-keyboard events.
             }
             // Check if we should join the thread.
             if join1.load(Ordering::Relaxed) {

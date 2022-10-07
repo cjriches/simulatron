@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 use log::{debug, info};
 use notify::{
     self,
@@ -481,10 +483,12 @@ fn watcher_iteration(
 /// The directory MUST exist.
 fn get_file_name(dir_path: &Path) -> Option<PathBuf> {
     let mut dir_contents = fs::read_dir(dir_path)
-        .expect(&format!(
-            "Fatal: Failed to read directory '{}', does it exist?",
-            dir_path.display()
-        ))
+        .unwrap_or_else(|_| {
+            panic!(
+                "Fatal: Failed to read directory '{}', does it exist?",
+                dir_path.display()
+            )
+        })
         .map(|res| res.unwrap().path())
         .collect::<Vec<_>>();
 
@@ -498,11 +502,9 @@ fn get_file_name(dir_path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand;
     use std::io;
     use std::sync::mpsc::Receiver;
     use std::time::Duration;
-    use tempfile;
 
     use crate::init_test_logging;
 

@@ -74,7 +74,7 @@ impl Section {
 
     /// Find the section containing the given address within its range, and
     /// return a reference
-    pub fn find(sections: &Vec<Section>, address: u32) -> Option<&Section> {
+    pub fn find(sections: &[Section], address: u32) -> Option<&Section> {
         sections
             .binary_search_by(|sec| sec.compare_address(address))
             .ok()
@@ -83,7 +83,7 @@ impl Section {
 
     /// Find the section containing the given address within its range, and
     /// return a mutable reference.
-    pub fn find_mut(sections: &mut Vec<Section>, address: u32) -> Option<&mut Section> {
+    pub fn find_mut(sections: &mut [Section], address: u32) -> Option<&mut Section> {
         sections
             .binary_search_by(|sec| sec.compare_address(address))
             .ok()

@@ -62,7 +62,7 @@ macro_rules! address {
                 $self.code.append(&mut value);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRef::Word) {
                     return Err(SaltError {
                         span: $resolved.1,
                         message: "Expected an address (word) \
@@ -102,7 +102,7 @@ macro_rules! i_w {
                 $self.code.append(&mut value);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRef::Word) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected a word register reference.".into(),
@@ -248,7 +248,7 @@ macro_rules! i_w_a_a {
                 $self.code.append(&mut value);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRef::Word) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected a word register reference.".into(),
@@ -268,7 +268,7 @@ macro_rules! i_w_a_a {
                 $self.code.append(&mut value);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRef::Word) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected an address (word) \
@@ -290,7 +290,7 @@ macro_rules! i_w_a_a {
                 $self.code.append(&mut value);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRef::Word) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected an address (word) \
@@ -339,7 +339,7 @@ macro_rules! i_w_a_b {
                 $self.code.append(&mut value);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRef::Word) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected a word register reference.".into(),
@@ -359,7 +359,7 @@ macro_rules! i_w_a_b {
                 $self.code.append(&mut value);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefWord) {
+                if !register_type_matches(reg_type, RegRef::Word) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected an address (word) \
@@ -386,7 +386,7 @@ macro_rules! i_w_a_b {
                 $self.code.append(&mut val);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefByte) {
+                if !register_type_matches(reg_type, RegRef::Byte) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected a byte register reference.".into(),
@@ -429,10 +429,10 @@ macro_rules! i_WF_WF {
         match resolved {
             ResolvedOperand::Literal(_) => no_literals!(op_span),
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if register_type_matches(reg_type, RegRefType::RegRefWord) {
+                if register_type_matches(reg_type, RegRef::Word) {
                     float_first = false;
                     $self.code.push(reg_ref);
-                } else if register_type_matches(reg_type, RegRefType::RegRefFloat) {
+                } else if register_type_matches(reg_type, RegRef::Float) {
                     float_first = true;
                     $self.code.push(reg_ref);
                 } else {
@@ -451,7 +451,7 @@ macro_rules! i_WF_WF {
             ResolvedOperand::Literal(_) => no_literals!(op_span),
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
                 if float_first {
-                    if register_type_matches(reg_type, RegRefType::RegRefWord) {
+                    if register_type_matches(reg_type, RegRef::Word) {
                         $self.code.push(reg_ref);
                     } else {
                         return Err(SaltError {
@@ -460,7 +460,7 @@ macro_rules! i_WF_WF {
                         });
                     }
                 } else {
-                    if register_type_matches(reg_type, RegRefType::RegRefFloat) {
+                    if register_type_matches(reg_type, RegRef::Float) {
                         $self.code.push(reg_ref);
                     } else {
                         return Err(SaltError {
@@ -606,7 +606,7 @@ macro_rules! i_BHW_b {
                 $self.code.append(&mut val);
             }
             ResolvedOperand::RegRef(reg_ref, reg_type) => {
-                if !register_type_matches(reg_type, RegRefType::RegRefByte) {
+                if !register_type_matches(reg_type, RegRef::Byte) {
                     return Err(SaltError {
                         span: op_span,
                         message: "Expected a byte register reference.".into(),

@@ -17,7 +17,7 @@ impl DiskController for MockDiskController {
     }
 
     fn load_status(&self, _address: u32) -> u8 {
-        return 0;
+        0
     }
 
     fn store_data(&mut self, _address: u32, _value: u8) {
@@ -25,6 +25,6 @@ impl DiskController for MockDiskController {
     }
 
     fn load_data(&self, _address: u32) -> u8 {
-        return 0;
+        0
     }
 }

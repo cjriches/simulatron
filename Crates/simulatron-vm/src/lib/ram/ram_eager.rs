@@ -3,6 +3,7 @@ use std::ops::{Index, IndexMut};
 use crate::mmu::RAM_SIZE;
 
 /// Eager RAM implementation: single monolithic vector.
+#[allow(clippy::upper_case_acronyms)]
 pub struct RAM {
     data: Vec<u8>,
 }

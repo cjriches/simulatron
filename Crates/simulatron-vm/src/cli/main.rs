@@ -21,9 +21,9 @@ the current working directory, but can also be specified by the\n\
 /// Possible log levels.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
 enum LogLevel {
-    TRACE,
-    DEBUG,
-    INFO,
+    Trace,
+    Debug,
+    Info,
 }
 
 fn cli() -> Command {
@@ -185,9 +185,9 @@ fn run(args: ArgMatches) -> u8 {
             match File::create(log_path) {
                 Ok(logfile) => {
                     let level = match args.get_one(LOG_LEVEL).unwrap() {
-                        LogLevel::TRACE => LevelFilter::Trace,
-                        LogLevel::DEBUG => LevelFilter::Debug,
-                        LogLevel::INFO => LevelFilter::Info,
+                        LogLevel::Trace => LevelFilter::Trace,
+                        LogLevel::Debug => LevelFilter::Debug,
+                        LogLevel::Info => LevelFilter::Info,
                     };
                     init_logging(logfile, level);
                 }

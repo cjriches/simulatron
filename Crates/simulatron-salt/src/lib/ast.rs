@@ -353,10 +353,10 @@ impl ArrayLiteral {
             }
             let len = values.len();
             Ok((values, vec![len, 1]))
-        } else if let Some(_) = self
+        } else if self
             .syntax()
             .children_with_tokens()
-            .find(|child| child.kind() == SyntaxKind::OpenSquare)
+            .any(|child| child.kind() == SyntaxKind::OpenSquare)
         {
             // A full array literal.
             let (child_values, child_dims): (Vec<_>, Vec<_>) = self
@@ -377,6 +377,7 @@ impl ArrayLiteral {
             dims.push(child_dims.len());
             dims.resize(num_dims, 1);
             for child_dim in child_dims.iter() {
+                #[allow(clippy::needless_range_loop)]
                 for i in 1..num_dims {
                     let dim = *child_dim.get(i - 1).unwrap_or(&1);
                     if dim > dims[i] {
@@ -415,10 +416,9 @@ impl Literal {
             .children_with_tokens()
             .find_map(float_literal_cast)
         {
-            // Float literal: parse, transmute bit representation to u32, and
+            // Float literal: parse, get bit representation as u32 and
             // size is always Word.
-            let value = f32::from_str(&text).unwrap();
-            let value = unsafe { std::mem::transmute::<f32, u32>(value) };
+            let value = f32::from_str(&text).unwrap().to_bits();
             Ok(LiteralValue::Lit {
                 value,
                 min_reg_type: RegisterType::Float,
@@ -447,8 +447,7 @@ impl Literal {
 /// Does a SyntaxNode contain a child of the given SyntaxKind?
 fn node_contains_kind(node: &SyntaxNode, kind: SyntaxKind) -> bool {
     node.children_with_tokens()
-        .find(|child| child.kind() == kind)
-        .is_some()
+        .any(|child| child.kind() == kind)
 }
 
 /// Parse a string to get the value of an IntLiteral. We return this as an
@@ -465,11 +464,7 @@ fn int_literal_value(text: &str, span: Range<usize>) -> SaltResult<i64> {
     }
 
     // Find where the number (with possible base prefix) begins.
-    let number_start = if text.chars().nth(0).unwrap() == '-' {
-        1
-    } else {
-        0
-    };
+    let number_start = if text.starts_with('-') { 1 } else { 0 };
 
     // Find the base and the start index of the actual digits.
     let (base, digits_start) = if text.chars().nth(number_start).unwrap() == '0' {
@@ -498,7 +493,7 @@ fn int_literal_value(text: &str, span: Range<usize>) -> SaltResult<i64> {
 
     // Apply a possible exponent.
     if let Some(exponent_start) = exponent_start {
-        let exponent = match i32::from_str_radix(&text[(exponent_start + 1)..text.len()], 10) {
+        let exponent = match text[(exponent_start + 1)..text.len()].parse::<i32>() {
             Ok(val) => {
                 if val >= 0 {
                     val as u32
@@ -560,7 +555,7 @@ fn char_literal_value(text: &str) -> (u32, bool) {
         c => {
             // ASCII conversion.
             let value: u32 = c.into();
-            assert!(value >= 32 && value <= 126);
+            assert!((32..=126).contains(&value));
             (value, false)
         }
     }
@@ -653,14 +648,14 @@ mod tests {
         assert_eq!(
             values[4],
             LiteralValue::Lit {
-                value: unsafe { std::mem::transmute::<f32, u32>(1.0) },
+                value: f32::to_bits(1.0),
                 min_reg_type: RegisterType::Float
             }
         );
         assert_eq!(
             values[5],
             LiteralValue::Lit {
-                value: unsafe { std::mem::transmute::<f32, u32>(42e-12) },
+                value: f32::to_bits(42e-12),
                 min_reg_type: RegisterType::Float
             }
         );
@@ -674,7 +669,7 @@ mod tests {
         assert_eq!(
             values[7],
             LiteralValue::Lit {
-                value: unsafe { std::mem::transmute::<f32, u32>(-9.9432) },
+                value: f32::to_bits(-9.9432),
                 min_reg_type: RegisterType::Float
             }
         );
@@ -749,6 +744,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::bool_assert_comparison)]
     fn test_publics() {
         let ast = setup("examples/publics.simasm");
         let consts = ast.const_decls();

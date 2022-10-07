@@ -9,7 +9,7 @@ impl Rcl for u8 {
     fn rcl(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self as i8) < 0;
         let new_self = (self << 1) | carry as u8;
-        return (new_self, new_carry);
+        (new_self, new_carry)
     }
 }
 
@@ -18,7 +18,7 @@ impl Rcl for u16 {
     fn rcl(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self as i16) < 0;
         let new_self = (self << 1) | carry as u16;
-        return (new_self, new_carry);
+        (new_self, new_carry)
     }
 }
 
@@ -27,7 +27,7 @@ impl Rcl for u32 {
     fn rcl(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self as i32) < 0;
         let new_self = (self << 1) | carry as u32;
-        return (new_self, new_carry);
+        (new_self, new_carry)
     }
 }
 
@@ -42,7 +42,7 @@ impl Rcr for u8 {
     fn rcr(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self & 1) > 0;
         let new_self = (self >> 1) | if carry { 0x80 } else { 0 };
-        return (new_self, new_carry);
+        (new_self, new_carry)
     }
 }
 
@@ -51,7 +51,7 @@ impl Rcr for u16 {
     fn rcr(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self & 1) > 0;
         let new_self = (self >> 1) | if carry { 0x8000 } else { 0 };
-        return (new_self, new_carry);
+        (new_self, new_carry)
     }
 }
 
@@ -60,6 +60,6 @@ impl Rcr for u32 {
     fn rcr(self, carry: bool) -> (Self::Output, bool) {
         let new_carry = (self & 1) > 0;
         let new_self = (self >> 1) | if carry { 0x80000000 } else { 0 };
-        return (new_self, new_carry);
+        (new_self, new_carry)
     }
 }

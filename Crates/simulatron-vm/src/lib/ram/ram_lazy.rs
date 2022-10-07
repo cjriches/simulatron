@@ -6,9 +6,11 @@ use crate::mmu::RAM_SIZE;
 const PAGE_SHIFT: usize = 12;
 const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 const PAGE_MASK: usize = PAGE_SIZE - 1;
+#[allow(clippy::absurd_extreme_comparisons)] // Calling my constant calculation absurd, how rude!
 const NUM_PAGES: usize = (RAM_SIZE >> PAGE_SHIFT) + if RAM_SIZE % PAGE_SIZE > 0 { 1 } else { 0 };
 
 /// Lazy RAM implementation: hashmap from page number to page.
+#[allow(clippy::upper_case_acronyms)]
 pub struct RAM {
     /// `ahash` is faster than the standard hasher, and cryptographic security
     /// doesn't matter here.

@@ -41,7 +41,7 @@ fn run(
     cpu.wait_for_halt();
     // Collect any resulting UI commands.
     let ui_commands = ui_rx.try_iter().collect();
-    return (cpu, ui_commands);
+    (cpu, ui_commands)
 }
 
 fn run_default(rom: ROM) -> (CPU<MockDiskController>, Vec<UICommand>) {

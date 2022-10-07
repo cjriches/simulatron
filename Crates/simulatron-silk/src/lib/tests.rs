@@ -42,7 +42,7 @@ macro_rules! parse_files {
                 let f = File::open(path).unwrap();
                 info!("Parsing '{}'", path);
                 let parsed = Parser::parse(f)?;
-                linker = linker.add(parsed)?;
+                linker = linker.add_objects(parsed)?;
             }
             Ok(linker)
         })
