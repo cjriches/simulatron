@@ -564,21 +564,23 @@ mod tests {
         let data = ast.data_decls();
         assert_eq!(data.len(), 8);
 
-        fn test(decl: &DataDecl, name: &str, mutable: bool) {
-            assert_eq!(decl.name(), name);
-            assert_eq!(decl.mutable(), mutable);
-            assert_debug_snapshot!(decl.type_().dimensions());
-            assert_debug_snapshot!(decl.initialiser());
+        macro_rules! test {
+            ($decl: expr, $name: expr, $mutable: expr) => {{
+                assert_eq!($decl.name(), $name);
+                assert_eq!($decl.mutable(), $mutable);
+                assert_debug_snapshot!($decl.type_().dimensions());
+                assert_debug_snapshot!($decl.initialiser());
+            }}
         }
 
-        test(&data[0], "arr", false);
-        test(&data[1], "primes_and_doubles", false);
-        test(&data[2], "empty", false);
-        test(&data[3], "zeros", true);
-        test(&data[4], "negative", false);
-        test(&data[5], "too_big", false);
-        test(&data[6], "init_too_big", false);
-        test(&data[7], "init_too_small", false);
+        test!(&data[0], "arr", false);
+        test!(&data[1], "primes_and_doubles", false);
+        test!(&data[2], "empty", false);
+        test!(&data[3], "zeros", true);
+        test!(&data[4], "negative", false);
+        test!(&data[5], "too_big", false);
+        test!(&data[6], "init_too_big", false);
+        test!(&data[7], "init_too_small", false);
     }
 
     #[test]
@@ -597,21 +599,23 @@ mod tests {
         let instructions = ast.instructions();
         assert_eq!(instructions.len(), 6);
 
-        fn test(instruction: &Instruction, opcode: &str) {
-            assert_eq!(&instruction.opcode().0, opcode);
-            assert_debug_snapshot!(instruction.operands()
-                .iter()
-                .map(Operand::value)
-                .map(Result::unwrap)
-                .collect::<Vec<_>>());
+        macro_rules! test {
+            ($instruction: expr, $opcode: expr) => {{
+                assert_eq!(&$instruction.opcode().0, $opcode);
+                assert_debug_snapshot!($instruction.operands()
+                    .iter()
+                    .map(Operand::value)
+                    .map(Result::unwrap)
+                    .collect::<Vec<_>>());
+            }}
         }
 
-        test(&instructions[0], "copy");
-        test(&instructions[1], "mult");
-        test(&instructions[2], "add");
-        test(&instructions[3], "add");
-        test(&instructions[4], "blockcopy");
-        test(&instructions[5], "halt");
+        test!(&instructions[0], "copy");
+        test!(&instructions[1], "mult");
+        test!(&instructions[2], "add");
+        test!(&instructions[3], "add");
+        test!(&instructions[4], "blockcopy");
+        test!(&instructions[5], "halt");
     }
 
     #[test]

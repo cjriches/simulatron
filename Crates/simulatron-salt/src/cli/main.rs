@@ -1,8 +1,5 @@
-use clap::{App, app_from_crate, Arg, ArgMatches,
-           crate_authors, crate_description,
-           crate_name, crate_version};
+use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 use colored::{Color, Colorize};
-use itertools::Itertools;
 use log::{info, error, LevelFilter};
 use std::fs::File;
 use std::io::{self, Write, Read};
@@ -55,32 +52,30 @@ impl<'a> InputFile<'a> {
     }
 }
 
-fn cli() -> App<'static, 'static> {
+fn cli() -> Command {
     // Hack to make the build dirty when the toml changes.
     include_str!("../../Cargo.toml");
 
-    app_from_crate!()
+    clap::command!()
         .after_help("\
             Example compilation from assembly to disk image:\n    \
                 salt lib.simasm -E main-func.simasm\n    \
                 silk -t DISK -o disk.img main-func.simobj lib.simobj")
-        .arg(Arg::with_name(INPUT_FILES)
+        .arg(Arg::new(INPUT_FILES)
             .help("Input assembly files.")
-            .takes_value(true)
-            .multiple(true))
-        .arg(Arg::with_name(ENTRYPOINT_FILE)
+            .action(ArgAction::Append))
+        .arg(Arg::new(ENTRYPOINT_FILE)
             .help("The next input file is assembled as an entrypoint \
                    (can be specified multiple times).")
-            .short("E")
+            .short('E')
             .long("entrypoint")
-            .takes_value(true)
-            .multiple(true)
-            .number_of_values(1))
-        .arg(Arg::with_name(VERBOSITY)
+            .action(ArgAction::Append))
+        .arg(Arg::new(VERBOSITY)
             .help("Specify up to three times to increase the verbosity of output.")
-            .short("v")
+            .short('v')
             .long("verbose")
-            .multiple(true))
+            .action(ArgAction::Count)
+            .value_parser(value_parser!(u8).range(..=3)))
 }
 
 fn logging_format(formatter: &mut env_logger::fmt::Formatter,
@@ -210,29 +205,24 @@ fn run(args: ArgMatches) -> u8 {
 
     fn _run(args: ArgMatches) -> Option<()> {
         // Set up logging.
-        let log_level = match args.occurrences_of(VERBOSITY) {
+        let log_level = match args.get_count(VERBOSITY) {
             0 => None,
             1 => Some(LevelFilter::Info),
             2 => Some(LevelFilter::Debug),
-            3 | _ => Some(LevelFilter::Trace),
+            3 => Some(LevelFilter::Trace),
+            _ => unreachable!(),
         };
         if let Some(level) = log_level {
             init_logging(level);
         }
 
         // Collect input files.
-        let normal_inputs = match args.values_of(INPUT_FILES) {
-            Some(vec) => vec.collect_vec(),
-            None => Vec::new(),
-        };
-        let entrypoint_inputs = match args.values_of(ENTRYPOINT_FILE) {
-            Some(vec) => vec.collect_vec(),
-            None => Vec::new(),
-        };
+        let normal_inputs = args.get_many::<String>(INPUT_FILES).unwrap_or_default();
+        let entrypoint_inputs = args.get_many::<String>(ENTRYPOINT_FILE).unwrap_or_default();
         let mut inputs: Vec<InputFile> = Vec::with_capacity(
             normal_inputs.len() + entrypoint_inputs.len()
         );
-        for path in normal_inputs.iter() {
+        for path in normal_inputs {
             let file = File::open(path)
                 .map_err(|e| {
                     report_generic_error!(
@@ -245,7 +235,7 @@ fn run(args: ArgMatches) -> u8 {
                 entrypoint: false,
             });
         }
-        for path in entrypoint_inputs.iter() {
+        for path in entrypoint_inputs {
             let file = File::open(path)
                 .map_err(|e| {
                     report_generic_error!(
@@ -261,7 +251,7 @@ fn run(args: ArgMatches) -> u8 {
 
         let num_inputs = inputs.len();
         if num_inputs == 0 {
-            eprintln!("{}", args.usage());
+            eprintln!("{}", cli().render_usage());
             return Some(());
         }
 

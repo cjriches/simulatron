@@ -1,8 +1,6 @@
 mod error;
 
-use clap::{App, app_from_crate, Arg, arg_enum, ArgMatches,
-           crate_authors, crate_description,
-           crate_name, crate_version, value_t_or_exit};
+use clap::{Arg, ArgAction, ArgMatches, Command, value_parser, ValueEnum};
 use log::{info, error, LevelFilter};
 use simulatron_utils::file::{Output, TransientFile};
 use std::fs::File;
@@ -15,45 +13,42 @@ const OUTPUT_PATH: &str = "output-path";
 const OBJECT_FILES: &str = "OBJECT_FILES";
 const VERBOSITY: &str = "verbosity";
 
-arg_enum! {
-    /// All supported link targets.
-    #[derive(Debug, PartialEq, Eq)]
-    enum LinkTarget {
-        ROM,
-        DISK,
-    }
+/// All supported link targets.
+#[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
+enum LinkTarget {
+    ROM,
+    DISK,
 }
 
-fn cli() -> App<'static, 'static> {
+fn cli() -> Command {
     // Hack to make the build dirty when the toml changes.
     include_str!("../../Cargo.toml");
 
-    app_from_crate!()
-        .arg(Arg::with_name(LINK_TARGET)
+    clap::command!()
+        .arg(Arg::new(LINK_TARGET)
             .help("The type of result that should be produced.")
-            .short("t")
+            .short('t')
             .long("target")
-            .takes_value(true)
+            .action(ArgAction::Set)
             .required(true)
-            .possible_values(&LinkTarget::variants())
-            .case_insensitive(true))
-        .arg(Arg::with_name(OUTPUT_PATH)
+            .value_parser(value_parser!(LinkTarget))
+            .ignore_case(true))
+        .arg(Arg::new(OUTPUT_PATH)
             .help("Where to place the output. \
                    If omitted, the result will be sent to stdout.")
-            .short("o")
+            .short('o')
             .long("output")
-            .takes_value(true))
-        .arg(Arg::with_name(OBJECT_FILES)
+            .action(ArgAction::Set))
+        .arg(Arg::new(OBJECT_FILES)
             .help("One or more object files to link.")
-            .takes_value(true)
-            .required(true)
-            .multiple(true)
-            .min_values(1))
-        .arg(Arg::with_name(VERBOSITY)
+            .action(ArgAction::Append)
+            .required(true))
+        .arg(Arg::new(VERBOSITY)
             .help("Specify up to three times to increase the verbosity of output.")
-            .short("v")
+            .short('v')
             .long("verbose")
-            .multiple(true))
+            .action(ArgAction::Count)
+            .value_parser(value_parser!(u8).range(..=3)))
 }
 
 fn logging_format(formatter: &mut env_logger::fmt::Formatter,
@@ -94,16 +89,17 @@ fn run(args: ArgMatches) -> u8 {
 
     fn _run(args: ArgMatches) -> Result<(), LinkError> {
         // Set up logging.
-        let log_level = match args.occurrences_of(VERBOSITY) {
+        let log_level = match args.get_count(VERBOSITY) {
             0 => LevelFilter::Warn,
             1 => LevelFilter::Info,
             2 => LevelFilter::Debug,
-            3 | _ => LevelFilter::Trace,
+            3 => LevelFilter::Trace,
+            _ => unreachable!(),
         };
         init_logging(log_level);
 
         // Open output path.
-        let mut output = match args.value_of(OUTPUT_PATH) {
+        let mut output = match args.get_one::<String>(OUTPUT_PATH) {
             None => {
                 info!("Silk will write the linked result to stdout.");
                 Output::Stdout(io::stdout())
@@ -120,7 +116,7 @@ fn run(args: ArgMatches) -> u8 {
         };
 
         // Open input files.
-        let inputs = args.values_of(OBJECT_FILES).unwrap()
+        let inputs = args.get_many::<String>(OBJECT_FILES).unwrap()
             .map(|path| File::open(path)
                 .map(BufReader::new)
                 .map_err(|e| {
@@ -133,7 +129,7 @@ fn run(args: ArgMatches) -> u8 {
         // Run the linker.
         let linker = simulatron_silk::parse_and_combine(inputs)?;
         info!("Parsed all inputs.");
-        let link_target = value_t_or_exit!(args, LINK_TARGET, LinkTarget);
+        let link_target = args.get_one(LINK_TARGET).unwrap();
         let result = match link_target {
             LinkTarget::ROM => linker.link_as_rom(),
             LinkTarget::DISK => linker.link_as_disk(),
@@ -168,7 +164,7 @@ mod tests {
 
     macro_rules! invoke {
         ($($args:expr),+) => {{
-            let args = cli().get_matches_from_safe(
+            let args = cli().try_get_matches_from(
                     vec!["silk".to_string(), $($args.to_string()),*])
                 .unwrap();
             run(args)

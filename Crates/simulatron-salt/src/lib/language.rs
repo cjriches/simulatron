@@ -3,7 +3,7 @@ use crate::lexer::TokenType;
 /// All terminals and non-terminals in the grammar, i.e. all possible types for
 /// a node in the AST.
 #[repr(u16)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
 pub enum SyntaxKind {
     // Non-terminals
     Program,

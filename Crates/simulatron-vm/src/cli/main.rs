@@ -1,10 +1,9 @@
-use clap::{App, app_from_crate, Arg, arg_enum, ArgMatches,
-           crate_authors, crate_description,
-           crate_name, crate_version, value_t_or_exit};
+use clap::{Arg, ArgAction, ArgMatches, Command, value_parser, ValueEnum};
 use simplelog::{ConfigBuilder, LevelFilter, LevelPadding, WriteLogger};
 use std::convert::TryInto;
 use std::fs::{self, File};
 use std::io::{self, Write};
+use time::macros::format_description;
 
 const ROM_PATH: &str = "ROM_PATH";
 const DISK_A_PATH: &str = "DISK_A_PATH";
@@ -19,21 +18,19 @@ present to launch. The folders default to ./DiskA and ./DiskB in\n\
 the current working directory, but can also be specified by the\n\
 --disk-a and --disk-b options.";
 
-arg_enum! {
-    /// Possible log levels.
-    #[derive(Debug, PartialEq, Eq)]
-    enum LogLevel {
-        TRACE,
-        DEBUG,
-        INFO,
-    }
+/// Possible log levels.
+#[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
+enum LogLevel {
+    TRACE,
+    DEBUG,
+    INFO,
 }
 
-fn cli() -> App<'static, 'static> {
+fn cli() -> Command {
     // Hack to make the build dirty when the toml changes.
     include_str!("../../Cargo.toml");
 
-    app_from_crate!()
+    clap::command!()
         .max_term_width(100)
         .after_help("\
 This is the Simulatron Virtual Machine. To launch a Simulatron VM, simply \
@@ -41,42 +38,43 @@ ensure the disk folders are present and specify the ROM file to load. This \
 will launch the Simulatron Terminal in your console, which will capture all \
 keyboard input. The terminal will exit when the VM halts; this can be \
 triggered manually by pressing Alt+Shift+Q.")
-        .arg(Arg::with_name(ROM_PATH)
+        .arg(Arg::new(ROM_PATH)
             .help("The path to the ROM file to use (must be exactly 512 bytes).")
             .long("rom")
-            .takes_value(true)
+            .action(ArgAction::Set)
             .default_value("./ROM"))
-        .arg(Arg::with_name(DISK_A_PATH)
+        .arg(Arg::new(DISK_A_PATH)
             .help("The path to the folder for Disk A.")
             .long("disk-a")
-            .takes_value(true)
+            .action(ArgAction::Set)
             .default_value("./DiskA"))
-        .arg(Arg::with_name(DISK_B_PATH)
+        .arg(Arg::new(DISK_B_PATH)
             .help("The path to the folder for Disk B.")
             .long("disk-b")
-            .takes_value(true)
+            .action(ArgAction::Set)
             .default_value("./DiskB"))
-        .arg(Arg::with_name(LOG_PATH)
+        .arg(Arg::new(LOG_PATH)
             .help("If set, a debug log will be written to the given path.")
-            .short("l")
+            .short('l')
             .long("log")
-            .takes_value(true))
-        .arg(Arg::with_name(LOG_LEVEL)
+            .action(ArgAction::Set))
+        .arg(Arg::new(LOG_LEVEL)
             .help("Set the log level. Has no effect without \
                    specifying --log as well. Case insensitive.")
-            .short("L")
+            .short('L')
             .long("log-level")
-            .takes_value(true)
+            .action(ArgAction::Set)
             .default_value("TRACE")
-            .possible_values(&LogLevel::variants())
-            .case_insensitive(true))
-        .arg(Arg::with_name(INIT)
+            .value_parser(value_parser!(LogLevel))
+            .ignore_case(true))
+        .arg(Arg::new(INIT)
             .help("Instead of running the VM, create a new skeleton directory \
                    layout suitable for running a VM. Creates the following \
                    directories: './simulatron/', './simulatron/DiskA/', \
                    './simulatron/DiskB/', and a placeholder './simulatron/ROM' \
                    file that simply halts the processor.")
-            .long("init"))
+            .long("init")
+            .action(ArgAction::SetTrue))
 }
 
 /// Ensure that the given path exists and is a directory.
@@ -105,7 +103,7 @@ fn init_logging(logfile: File, level: LevelFilter) {
         .set_location_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
         .set_thread_level(LevelFilter::Off)
-        .set_time_format_str("%H:%M:%S%.6f")
+        .set_time_format_custom(format_description!("[hour]:[minute]:[second].[subsecond digits:6]"))
         .add_filter_ignore_str("mio")
         .build();
 
@@ -124,7 +122,7 @@ fn run(args: ArgMatches) -> u8 {
 
     fn _run(args: ArgMatches) -> Result<(), String> {
         // Check for init option.
-        if args.is_present(INIT) {
+        if args.get_flag(INIT) {
             return match create_skeleton() {
                 Ok(_) => {
                     eprintln!("Successfully created simulatron skeleton.");
@@ -145,7 +143,7 @@ fn run(args: ArgMatches) -> u8 {
         }
 
         // Load ROM.
-        let path = args.value_of(ROM_PATH).unwrap();
+        let path = args.get_one::<String>(ROM_PATH).unwrap();
         let rom = match fs::read(path) {
             Ok(rom) => rom,
             Err(e) => return Err(
@@ -159,16 +157,16 @@ fn run(args: ArgMatches) -> u8 {
         }
 
         // Ensure that the disk paths exist.
-        let disk_a_path = args.value_of(DISK_A_PATH).unwrap();
+        let disk_a_path = args.get_one::<String>(DISK_A_PATH).unwrap();
         check_disk_path(disk_a_path)?;
-        let disk_b_path = args.value_of(DISK_B_PATH).unwrap();
+        let disk_b_path = args.get_one::<String>(DISK_B_PATH).unwrap();
         check_disk_path(disk_b_path)?;
 
         // Initialise logging if configured.
-        if let Some(log_path) = args.value_of(LOG_PATH) {
+        if let Some(log_path) = args.get_one::<String>(LOG_PATH) {
             match File::create(log_path) {
                 Ok(logfile) => {
-                    let level = match value_t_or_exit!(args, LOG_LEVEL, LogLevel) {
+                    let level = match args.get_one(LOG_LEVEL).unwrap() {
                         LogLevel::TRACE => LevelFilter::Trace,
                         LogLevel::DEBUG => LevelFilter::Debug,
                         LogLevel::INFO => LevelFilter::Info,

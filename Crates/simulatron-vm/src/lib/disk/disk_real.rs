@@ -182,7 +182,6 @@ impl DiskController for RealDiskController {
             }
         }).unwrap();
 
-        watcher.configure(notify::Config::PreciseEvents(true)).unwrap();
         watcher.watch(self.dir_path.as_path(), notify::RecursiveMode::NonRecursive).unwrap();
         // Trigger an update in case there was already a disk present before we started.
         watcher_iteration(&self.interrupt_tx, interrupt_num, &self.dir_path, &self.shared_data);
