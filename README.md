@@ -19,7 +19,7 @@ General documentation can be found in [Documentation](Documentation). Package-sp
 * Cross-platform support: Simulatron runs on Linux and Windows, and should run on Mac too (although this is untested).
 
 ## Getting Started
-See the [examples](Examples/README.md).
+See the [examples](Examples).
 
 ## Project State
 The project is currently paused.
